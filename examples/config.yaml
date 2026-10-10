@@ -60,7 +60,6 @@ execution:
   shutdown_deadline_ms: 5000
   active_runs_per_user_ceiling: 4
   active_runs_total_ceiling: 32
-  recovery_retry_window_seconds: 86400
 
 # Seeded into the database only when no settings revision exists.
 # These are proposals; model capability and pricing must be configured before runs.
@@ -83,7 +82,7 @@ bootstrap_settings:
   regex_deadline_ms: 500
   history_retention: {mode: "duration", days: 365}
   artifact_retention: {mode: "duration", days: 365}
-  trace_retention: {mode: "duration", days: 30}
+  trace_retention: {mode: "forever"}
   external_disclosure_default: false
 
 observability:

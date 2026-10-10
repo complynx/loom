@@ -1,0 +1,9 @@
+/bin/
+/dist/
+/coverage.out
+/deploy/api.env
+/deploy/auth.key
+/.env
+*.test
+*.test.exe
+/deploy/config.yaml

@@ -1,20 +1,22 @@
 # Зависимости и политика обновлений
 
-Проверено 2026-10-11. Полные коммиты выбранного графа находятся в [lock-файле](../tools/dependencies.lock.json). [Аудит](dependency-audit/2026-10-11/) содержит воспроизводимый кандидат `go.mod`/`go.sum`, список импортов, лицензии и снимок GitHub. Приложения ещё нет: это выбор инструментов, не проверка готового бинарника.
+Проверено 2026-10-11. Полные коммиты выбранного графа находятся в [lock-файле](../tools/dependencies.lock.json). [Аудит](dependency-audit/2026-10-11/) содержит воспроизводимый кандидат `go.mod`/`go.sum`, список импортов, лицензии и снимок GitHub. Это исходный аудит выбора инструментов. Реализованный граф определяется корневым `go.mod`; итоговая проверка MVP хранится отдельно в `dependency-audit/2026-10-11-mvp/`. Неиспользуемые кандидаты не входят в бинарник.
 
-Целевая платформа — **Linux/Docker, linux/amd64**. На complynx.net read-only команда uname подтвердила Linux x86_64. Production gate выполняется в Linux-контейнере; Windows-аудит относится только к локальной разработке. Контейнерные base images фиксируем digest sha256, а не плавающим tag; конкретные images выберем при реализации Dockerfile. CGO=0 — проверенный build-кандидат, ограничения OS sandbox требуют отдельной проверки.
+Целевая платформа — **Linux/Docker, linux/amd64**. На complynx.net read-only команда uname подтвердила Linux x86_64. Production gate выполняется в Linux-контейнере; Windows-аудит относится только к локальной разработке. Контейнерные base images фиксируем digest sha256, а не плавающим tag; используемые digest записаны в `Dockerfile`, `compose.yaml` и скрипте Linux-проверок. CGO=0 — проверенный build-кандидат, ограничения OS sandbox требуют отдельной проверки.
 
 ## Фиксация
 
-Все 86 прямых и косвенных модулей кандидата закреплены полным SHA коммита. Релизная версия записана рядом для диагностики. Выбираем коммит проверенного стабильного релиза; для Goja, где нет release tags, используем конкретный проверенный коммит. В production запрещены плавающие `@latest`, ветки и непроверенные `replace`.
+Первоначальный кандидат содержит 86 явно выбранных прямых и косвенных модулей. Lock реализации проверяется по полному `go list -m all`, включая дополнительные зависимости графа; его размер не равен числу импортов бинарника. Релизная версия записана рядом для диагностики. Выбираем коммит проверенного стабильного релиза; для Goja, где нет release tags, используем конкретный проверенный коммит. В production запрещены плавающие `@latest`, ветки и непроверенные `replace`.
 
 В Go запрос `go get module@FULL_SHA` канонизируется в release version, если коммит помечен тегом, либо в pseudo-version с датой и сокращённым SHA. Поэтому `go.mod` хранит канонические версии, lock-файл — полные SHA, `go.sum` — хеши содержимого. Не конструируем pseudo-version вручную и не пытаемся записать полный SHA непосредственно в `require`. Проверяем `go mod verify`, согласованность графа с lock и происхождение коммитов. [Go modules reference](https://go.dev/ref/mod), [управление зависимостями](https://go.dev/doc/modules/managing-dependencies).
 
-Dependabot `gomod` работает с `go.mod`/`go.sum`; наш JSON автоматически не обновляет. Его PR должен также обновить lock и пройти аудит. Go proxy перечисляет теги, поэтому регулярное отслеживание каждого нового коммита без тегов нельзя считать гарантированным. Dependabot умеет учитывать pseudo-version границы исправлений в security advisories. Для Goja отдельно проверяем upstream commits при обновлении. После появления рабочего `go.mod` подключаем еженедельный Dependabot без auto-merge; до этого кандидат аудита не выдаём за модуль приложения. [Настройки Dependabot](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference), [реализация Go update checker](https://github.com/dependabot/dependabot-core/blob/main/go_modules/lib/dependabot/go_modules/update_checker/latest_version_finder.rb).
+Dependabot `gomod` работает с `go.mod`/`go.sum`; наш JSON автоматически не обновляет. Его PR должен также обновить lock и пройти аудит. Go proxy перечисляет теги, поэтому регулярное отслеживание каждого нового коммита без тегов нельзя считать гарантированным. Dependabot умеет учитывать pseudo-version границы исправлений в security advisories. Для Goja отдельно проверяем upstream commits при обновлении. Еженедельный Dependabot настроен без auto-merge; обновление lock входит в проверку каждого PR. [Настройки Dependabot](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference), [реализация Go update checker](https://github.com/dependabot/dependabot-core/blob/main/go_modules/lib/dependabot/go_modules/update_checker/latest_version_finder.rb).
 
 Go — **1.27.2**, свежий стабильный релиз на дату проверки. Закреплены коммит исходников и официальные SHA-256 архивов Linux amd64, Windows amd64 и исходников. Обновления Go выбирают новый стабильный релиз и проходят проверки; nightly/rc не используем. Локальная системная установка не изменена. [Официальные релизы](https://go.dev/dl/?mode=json).
 
-## Выбранный набор
+## Исходный выбор и реализация
+
+MVP использует pgx, sqlc, Goose, Huma, JSON Schema, Goja, YAML, River и Testify. Проверка JWT использует `go-jose/v4`, а OIDC discovery/introspection — стандартный HTTP. Zitadel SDK, goja_nodejs, Moby client, env, Testcontainers, goleak, backoff и gobreaker из исходного кандидата пока не нужны: async host broker, ограниченный Docker discovery и тестовый стенд реализованы без их импорта. Провайдер Responses вызывается через стандартный HTTP. Ниже сохранён первоначальный выбор для сравнения, а не список библиотек бинарника.
 
 Звёзды — снимок GitHub, приблизительные значения в таблице. Это показатель распространённости, а не доказательство безопасности. Все перечисленные репозитории не архивированы; точные даты создания, последнего push и счётчики сохранены в `github-evidence.json`.
 
@@ -38,7 +40,7 @@ Go — **1.27.2**, свежий стабильный релиз на дату п
 | Retry scheduling | backoff/v5 5.0.3 | MIT | 4.1k, с 2014; retries только разрешённых контрактом операций |
 | Circuit breaker | gobreaker/v2 2.4.0 | MIT | 3.7k, с 2015; transient dependency failures |
 
-Для HTTP, логов, regex, cancellation и дешёвых тестов используем стандартные `net/http`, `log/slog`, `regexp`, `context`, `httptest`, `testing/synctest`. Не добавляем библиотеку ради того, что уже делает stdlib. Provider SDK выбираем после первого provider; его ещё нет в проверенном графе.
+Для HTTP, логов, regex, cancellation и дешёвых тестов используем стандартные `net/http`, `log/slog`, `regexp`, `context`, `httptest`, `testing/synctest`. Не добавляем библиотеку ради того, что уже делает stdlib. Для первого провайдера используем стандартный HTTP; SDK не добавлен.
 
 River управляет доставкой PG jobs, повторами и worker lifecycle. Состояние run, fencing, billing и idempotency внешних изменений остаются доменными гарантиями приложения. River не даёт exactly-once внешнего API. Вставка job и изменение run выполняются в одной PG транзакции. Проверяем отмену, recovery и shutdown до принятия интеграции; River Pro не используем.
 
@@ -64,4 +66,4 @@ Goja не является границей безопасности. JS раб�
 
 ## Инструменты
 
-golangci-lint закреплён **v2.14.0**, полный commit в lock, настройки v2 в [`.golangci.yml`](../.golangci.yml). Windows archive проверен по официальному SHA-256; config проверяется самим линтером. Официальный готовый linter собран на Go 1.27.0: для CI предпочтительна сборка закреплённого commit обновлённым Go 1.27.2; toolchain приложения от этого не меняется. `govulncheck`, `go-licenses`, sqlc также закреплены commit. Tool lock пока не является автоматическим установщиком или работающим CI.
+golangci-lint закреплён **v2.14.0**, полный commit в lock, настройки v2 в [`.golangci.yml`](../.golangci.yml). Windows archive проверен по официальному SHA-256; config проверяется самим линтером. Официальный готовый linter собран на Go 1.27.0: для CI предпочтительна сборка закреплённого commit обновлённым Go 1.27.2; toolchain приложения от этого не меняется. `govulncheck`, `go-licenses`, sqlc также закреплены commit. MVP содержит `scripts/install-tools.sh` для сборки линтера и govulncheck из полных коммитов и CI workflow с PostgreSQL, race-тестами, проверкой lock, линтером, vulnerability scan и Docker build. Локальные проверки выполнены; запуск workflow на GitHub ещё не проверен.

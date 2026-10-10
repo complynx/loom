@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "clx-scripter service manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "service_id", "revision", "description", "modules"],
+  "properties": {
+    "protocol_version": {"const": 1},
+    "service_id": {"$ref": "#/$defs/identifier"},
+    "revision": {"type": "string", "minLength": 1, "maxLength": 128},
+    "description": {"type": "string", "maxLength": 4000},
+    "caller": {"$ref": "#/$defs/caller"},
+    "modules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/module"}}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+    "path": {"type": "string", "pattern": "^/[^?#]*$", "maxLength": 1024},
+    "permissions": {"type": "array", "uniqueItems": true, "maxItems": 100, "items": {"$ref": "#/$defs/identifier"}},
+    "caller": {
+      "type": "object", "additionalProperties": false,
+      "required": ["permissions", "auth"],
+      "properties": {
+        "permissions": {
+          "type": "array", "uniqueItems": true,
+          "items": {"enum": ["runs.create", "runs.control", "chat.read", "chat.events.append", "artifacts.read", "artifacts.write"]}
+        },
+        "auth": {"oneOf": [
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["type", "issuer", "subject", "audience"],
+            "properties": {
+              "type": {"const": "zitadel"},
+              "issuer": {"type": "string", "format": "uri"},
+              "subject": {"type": "string", "minLength": 1},
+              "audience": {"type": "string", "minLength": 1}
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["type", "secret_ref"],
+            "properties": {"type": {"const": "secret"}, "secret_ref": {"$ref": "#/$defs/identifier"}}
+          }
+        ]}
+      }
+    },
+    "module": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "description", "permissions", "discovery"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "description": {"type": "string", "maxLength": 4000},
+        "permissions": {"$ref": "#/$defs/permissions"},
+        "discovery": {"enum": ["static", "dynamic"]},
+        "methods": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/method"}},
+        "discovery_path": {"$ref": "#/$defs/path"},
+        "cache_ttl_seconds": {"type": "integer", "minimum": 0, "maximum": 300}
+      },
+      "allOf": [
+        {"if": {"properties": {"discovery": {"const": "static"}}}, "then": {"required": ["methods"], "not": {"anyOf": [{"required": ["discovery_path"]}, {"required": ["cache_ttl_seconds"]}]}}},
+        {"if": {"properties": {"discovery": {"const": "dynamic"}}}, "then": {"required": ["discovery_path", "cache_ttl_seconds"], "not": {"required": ["methods"]}}}
+      ]
+    },
+    "confirmation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["none", "service_id", "exact_parameters"]},
+        "prepare_path": {"$ref": "#/$defs/path"}
+      },
+      "allOf": [
+        {"if": {"properties": {"mode": {"const": "none"}}}, "then": {"not": {"required": ["prepare_path"]}}, "else": {"required": ["prepare_path"]}}
+      ]
+    },
+    "method": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "description", "permissions", "path", "effect", "timeout_ms", "max_result_bytes", "input_schema", "output_schema", "idempotency", "confirmation", "artifact_mime_types", "external_disclosure"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "description": {"type": "string", "maxLength": 4000},
+        "permissions": {"$ref": "#/$defs/permissions"},
+        "path": {"$ref": "#/$defs/path"},
+        "effect": {"enum": ["read", "write", "delete"]},
+        "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 300000},
+        "max_result_bytes": {"type": "integer", "minimum": 1, "maximum": 10485760},
+        "input_schema": {"type": "object"},
+        "output_schema": {"type": "object"},
+        "idempotency": {"type": "boolean"},
+        "status_path": {"$ref": "#/$defs/path"},
+        "cancel_path": {"$ref": "#/$defs/path"},
+        "deduplication_window_seconds": {"type": "integer", "minimum": 86400},
+        "confirmation": {"$ref": "#/$defs/confirmation"},
+        "artifact_mime_types": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
+        "external_disclosure": {"type": "boolean"}
+      },
+      "allOf": [
+        {"if": {"properties": {"effect": {"enum": ["write", "delete"]}}}, "then": {"required": ["status_path", "deduplication_window_seconds"], "properties": {"idempotency": {"const": true}}}}
+      ]
+    }
+  }
+}

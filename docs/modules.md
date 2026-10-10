@@ -7,11 +7,11 @@ labels:
   - "clx.harness.service=http://zns_chatbot:8080/internal/agent/manifest"
 ```
 
-Наличие label означает opt-in. Остальная конфигурация находится в manifest. Docker provider читает начальный список контейнеров, слушает events и выполняет полную периодическую сверку. Потеря event stream не должна навсегда оставить registry неверным.
+Наличие label означает opt-in. Остальная конфигурация находится в manifest. MVP выполняет initial discovery и polling; Docker event stream относится к следующему этапу, ограниченный proxy реализует только list/inspect. Целевой Docker provider также слушает events. После добавления event stream его потеря не должна навсегда оставлять registry неверным: polling остаётся обязательным.
 
 URI допускает HTTP внутри выделенной доверенной сети, HTTPS — при проверке сертификата. Host должен соответствовать контейнеру или его alias в общей разрешённой Docker-сети. Не допускаются userinfo, fragment, query, внешние host и redirects. IP назначения выводится из актуальных Docker metadata; одного DNS resolution недостаточно. Повторная проверка назначения защищает от DNS rebinding. Arbitrary URL из ответа модели не является endpoint модуля.
 
-Deployment operator является источником доверия: тот, кто может менять labels/manifest зарегистрированного сервиса, управляет его интеграцией. Доступ к Docker API — через ограниченный proxy, только необходимые list/inspect/events. `docker.sock:ro` не является запретом API-операций.
+Deployment operator является источником доверия: тот, кто может менять labels/manifest зарегистрированного сервиса, управляет его интеграцией. Доступ к Docker API — через ограниченный proxy, в MVP только необходимые list/inspect. `docker.sock:ro` не является запретом API-операций.
 
 Доверенный manifest имеет `protocol_version`, `service_id`, `revision`, описание, caller registration и модули. [JSON Schema](../schemas/manifest.schema.json) проверяет форму; семантический валидатор проверяет уникальность ID, пути, роли и capabilities. Неизвестная версия отклоняется. Неизвестные поля v1 отклоняются.
 
@@ -70,7 +70,7 @@ Manifest поддерживает `confirmation.mode=none|service_id|exact_param
 
 - `none`: метод можно выполнить только при пользовательском поручении и разрешённой политике; отсутствие протокола не расширяет права.
 - `service_id`: prepare endpoint возвращает confirmation_id, нормализованное описание, expires_at и hash аргументов. Execute привязывает ID к subject, методу, аргументам и operation_id. Backend проверяет всё повторно.
-- `exact_parameters`: prepare возвращает нормализованные аргументы, описание, expires_at и opaque precondition/version. Harness сохраняет JCS canonical hash. Execute отправляет подтверждённые аргументы и precondition; backend обязан атомарно проверить актуальность.
+- `exact_parameters`: prepare возвращает нормализованные аргументы, описание, expires_at и opaque precondition/version. Harness сохраняет hash детерминированного JSON утверждённых аргументов. Числовое представление сохраняется; совместимость с RFC 8785/JCS в MVP не заявляется. Execute отправляет подтверждённые аргументы и precondition; backend обязан атомарно проверить актуальность.
 
 Prepare — без бизнес-изменений. Человеческий текст не содержит credentials. Одобрение хранится в отдельной записи и не является свободным сообщением модели. Изменение цены, времени, получателя или иных существенных аргументов требует нового prepare/approval.
 

@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  behavioral-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_DB: clx_test
+          POSTGRES_USER: clx
+          POSTGRES_PASSWORD: isolated-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clx -d clx_test"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      CLX_TEST_DATABASE_DSN: postgres://clx:isolated-ci-only@localhost:5432/clx_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.2'
+          cache: true
+      - run: go mod verify
+      - run: python3 scripts/dependency-lock.py --check
+      - run: go test -race -tags=integration ./...
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/clx-scripter
+      - run: sh scripts/install-tools.sh
+      - run: bin/golangci-lint run ./...
+      - run: bin/govulncheck ./...
+      - run: docker build --platform linux/amd64 -t clx-scripter:ci .

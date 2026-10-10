@@ -1,0 +1,14 @@
+{
+  "github.com/segmentio/asm": {
+    "license": "MIT-0",
+    "basis": "Root LICENSE explicitly says MIT No Attribution; the classifier does not recognize this permissive MIT variant. Unimported by the shipped service."
+  },
+  "github.com/jackc/pgerrcode": {
+    "license": "MIT AND PostgreSQL",
+    "basis": "Root LICENSE separates MIT code from PostgreSQL licensed underlying SQL error data. Dependency upstream test graph only; not imported by this project runtime or tests."
+  },
+  "github.com/opencontainers/go-digest": {
+    "license": "Apache-2.0 code; CC-BY-SA-4.0 documentation only",
+    "basis": "LICENSE is Apache-2.0. Separate LICENSE.docs is CC-BY-SA-4.0. Neither code nor documentation is imported or redistributed by this project."
+  }
+}

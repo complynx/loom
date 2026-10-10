@@ -1,0 +1,340 @@
+package domain
+
+import (
+	"encoding/json"
+	"time"
+)
+
+type Principal struct {
+	Issuer, Subject, Actor, OrgID string
+	Permissions                   map[string]bool
+	ExpiresAt                     time.Time
+}
+
+func (p Principal) Has(s string) bool { return p.Permissions[s] }
+
+type Error struct {
+	Code      string
+	Status    int
+	Retryable bool
+	Message   string
+}
+
+func (e *Error) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return e.Code
+}
+func NewError(s int, c string) error { return &Error{Code: c, Status: s} }
+func Conflict(c string) error        { return NewError(409, c) }
+
+var ErrNotFound = &Error{Code: "not_found", Status: 404}
+
+func NotFound() error  { return ErrNotFound }
+func Forbidden() error { return NewError(403, "forbidden") }
+
+type RunState string
+
+const (
+	Queued          RunState = "queued"
+	Running         RunState = "running"
+	WaitingInput    RunState = "waiting_input"
+	WaitingApproval RunState = "waiting_approval"
+	WaitingAuth     RunState = "waiting_auth"
+	Reconciling     RunState = "reconciling"
+	Paused          RunState = "paused"
+	Completed       RunState = "completed"
+	Cancelled       RunState = "cancelled"
+	Failed          RunState = "failed"
+)
+
+func (s RunState) Terminal() bool { return s == Completed || s == Cancelled || s == Failed }
+
+type Chat struct {
+	ID        string    `json:"id"`
+	OwnerID   string    `json:"owner_id"`
+	OrgID     string    `json:"org_id"`
+	IsDefault bool      `json:"is_default"`
+	CreatedAt time.Time `json:"created_at"`
+}
+type Interaction struct {
+	Questions string `json:"questions"`
+	Approvals bool   `json:"approvals"`
+}
+type Input struct {
+	Text        string   `json:"text"`
+	ArtifactIDs []string `json:"artifact_ids,omitempty"`
+}
+type Budget struct {
+	MaxMicrocredits int64 `json:"max_microcredits"`
+}
+type Delivery struct {
+	Mode   string `json:"mode"`
+	WaitMS int    `json:"wait_ms"`
+}
+type CreateRun struct {
+	AutoAuthSession  bool        `json:"-"`
+	ChatID           string      `json:"chat_id,omitempty"`
+	AuthSessionID    string      `json:"auth_session_id,omitempty"`
+	Input            Input       `json:"input"`
+	Interaction      Interaction `json:"interaction"`
+	DisconnectPolicy string      `json:"disconnect_policy,omitempty"`
+	Delivery         Delivery    `json:"delivery,omitempty"`
+	Budget           Budget      `json:"budget"`
+	BillingAccountID string      `json:"billing_account_id,omitempty"`
+}
+type Run struct {
+	ActiveMilliseconds   int64            `json:"active_milliseconds"`
+	UnresolvedSteps      []UnresolvedStep `json:"unresolved_steps,omitempty"`
+	DisconnectPolicy     string           `json:"disconnect_policy"`
+	Model                Model            `json:"model_snapshot"`
+	SettingsSnapshot     Settings         `json:"settings_snapshot"`
+	ID                   string           `json:"run_id"`
+	ChatID               string           `json:"chat_id"`
+	OwnerID              string           `json:"owner_id"`
+	ActorID              string           `json:"actor_id"`
+	OrgID                string           `json:"org_id"`
+	State                RunState         `json:"status"`
+	Reason               string           `json:"reason,omitempty"`
+	Input                Input            `json:"input"`
+	Result               string           `json:"result,omitempty"`
+	ModelID              string           `json:"model_id"`
+	Effort               string           `json:"effort"`
+	Interaction          Interaction      `json:"interaction"`
+	AuthSessionID        string           `json:"auth_session_id,omitempty"`
+	MaxMicrocredits      int64            `json:"max_microcredits"`
+	SpentMicrocredits    int64            `json:"spent_microcredits"`
+	ReservedMicrocredits int64            `json:"reserved_microcredits"`
+	Version              int64            `json:"version"`
+	Fence                int64            `json:"-"`
+	LeaseOwner           string           `json:"-"`
+	LeaseUntil           *time.Time       `json:"-"`
+	PauseRequested       bool             `json:"pause_requested"`
+	CancelRequested      bool             `json:"cancel_requested"`
+	CreatedAt            time.Time        `json:"created_at"`
+	UpdatedAt            time.Time        `json:"updated_at"`
+	Question             *Question        `json:"question,omitempty"`
+	Approval             *Approval        `json:"approval,omitempty"`
+}
+type Event struct {
+	Seq       int64           `json:"seq"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+type ChatEvent struct {
+	Action        string          `json:"action,omitempty"`
+	Seq           int64           `json:"seq"`
+	Type          string          `json:"type"`
+	Text          string          `json:"text"`
+	Data          json.RawMessage `json:"data,omitempty"`
+	RunID         string          `json:"run_id,omitempty"`
+	SourceActor   string          `json:"source_actor"`
+	SourceEventID string          `json:"source_event_id,omitempty"`
+	OccurredAt    time.Time       `json:"occurred_at"`
+	ReceivedAt    time.Time       `json:"received_at"`
+}
+type AppendEvent struct {
+	SourceEventID string          `json:"source_event_id"`
+	Type          string          `json:"type"`
+	Action        string          `json:"action,omitempty"`
+	Text          string          `json:"text"`
+	Data          json.RawMessage `json:"data,omitempty"`
+	OccurredAt    time.Time       `json:"occurred_at"`
+}
+type SearchRequest struct {
+	Mode            string   `json:"mode"`
+	Query           string   `json:"query"`
+	AfterSeq        int64    `json:"after_seq,omitempty"`
+	BeforeSeq       int64    `json:"before_seq,omitempty"`
+	SourceServiceID string   `json:"source_service_id,omitempty"`
+	EventTypes      []string `json:"event_types,omitempty"`
+	Limit           int      `json:"limit"`
+}
+type SearchResult struct {
+	Events     []ChatEvent `json:"events"`
+	Partial    bool        `json:"partial"`
+	NextCursor int64       `json:"next_cursor,omitempty"`
+}
+type Choice struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+type Question struct {
+	ID        string    `json:"question_id"`
+	Text      string    `json:"text"`
+	Choices   []Choice  `json:"choices,omitempty"`
+	AllowText bool      `json:"allow_text"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Answer    *RunInput `json:"answer,omitempty"`
+}
+type Approval struct {
+	ID             string          `json:"approval_id"`
+	Text           string          `json:"text"`
+	OperationID    string          `json:"operation_id"`
+	Method         string          `json:"method"`
+	Arguments      json.RawMessage `json:"arguments"`
+	ArgumentHash   string          `json:"argument_hash"`
+	ConfirmationID string          `json:"confirmation_id,omitempty"`
+	Precondition   string          `json:"precondition,omitempty"`
+	Decision       string          `json:"decision,omitempty"`
+	ExpiresAt      time.Time       `json:"expires_at"`
+}
+type RunInput struct {
+	ID         string   `json:"id,omitempty"`
+	Kind       string   `json:"kind"`
+	Text       string   `json:"text,omitempty"`
+	QuestionID string   `json:"question_id,omitempty"`
+	ChoiceIDs  []string `json:"choice_ids,omitempty"`
+	ApprovalID string   `json:"approval_id,omitempty"`
+	Decision   string   `json:"decision,omitempty"`
+	Applied    bool     `json:"applied"`
+}
+type Model struct {
+	Provider                          string   `json:"provider,omitempty"`
+	InputCachedMicrocreditsPerMillion int64    `json:"input_cached_microcredits_per_million"`
+	ContextTokens                     int64    `json:"context_tokens"`
+	ID                                string   `json:"id"`
+	ProviderModel                     string   `json:"provider_model"`
+	Efforts                           []string `json:"efforts"`
+	MaxEffort                         string   `json:"max_effort"`
+	MaxOutputTokens                   int      `json:"max_output_tokens"`
+	InputMicrocreditsPerMillion       int64    `json:"input_microcredits_per_million"`
+	OutputMicrocreditsPerMillion      int64    `json:"output_microcredits_per_million"`
+	SupportsImages                    bool     `json:"supports_images"`
+}
+type Preferences struct {
+	ModelID string `json:"model_id"`
+	Effort  string `json:"effort"`
+	Version int64  `json:"version"`
+}
+type UserPolicy struct {
+	Models         []Model `json:"models"`
+	ActiveRunLimit int     `json:"active_run_limit"`
+	Version        int64   `json:"version"`
+}
+type Settings struct {
+	RunActiveTimeSeconds   int       `json:"run_active_time_seconds"`
+	RegexPatternMaxChars   int       `json:"regex_pattern_max_chars"`
+	RegexScanMaxBytes      int       `json:"regex_scan_max_bytes"`
+	RegexDeadlineMS        int       `json:"regex_deadline_ms"`
+	RunLifetimeSeconds     int       `json:"run_lifetime_seconds"`
+	InputWaitSeconds       int       `json:"input_wait_seconds"`
+	ApprovalWaitSeconds    int       `json:"approval_wait_seconds"`
+	PausedWaitSeconds      int       `json:"paused_wait_seconds"`
+	HistoryRetention       Retention `json:"history_retention"`
+	ArtifactRetention      Retention `json:"artifact_retention"`
+	TraceRetention         Retention `json:"trace_retention"`
+	ExternalDisclosure     bool      `json:"external_disclosure"`
+	Models                 []Model   `json:"models"`
+	DefaultModelID         string    `json:"default_model_id"`
+	DefaultEffort          string    `json:"default_effort"`
+	InitialCredits         int64     `json:"initial_credits"`
+	MaxRunMicrocredits     int64     `json:"max_run_microcredits"`
+	ActiveRunLimit         int       `json:"active_run_limit"`
+	HistoryRecentLimit     int       `json:"history_recent_limit"`
+	MaxSteps               int       `json:"max_steps"`
+	QuestionTimeoutSeconds int       `json:"question_timeout_seconds"`
+	Version                int64     `json:"version"`
+}
+type Balance struct {
+	AvailableMicrocredits int64 `json:"available_microcredits"`
+	SpentMicrocredits     int64 `json:"spent_microcredits"`
+	ReservedMicrocredits  int64 `json:"reserved_microcredits"`
+}
+type Message struct {
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+}
+type Usage struct {
+	CachedInputTokens int64  `json:"cached_input_tokens"`
+	InputTokens       int64  `json:"input_tokens"`
+	OutputTokens      int64  `json:"output_tokens"`
+	Microcredits      int64  `json:"microcredits"`
+	RequestID         string `json:"request_id,omitempty"`
+}
+type ToolCall struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+type Turn struct {
+	Text              string     `json:"text,omitempty"`
+	ToolCalls         []ToolCall `json:"tool_calls,omitempty"`
+	Question          *Question  `json:"question,omitempty"`
+	Usage             Usage      `json:"usage"`
+	ProviderRequestID string     `json:"provider_request_id,omitempty"`
+}
+type Step struct {
+	ID        string          `json:"id"`
+	RunID     string          `json:"run_id"`
+	Ordinal   int64           `json:"ordinal"`
+	Kind      string          `json:"kind"`
+	State     string          `json:"state"`
+	Input     json.RawMessage `json:"input"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Usage     Usage           `json:"usage"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+type Operation struct {
+	ID           string          `json:"operation_id"`
+	RunID        string          `json:"run_id"`
+	StepID       string          `json:"step_id"`
+	Method       string          `json:"method"`
+	Arguments    json.RawMessage `json:"arguments"`
+	State        string          `json:"state"`
+	Result       json.RawMessage `json:"result,omitempty"`
+	ErrorCode    string          `json:"error_code,omitempty"`
+	ArgumentHash string          `json:"argument_hash"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+type Artifact struct {
+	ExternalDisclosureAllowed bool      `json:"external_disclosure_allowed"`
+	SourceServiceID           string    `json:"source_service_id,omitempty"`
+	ID                        string    `json:"artifact_id"`
+	OwnerID                   string    `json:"owner_id"`
+	OrgID                     string    `json:"org_id"`
+	MIME                      string    `json:"mime"`
+	SHA256                    string    `json:"sha256"`
+	Size                      int64     `json:"size"`
+	CreatedAt                 time.Time `json:"created_at"`
+}
+type AuthSession struct {
+	ID, Issuer, Subject, Actor, OrgID string
+	Envelope                          json.RawMessage `json:"-"`
+	ExpiresAt                         time.Time
+	Version                           int64
+	RevokedAt                         *time.Time
+}
+
+type ContextSummary struct {
+	ChatID     string `json:"chat_id"`
+	ThroughSeq int64  `json:"through_seq"`
+	Text       string `json:"text"`
+	SourceHash string `json:"source_hash"`
+	ModelID    string `json:"model_id"`
+}
+
+type ReconcileEvidence struct {
+	Kind      string `json:"kind"`
+	Reference string `json:"reference"`
+	Reason    string `json:"reason"`
+}
+type ReconcileStepRequest struct {
+	Usage    Usage             `json:"usage"`
+	Evidence ReconcileEvidence `json:"evidence"`
+	Result   json.RawMessage   `json:"result,omitempty"`
+}
+type UnresolvedStep struct {
+	ID                   string `json:"step_id"`
+	Kind                 string `json:"kind"`
+	ReservedMicrocredits int64  `json:"reserved_microcredits"`
+	ClientRequestID      string `json:"client_request_id"`
+}
+
+type Retention struct {
+	Mode string `json:"mode"`
+	Days int    `json:"days"`
+}

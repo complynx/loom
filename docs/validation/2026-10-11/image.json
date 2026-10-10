@@ -1,0 +1,9 @@
+{
+  "platform": "linux/amd64",
+  "go": "1.27.2",
+  "image": "clx-scripter:mvp-local",
+  "config_digest": "sha256:c09211f611703a69ac49e86f52b603eb8c66050904284fb5fd3df41e541f728d",
+  "image_manifest": "sha256:4085e9691535093d6cc82dc8c998e0e1603fd078ad4fed6ac744b7dbe04188bd",
+  "local_build_index": "sha256:a7d32239d61b27ad110dc57f161733529e992f667c4237ac96a6b2674b387b80",
+  "published": false
+}
