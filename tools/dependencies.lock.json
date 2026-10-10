@@ -1,0 +1,659 @@
+{
+  "audit_date": "2026-10-11",
+  "go": {
+    "version": "go1.27.2",
+    "commit": "022c8636110ebac86a9b88724cda168ed713c21f",
+    "archives": [
+      {
+        "filename": "go1.27.2.src.tar.gz",
+        "sha256": "03495da2ba64894d40f5c4992e49454fa78b50690604ff92b6afff5081b76e62"
+      },
+      {
+        "filename": "go1.27.2.linux-amd64.tar.gz",
+        "sha256": "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+      },
+      {
+        "filename": "go1.27.2.windows-amd64.zip",
+        "sha256": "1314008898bd40df77af4b014f777f08873dbdfbcd3d92308728ee03304fe04f"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "module": "github.com/caarlos0/env/v11",
+      "version": "v11.4.1",
+      "commit": "a72d89a8930fc800372a6a338a1acf33e5cc3a56",
+      "repository": "https://github.com/caarlos0/env",
+      "indirect": false
+    },
+    {
+      "module": "github.com/cenkalti/backoff/v5",
+      "version": "v5.0.3",
+      "commit": "7cad66a637c4ffff09d0795608116ddcc7eb1769",
+      "repository": "https://github.com/cenkalti/backoff",
+      "indirect": false
+    },
+    {
+      "module": "github.com/danielgtaylor/huma/v2",
+      "version": "v2.39.1",
+      "commit": "198225eaac0c8be4aaa1962d5a9a075d3a6fd062",
+      "repository": "https://github.com/danielgtaylor/huma",
+      "indirect": false
+    },
+    {
+      "module": "github.com/dop251/goja",
+      "version": "v0.0.0-20261010130053-73dc7edc278f",
+      "commit": "73dc7edc278f056eca9d1a7081378f5ff0e4a6d6",
+      "repository": "https://github.com/dop251/goja",
+      "indirect": false
+    },
+    {
+      "module": "github.com/dop251/goja_nodejs",
+      "version": "v0.0.0-20260918173711-b481721df8a2",
+      "commit": "b481721df8a2dcb70a8cf553973cae601c17f886",
+      "repository": "https://github.com/dop251/goja_nodejs",
+      "indirect": false
+    },
+    {
+      "module": "github.com/jackc/pgx/v5",
+      "version": "v5.11.0",
+      "commit": "5e583fa7aabfa88b796292f849fc9d7d75ac159d",
+      "repository": "https://github.com/jackc/pgx",
+      "indirect": false
+    },
+    {
+      "module": "github.com/moby/moby/client",
+      "version": "v0.6.2",
+      "commit": "21a2258cf01135bdd0f2b06f3e2de538f00dc29f",
+      "repository": "https://github.com/moby/moby",
+      "indirect": false
+    },
+    {
+      "module": "github.com/pressly/goose/v3",
+      "version": "v3.28.0",
+      "commit": "43d2d9c819ed6c9ba2b67a86bdf9fc08562495b7",
+      "repository": "https://github.com/pressly/goose",
+      "indirect": false
+    },
+    {
+      "module": "github.com/riverqueue/river",
+      "version": "v0.49.0",
+      "commit": "da5a26e21c18c706e0cd48cef3e1e5016e00492c",
+      "repository": "https://github.com/riverqueue/river",
+      "indirect": false
+    },
+    {
+      "module": "github.com/riverqueue/river/riverdriver/riverpgxv5",
+      "version": "v0.49.0",
+      "commit": "da5a26e21c18c706e0cd48cef3e1e5016e00492c",
+      "repository": "https://github.com/riverqueue/river",
+      "indirect": false
+    },
+    {
+      "module": "github.com/santhosh-tekuri/jsonschema/v6",
+      "version": "v6.0.3",
+      "commit": "b0fc661f4939578bc429f408c18202573dbafcc4",
+      "repository": "https://github.com/santhosh-tekuri/jsonschema",
+      "indirect": false
+    },
+    {
+      "module": "github.com/sony/gobreaker/v2",
+      "version": "v2.4.0",
+      "commit": "0ae90251b774f890e7586c96ea82d61eb74d556d",
+      "repository": "https://github.com/sony/gobreaker",
+      "indirect": false
+    },
+    {
+      "module": "github.com/stretchr/testify",
+      "version": "v1.12.1",
+      "commit": "959dbdacf1533e155162811ea90c90117a420463",
+      "repository": "https://github.com/stretchr/testify",
+      "indirect": false
+    },
+    {
+      "module": "github.com/testcontainers/testcontainers-go/modules/postgres",
+      "version": "v0.44.0",
+      "commit": "007bd6b1407fe3f2ab9487479e8bd841e16a1c97",
+      "repository": "https://github.com/testcontainers/testcontainers-go",
+      "indirect": false
+    },
+    {
+      "module": "github.com/zitadel/oidc/v3",
+      "version": "v3.51.14",
+      "commit": "5ac478eb670627266989c502eb3035e4e3298a4f",
+      "repository": "https://github.com/zitadel/oidc",
+      "indirect": false
+    },
+    {
+      "module": "go.uber.org/goleak",
+      "version": "v1.3.0",
+      "commit": "31095c657c34bba405a8d480db27989aa5f60b9c",
+      "repository": "https://github.com/uber-go/goleak",
+      "indirect": false
+    },
+    {
+      "module": "go.yaml.in/yaml/v3",
+      "version": "v3.0.5",
+      "commit": "e16c7af9361b241fa02d91582fb59ce4954d8afc",
+      "repository": "https://github.com/yaml/go-yaml",
+      "indirect": false
+    },
+    {
+      "module": "dario.cat/mergo",
+      "version": "v1.0.2",
+      "commit": "7b33b2b01026fbbbbfcfbb1ee2c9c0a5e0c9a9f7",
+      "repository": "https://github.com/imdario/mergo",
+      "indirect": true
+    },
+    {
+      "module": "github.com/Azure/go-ansiterm",
+      "version": "v0.0.0-20261006220739-8c912ac31dd4",
+      "commit": "8c912ac31dd4f719f212e8db91c89014bbc8f9eb",
+      "repository": "https://github.com/Azure/go-ansiterm",
+      "indirect": true
+    },
+    {
+      "module": "github.com/Microsoft/go-winio",
+      "version": "v0.6.2",
+      "commit": "3c9576c9346a1892dee136329e7e15309e82fb4f",
+      "repository": "https://github.com/Microsoft/go-winio",
+      "indirect": true
+    },
+    {
+      "module": "github.com/cenkalti/backoff/v4",
+      "version": "v4.3.0",
+      "commit": "720b78985a65c0452fd37bb155c7cac4157a7c45",
+      "repository": "https://github.com/cenkalti/backoff",
+      "indirect": true
+    },
+    {
+      "module": "github.com/cespare/xxhash/v2",
+      "version": "v2.3.0",
+      "commit": "998dce232f17418a7a5721ecf87ca714025a3243",
+      "repository": "https://github.com/cespare/xxhash",
+      "indirect": true
+    },
+    {
+      "module": "github.com/containerd/errdefs",
+      "version": "v1.0.0",
+      "commit": "4817405e4a3caeb7aee9dac68ed55339c59cb635",
+      "repository": "https://github.com/containerd/errdefs",
+      "indirect": true
+    },
+    {
+      "module": "github.com/containerd/errdefs/pkg",
+      "version": "v0.3.0",
+      "commit": "4817405e4a3caeb7aee9dac68ed55339c59cb635",
+      "repository": "https://github.com/containerd/errdefs",
+      "indirect": true
+    },
+    {
+      "module": "github.com/containerd/log",
+      "version": "v0.1.0",
+      "commit": "0fc1e28871fdf2786e2cc51bbe4133db6547a199",
+      "repository": "https://github.com/containerd/log",
+      "indirect": true
+    },
+    {
+      "module": "github.com/containerd/platforms",
+      "version": "v0.2.1",
+      "commit": "163df76b7184bb17ead614c92176995ec8fa5919",
+      "repository": "https://github.com/containerd/platforms",
+      "indirect": true
+    },
+    {
+      "module": "github.com/cpuguy83/dockercfg",
+      "version": "v0.3.2",
+      "commit": "a07c3d1a28e6aed1754fe89e6e37aae080743562",
+      "repository": "https://github.com/cpuguy83/dockercfg",
+      "indirect": true
+    },
+    {
+      "module": "github.com/distribution/reference",
+      "version": "v0.6.0",
+      "commit": "ff14fafe2236e51c2894ac07d4bdfc778e96d682",
+      "repository": "https://github.com/distribution/reference",
+      "indirect": true
+    },
+    {
+      "module": "github.com/dlclark/regexp2/v2",
+      "version": "v2.8.1",
+      "commit": "ec314eedd052873a56f7902ed527800adea60031",
+      "repository": "https://github.com/dlclark/regexp2",
+      "indirect": true
+    },
+    {
+      "module": "github.com/docker/go-connections",
+      "version": "v0.8.2",
+      "commit": "5032217322413e51c6939ae07daff44462c928aa",
+      "repository": "https://github.com/docker/go-connections",
+      "indirect": true
+    },
+    {
+      "module": "github.com/docker/go-units",
+      "version": "v0.5.0",
+      "commit": "e682442797b36348f8e1f98defdbf32bac0b6c6f",
+      "repository": "https://github.com/docker/go-units",
+      "indirect": true
+    },
+    {
+      "module": "github.com/ebitengine/purego",
+      "version": "v0.10.1",
+      "commit": "eaff005fcda6dae0d855da9c6ee3efb7e775ddad",
+      "repository": "https://github.com/ebitengine/purego",
+      "indirect": true
+    },
+    {
+      "module": "github.com/felixge/httpsnoop",
+      "version": "v1.1.0",
+      "commit": "0fc9006be0bfd68ee14bc3db0d58f7c7241892e0",
+      "repository": "https://github.com/felixge/httpsnoop",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-jose/go-jose/v4",
+      "version": "v4.1.4",
+      "commit": "0e59876635f3dbf46d7b5e97b52bb75a3f96e7d9",
+      "repository": "https://github.com/go-jose/go-jose",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-logr/logr",
+      "version": "v1.4.4",
+      "commit": "96a9abaa56526dd5d51745e817732a2d61505fb7",
+      "repository": "https://github.com/go-logr/logr",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-logr/stdr",
+      "version": "v1.2.2",
+      "commit": "521af2addfa7c81c8a65d0e85ed34bb6bb6dc262",
+      "repository": "https://github.com/go-logr/stdr",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-ole/go-ole",
+      "version": "v1.3.0",
+      "commit": "de26f2b218c772f7a1000022d58d2df1d2428a2d",
+      "repository": "https://github.com/go-ole/go-ole",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-sourcemap/sourcemap",
+      "version": "v2.1.4+incompatible",
+      "commit": "5e8d581e9792adacaa453bc865ddc240e16722c2",
+      "repository": "https://github.com/go-sourcemap/sourcemap",
+      "indirect": true
+    },
+    {
+      "module": "github.com/google/pprof",
+      "version": "v0.0.0-20240727154555-813a5fbdbec8",
+      "commit": "813a5fbdbec8a66f7a5aedb876e1b2c3ee0f99ac",
+      "repository": "https://github.com/google/pprof",
+      "indirect": true
+    },
+    {
+      "module": "github.com/google/uuid",
+      "version": "v1.6.0",
+      "commit": "0f11ee6918f41a04c201eceeadf612a377bc7fbc",
+      "repository": "https://github.com/google/uuid",
+      "indirect": true
+    },
+    {
+      "module": "github.com/gorilla/securecookie",
+      "version": "v1.1.2",
+      "commit": "eae3c1840ec4adda88a4af683ad0f60bb690e7c2",
+      "repository": "https://github.com/gorilla/securecookie",
+      "indirect": true
+    },
+    {
+      "module": "github.com/jackc/pgpassfile",
+      "version": "v1.0.0",
+      "commit": "99d8e8e28945ffceaf75b0299fcb2bb656b8a683",
+      "repository": "https://github.com/jackc/pgpassfile",
+      "indirect": true
+    },
+    {
+      "module": "github.com/jackc/pgservicefile",
+      "version": "v0.0.0-20240606120523-5a60cdf6a761",
+      "commit": "5a60cdf6a76120dc3d5152b95f3b5fd8aa7cc9eb",
+      "repository": "https://github.com/jackc/pgservicefile",
+      "indirect": true
+    },
+    {
+      "module": "github.com/jackc/puddle/v2",
+      "version": "v2.2.2",
+      "commit": "bd09d14bd4018b6d65a9d7770e2f3ddf8b00af1c",
+      "repository": "https://github.com/jackc/puddle",
+      "indirect": true
+    },
+    {
+      "module": "github.com/klauspost/compress",
+      "version": "v1.19.2",
+      "commit": "c3b3439a48196b5082c63252bfb8633d0a2faad4",
+      "repository": "https://github.com/klauspost/compress",
+      "indirect": true
+    },
+    {
+      "module": "github.com/lufia/plan9stats",
+      "version": "v0.0.0-20260330125221-c963978e514e",
+      "commit": "c963978e514e87bd05878d5985a3bfcd7cc4d9c7",
+      "repository": "https://github.com/lufia/plan9stats",
+      "indirect": true
+    },
+    {
+      "module": "github.com/magiconair/properties",
+      "version": "v1.8.10",
+      "commit": "281f515b93cf755020c587f2ffcbdee2322f3615",
+      "repository": "https://github.com/magiconair/properties",
+      "indirect": true
+    },
+    {
+      "module": "github.com/mfridman/interpolate",
+      "version": "v0.0.2",
+      "commit": "64fb0942bf9e1561b87c3ff780080318115028c4",
+      "repository": "https://github.com/mfridman/interpolate",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/docker-image-spec",
+      "version": "v1.3.1",
+      "commit": "f1d00ebd2d6d6805170d5543dbca4b850f35f9af",
+      "repository": "https://github.com/moby/docker-image-spec",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/go-archive",
+      "version": "v0.3.0",
+      "commit": "1c23372e409716c3691a540871806083644f348a",
+      "repository": "https://github.com/moby/go-archive",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/moby/api",
+      "version": "v1.56.1",
+      "commit": "14ebc602124e280ef4ae3e1a8e688dac1255baa6",
+      "repository": "https://github.com/moby/moby",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/patternmatcher",
+      "version": "v0.6.1",
+      "commit": "5a6d8429a19bb6948a372ff19e86fe83599a04b7",
+      "repository": "https://github.com/moby/patternmatcher",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/sys/sequential",
+      "version": "v0.7.0",
+      "commit": "8d586cf5490e12265732e106e0832c3b945cf5f7",
+      "repository": "https://github.com/moby/sys",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/sys/user",
+      "version": "v0.4.1",
+      "commit": "85a71bbe1faa36c552a960e6a5f3d0cfb632fbbe",
+      "repository": "https://github.com/moby/sys",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/sys/userns",
+      "version": "v0.1.0",
+      "commit": "54475191138bd297c627eb1a59e1e54b953957f1",
+      "repository": "https://github.com/moby/sys",
+      "indirect": true
+    },
+    {
+      "module": "github.com/moby/term",
+      "version": "v0.5.2",
+      "commit": "6c1b69fecbac2753dcaf18718a7e9f9093c3760d",
+      "repository": "https://github.com/moby/term",
+      "indirect": true
+    },
+    {
+      "module": "github.com/muhlemmer/gu",
+      "version": "v0.3.1",
+      "commit": "5ec4b4d1900db390c038b02f92f1eca0c3f2bebd",
+      "repository": "https://github.com/muhlemmer/gu",
+      "indirect": true
+    },
+    {
+      "module": "github.com/opencontainers/go-digest",
+      "version": "v1.0.0",
+      "commit": "ea51bea511f75cfa3ef6098cc253c5c3609b037a",
+      "repository": "https://github.com/opencontainers/go-digest",
+      "indirect": true
+    },
+    {
+      "module": "github.com/opencontainers/image-spec",
+      "version": "v1.1.1",
+      "commit": "147f9c13cedb47a0c4d9a11a222961073d585877",
+      "repository": "https://github.com/opencontainers/image-spec",
+      "indirect": true
+    },
+    {
+      "module": "github.com/power-devops/perfstat",
+      "version": "v0.0.0-20240221224432-82ca36839d55",
+      "commit": "82ca36839d55de9bed4e71a93e8ca6ddb2e114d3",
+      "repository": "https://github.com/power-devops/perfstat",
+      "indirect": true
+    },
+    {
+      "module": "github.com/riverqueue/river/riverdriver",
+      "version": "v0.49.0",
+      "commit": "da5a26e21c18c706e0cd48cef3e1e5016e00492c",
+      "repository": "https://github.com/riverqueue/river",
+      "indirect": true
+    },
+    {
+      "module": "github.com/riverqueue/river/rivershared",
+      "version": "v0.49.0",
+      "commit": "da5a26e21c18c706e0cd48cef3e1e5016e00492c",
+      "repository": "https://github.com/riverqueue/river",
+      "indirect": true
+    },
+    {
+      "module": "github.com/riverqueue/river/rivertype",
+      "version": "v0.49.0",
+      "commit": "da5a26e21c18c706e0cd48cef3e1e5016e00492c",
+      "repository": "https://github.com/riverqueue/river",
+      "indirect": true
+    },
+    {
+      "module": "github.com/sethvargo/go-retry",
+      "version": "v0.4.0",
+      "commit": "d3eb50afd37a09a9c0606c218d0dbe06e29d1544",
+      "repository": "https://github.com/sethvargo/go-retry",
+      "indirect": true
+    },
+    {
+      "module": "github.com/shirou/gopsutil/v4",
+      "version": "v4.26.6",
+      "commit": "50a6b053353503fd630f5b1c60fe652d470d773f",
+      "repository": "https://github.com/shirou/gopsutil",
+      "indirect": true
+    },
+    {
+      "module": "github.com/sirupsen/logrus",
+      "version": "v1.9.4",
+      "commit": "b61f268f75b6ff134a62cd62aee1095fa12e8d2e",
+      "repository": "https://github.com/sirupsen/logrus",
+      "indirect": true
+    },
+    {
+      "module": "github.com/testcontainers/testcontainers-go",
+      "version": "v0.44.0",
+      "commit": "007bd6b1407fe3f2ab9487479e8bd841e16a1c97",
+      "repository": "https://github.com/testcontainers/testcontainers-go",
+      "indirect": true
+    },
+    {
+      "module": "github.com/tidwall/gjson",
+      "version": "v1.19.0",
+      "commit": "0fac2c9aa6eb5d5564bfaaaad513ce0d5d2314de",
+      "repository": "https://github.com/tidwall/gjson",
+      "indirect": true
+    },
+    {
+      "module": "github.com/tidwall/match",
+      "version": "v1.2.0",
+      "commit": "afc69bce52e08c02e78156a7697bd808fc868ec5",
+      "repository": "https://github.com/tidwall/match",
+      "indirect": true
+    },
+    {
+      "module": "github.com/tidwall/pretty",
+      "version": "v1.2.1",
+      "commit": "9090695766b652478676cc3e55bc3187056b1ff0",
+      "repository": "https://github.com/tidwall/pretty",
+      "indirect": true
+    },
+    {
+      "module": "github.com/tidwall/sjson",
+      "version": "v1.2.5",
+      "commit": "b279807a1bad9fa155988667d97a3d2fff4061b5",
+      "repository": "https://github.com/tidwall/sjson",
+      "indirect": true
+    },
+    {
+      "module": "github.com/tklauser/go-sysconf",
+      "version": "v0.4.0",
+      "commit": "93984eae8bcec8cf103d6aa460f87bbc178e429c",
+      "repository": "https://github.com/tklauser/go-sysconf",
+      "indirect": true
+    },
+    {
+      "module": "github.com/tklauser/numcpus",
+      "version": "v0.12.0",
+      "commit": "28ffdd927b88bf67119a0cca171660d87c1266a5",
+      "repository": "https://github.com/tklauser/numcpus",
+      "indirect": true
+    },
+    {
+      "module": "github.com/yusufpapurcu/wmi",
+      "version": "v1.2.4",
+      "commit": "6c94d732ac31d45ca1f62731b1682157ce85e224",
+      "repository": "https://github.com/yusufpapurcu/wmi",
+      "indirect": true
+    },
+    {
+      "module": "github.com/zitadel/schema",
+      "version": "v1.3.2",
+      "commit": "be9af1ca12514cf3b1e5e75c14ec84b5edf3594a",
+      "repository": "https://github.com/zitadel/schema",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/auto/sdk",
+      "version": "v1.2.1",
+      "commit": "715f58ce2f17e2176b8e53b871e47531a259cc1d",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go-instrumentation",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+      "version": "v0.71.0",
+      "commit": "c4c6248ec2289133b6a51f554ca9367ece1de8e7",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go-contrib",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/otel",
+      "version": "v1.46.0",
+      "commit": "58db4c898f5b5594f8ba78f156475bf48486e2f2",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/otel/metric",
+      "version": "v1.46.0",
+      "commit": "58db4c898f5b5594f8ba78f156475bf48486e2f2",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/otel/trace",
+      "version": "v1.46.0",
+      "commit": "58db4c898f5b5594f8ba78f156475bf48486e2f2",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": true
+    },
+    {
+      "module": "go.uber.org/multierr",
+      "version": "v1.11.0",
+      "commit": "de75ae527b39a27afcb50a84427ec7b84021d5f4",
+      "repository": "https://github.com/uber-go/multierr",
+      "indirect": true
+    },
+    {
+      "module": "golang.org/x/crypto",
+      "version": "v0.56.0",
+      "commit": "86efde54dc7069251a8b007026c500d28e4239ce",
+      "repository": "https://go.googlesource.com/crypto",
+      "indirect": true
+    },
+    {
+      "module": "golang.org/x/oauth2",
+      "version": "v0.37.0",
+      "commit": "c624b89dadc3221560b7345c090bbe69e90808ee",
+      "repository": "https://go.googlesource.com/oauth2",
+      "indirect": true
+    },
+    {
+      "module": "golang.org/x/sync",
+      "version": "v0.24.0",
+      "commit": "36f2d70ecde9857dc4e363242a1369c7645d6770",
+      "repository": "https://go.googlesource.com/sync",
+      "indirect": true
+    },
+    {
+      "module": "golang.org/x/sys",
+      "version": "v0.47.0",
+      "commit": "9e7e939dcafac07e8ab4cffa6e5fc74908413f00",
+      "repository": "https://go.googlesource.com/sys",
+      "indirect": true
+    },
+    {
+      "module": "golang.org/x/text",
+      "version": "v0.43.0",
+      "commit": "ac40b0f06c159afb5bfca4d1860f8b4b60dbc160",
+      "repository": "https://go.googlesource.com/text",
+      "indirect": true
+    }
+  ],
+  "tools": [
+    {
+      "module": "github.com/sqlc-dev/sqlc",
+      "version": "v1.31.1",
+      "commit": "a95e91d70ad9e1181253c333a1cfdd75ae4b95a5",
+      "repository": "https://github.com/sqlc-dev/sqlc"
+    },
+    {
+      "module": "github.com/golangci/golangci-lint/v2",
+      "version": "v2.14.0",
+      "commit": "114493f9b3e7257d29e4130f2b4a4aadefbb6845",
+      "repository": "https://github.com/golangci/golangci-lint"
+    },
+    {
+      "module": "github.com/google/go-licenses/v2",
+      "version": "v2.0.1",
+      "commit": "3e084b0caf710f7bfead967567539214f598c0a2",
+      "repository": "https://github.com/google/go-licenses"
+    },
+    {
+      "module": "golang.org/x/vuln",
+      "version": "v1.8.0",
+      "commit": "709015412431dd2b5b28a53c06c70bc02d49074c",
+      "repository": "https://go.googlesource.com/vuln"
+    }
+  ],
+  "golangci_windows_archive_sha256": "b15f903d1649283a2ab6e8d2f0c317eaf1f9f6b3763950e7e8b7e72a43dd724f",
+  "target": {
+    "os": "linux",
+    "arch": "amd64",
+    "deployment": "docker",
+    "cgo_enabled": 0,
+    "verified_server": "complynx.net: Linux x86_64 (uname, 2026-10-11)"
+  }
+}

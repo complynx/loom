@@ -1,0 +1,28 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - depguard
+    - errorlint
+    - gosec
+    - nilerr
+  settings:
+    depguard:
+      rules:
+        deprecated_crypto:
+          list-mode: lax
+          files:
+            - "$all"
+          deny:
+            - pkg: golang.org/x/crypto/openpgp
+              desc: "Unmaintained and unsafe; see GO-2026-5932."
+
+run:
+  timeout: 5m
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

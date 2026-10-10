@@ -1,0 +1,61 @@
+{
+  "protocol_version": 1,
+  "service_id": "zns-chatbot",
+  "revision": "example-v1",
+  "description": "Example integration; endpoints and service identity are placeholders.",
+  "caller": {
+    "permissions": ["runs.create", "runs.control", "chat.read", "chat.events.append"],
+    "auth": {"type": "zitadel", "issuer": "https://id.complynx.net", "subject": "replace-with-service-subject", "audience": "replace-with-harness-audience"}
+  },
+  "modules": [
+    {
+      "id": "massage",
+      "description": "Massage slots and bookings",
+      "permissions": ["zns.massage.access"],
+      "discovery": "static",
+      "methods": [
+        {
+          "id": "list_slots",
+          "description": "List currently available slots for a specialist",
+          "permissions": ["zns.massage.read"],
+          "path": "/internal/agent/massage/list-slots",
+          "effect": "read",
+          "timeout_ms": 3000,
+          "max_result_bytes": 65536,
+          "input_schema": {"type": "object", "additionalProperties": false, "required": ["specialist_id"], "properties": {"specialist_id": {"type": "string", "minLength": 1}}},
+          "output_schema": {"type": "object", "additionalProperties": false, "required": ["slots"], "properties": {"slots": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "starts_at"], "properties": {"id": {"type": "string"}, "starts_at": {"type": "string", "format": "date-time"}}}}}},
+          "idempotency": false,
+          "confirmation": {"mode": "none"},
+          "artifact_mime_types": [],
+          "external_disclosure": false
+        },
+        {
+          "id": "book_slot",
+          "description": "Book a prepared and confirmed slot",
+          "permissions": ["zns.massage.book"],
+          "path": "/internal/agent/massage/book-slot",
+          "effect": "write",
+          "timeout_ms": 3000,
+          "max_result_bytes": 65536,
+          "input_schema": {"type": "object", "additionalProperties": false, "required": ["slot_id"], "properties": {"slot_id": {"type": "string", "minLength": 1}}},
+          "output_schema": {"type": "object", "additionalProperties": false, "required": ["booking_id"], "properties": {"booking_id": {"type": "string"}}},
+          "idempotency": true,
+          "status_path": "/internal/agent/operations/status",
+          "cancel_path": "/internal/agent/operations/cancel",
+          "deduplication_window_seconds": 86400,
+          "confirmation": {"mode": "service_id", "prepare_path": "/internal/agent/massage/prepare-booking"},
+          "artifact_mime_types": [],
+          "external_disclosure": false
+        }
+      ]
+    },
+    {
+      "id": "orders",
+      "description": "User-specific order methods returned by authorized discovery",
+      "permissions": ["zns.orders.access"],
+      "discovery": "dynamic",
+      "discovery_path": "/internal/agent/orders/discover",
+      "cache_ttl_seconds": 60
+    }
+  ]
+}
