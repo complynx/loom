@@ -5,9 +5,18 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/complynx/clx-scripter/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+
+	"github.com/complynx/clx-scripter/internal/domain"
+)
+
+const (
+	bearerScheme  = "bearer"
+	schemaString  = "string"
+	schemaInteger = "integer"
+	queryLocation = "query"
+	runsPath      = "/v1/runs"
 )
 
 // Documentation uses the same DTOs as strict HTTP decoding. SSE and upload
@@ -19,100 +28,176 @@ func documentation(mux *http.ServeMux) huma.API {
 	cfg.OpenAPIPath = "/openapi"
 	api := humago.New(mux, cfg)
 	api.OpenAPI().Components.SecuritySchemes = map[string]*huma.SecurityScheme{
-		"bearer": {Type: "http", Scheme: "bearer"},
+		bearerScheme: {Type: "http", Scheme: bearerScheme},
 	}
 	return api
 }
 func documentOperation(api huma.API, pattern, permission string) {
-	parts := strings.SplitN(pattern, " ", 2)
-	method, path := parts[0], parts[1]
-	op := &huma.Operation{Method: method, Path: path, OperationID: strings.ToLower(method) + "-" + strings.NewReplacer("/", "-", "{", "", "}", "").Replace(path), Security: []map[string][]string{{"bearer": {}}}, Responses: map[string]*huma.Response{"default": {Description: "Structured error; details in docs/api.md"}}, Extensions: map[string]any{"x-required-permission": permission}}
-	if strings.Contains(path, "{id}") {
-		op.Parameters = append(op.Parameters, &huma.Param{Name: "id", In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
+	method, path, _ := strings.Cut(pattern, " ")
+	op := &huma.Operation{
+		Method:      method,
+		Path:        path,
+		OperationID: strings.ToLower(method) + "-" + strings.NewReplacer("/", "-", "{", "", "}", "").Replace(path),
+		Security:    []map[string][]string{{bearerScheme: {}}},
+		Responses:   map[string]*huma.Response{"default": {Description: "Structured error; details in docs/api.md"}},
+		Extensions:  map[string]any{"x-required-permission": permission},
 	}
-	if method == "POST" && (path == "/v1/runs" || strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/adjustments") || strings.HasSuffix(path, "/reconcile")) {
-		op.Parameters = append(op.Parameters, &huma.Param{Name: "Idempotency-Key", In: "header", Required: true, Schema: &huma.Schema{Type: "string", MaxLength: pointer(128)}})
+	if strings.Contains(path, "{id}") {
+		op.Parameters = append(
+			op.Parameters,
+			&huma.Param{Name: "id", In: "path", Required: true, Schema: &huma.Schema{Type: schemaString}},
+		)
+	}
+	if method == http.MethodPost &&
+		(path == runsPath || strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events") && !strings.HasSuffix(path, "/artifacts/handles") || strings.HasSuffix(path, "/adjustments") || strings.HasSuffix(path, "/reconcile")) {
+		op.Parameters = append(
+			op.Parameters,
+			&huma.Param{
+				Name:     "Idempotency-Key",
+				In:       "header",
+				Required: true,
+				Schema:   &huma.Schema{Type: schemaString, MaxLength: new(maxIdempotencyKeyLength)},
+			},
+		)
 	}
 	if strings.Contains(path, "{step}") {
-		op.Parameters = append(op.Parameters, &huma.Param{Name: "step", In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
+		op.Parameters = append(
+			op.Parameters,
+			&huma.Param{Name: "step", In: "path", Required: true, Schema: &huma.Schema{Type: schemaString}},
+		)
 	}
-	var request, response any
-	status := "200"
-	if method == "DELETE" {
-		status = "204"
+	if path == "/v1/admin/diagnostics/runs" {
+		op.Parameters = append(op.Parameters, diagnosticsQueryParameters()...)
 	}
-	switch {
-	case strings.HasSuffix(path, "/reconcile"):
-		request = domain.ReconcileStepRequest{}
-	case path == "/v1/runs" && method == "POST":
-		request = domain.CreateRun{}
-		response = domain.Run{}
-		status = "202"
-	case strings.HasPrefix(path, "/v1/runs/") && strings.HasSuffix(path, "/input"):
-		request = inputRequest{}
-		response = runMutationReceipt{}
-	case strings.HasPrefix(path, "/v1/runs/") && method == "POST":
-		response = runMutationReceipt{}
-	case strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events"):
-		response = domain.Run{}
-	case strings.HasSuffix(path, "/history/search"):
-		request = domain.SearchRequest{}
-		response = domain.SearchResult{}
-	case strings.HasPrefix(path, "/v1/chats/") && strings.HasSuffix(path, "/events"):
-		request = domain.AppendEvent{}
-		response = domain.ChatEvent{}
-		status = "201"
-	case path == "/v1/chats" || path == "/v1/chats/default":
-		response = domain.Chat{}
-		if method == "POST" {
-			request = struct{}{}
-			status = "201"
-		}
-	case strings.HasSuffix(path, "/preferences"):
-		response = domain.Preferences{}
-		if method == "PATCH" {
-			request = domain.Preferences{}
-		}
-	case path == "/v1/admin/settings":
-		response = domain.Settings{}
-		if method == "PATCH" {
-			request = domain.Settings{}
-		}
-	case strings.HasSuffix(path, "/policy"):
-		response = domain.UserPolicy{}
-		if method == "PATCH" {
-			request = domain.UserPolicy{}
-		}
-	case path == "/v1/users/me/credits":
-		response = domain.Balance{}
-	case strings.HasSuffix(path, "/adjustments") || strings.HasSuffix(path, "/reconcile"):
-		request = struct {
-			Amount int64
-			Reason string
-		}{}
-		response = domain.Balance{}
-	case strings.HasPrefix(path, "/v1/artifacts") && !strings.HasSuffix(path, "/content"):
-		response = domain.Artifact{}
-		if method == "POST" {
-			status = "201"
-		}
-	}
+	op.Parameters = append(op.Parameters, historyAndStreamParameters(method, path)...)
+	request, response, status := operationTypes(method, path)
 	schema := func(v any) *huma.Schema {
 		return huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.TypeOf(v))
 	}
 	if request != nil {
-		op.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{"application/json": {Schema: schema(request)}}}
+		op.RequestBody = &huma.RequestBody{
+			Required: true,
+			Content:  map[string]*huma.MediaType{jsonMediaType: {Schema: schema(request)}},
+		}
 	}
 	op.Responses[status] = &huma.Response{Description: "Durable result"}
 	if response != nil {
-		op.Responses[status].Content = map[string]*huma.MediaType{"application/json": {Schema: schema(response)}}
+		op.Responses[status].Content = map[string]*huma.MediaType{jsonMediaType: {Schema: schema(response)}}
 	}
-	if path == "/v1/artifacts" && method == "POST" {
-		op.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{"application/octet-stream": {Schema: &huma.Schema{Type: "string", Format: "binary"}}}}
+	if path == runsPath && method == http.MethodPost {
+		op.Responses["200"] = &huma.Response{
+			Description: "Completed within the requested wait window",
+			Content:     op.Responses[status].Content,
+		}
+	}
+	if path == "/v1/artifacts" && method == http.MethodPost {
+		op.RequestBody = artifactUploadBody()
 	}
 	if strings.HasPrefix(path, "/v1/runs/") && strings.HasSuffix(path, "/events") {
-		op.Responses["200"].Content = map[string]*huma.MediaType{"text/event-stream": {Schema: &huma.Schema{Type: "string"}}}
+		op.Responses["200"].Content = map[string]*huma.MediaType{
+			"text/event-stream": {Schema: &huma.Schema{Type: schemaString}},
+		}
 	}
 	api.OpenAPI().AddOperation(op)
 }
-func pointer(v int) *int { return &v }
+func operationTypes(method, path string) (any, any, string) {
+	if request, response, status, matched := sessionAndReadTypes(method, path); matched {
+		return request, response, status
+	}
+	status := "200"
+	if method == http.MethodDelete {
+		status = "204"
+	}
+	switch {
+	case strings.HasSuffix(path, "/reconcile"):
+		return domain.ReconcileStepRequest{}, reconciliationReceipt{}, status
+	case strings.HasSuffix(path, "/artifacts/handles"):
+		return struct {
+			ArtifactID string `json:"artifact_id"`
+		}{}, domain.ArtifactHandle{}, "201"
+	case strings.HasSuffix(path, "/history/read"):
+		return domain.ReadHistoryRequest{}, domain.SearchResult{}, status
+	case strings.HasSuffix(path, "/history/embeddings"):
+		return domain.EventEmbedding{}, nil, "204"
+	case path == runsPath && method == http.MethodPost:
+		return domain.CreateRun{}, domain.Run{}, "202"
+	case strings.HasPrefix(path, "/v1/runs/") && strings.HasSuffix(path, "/input"):
+		return inputRequest{}, runMutationReceipt{}, status
+	case strings.HasPrefix(path, "/v1/runs/") && method == http.MethodPost:
+		return nil, runMutationReceipt{}, status
+	case strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events"):
+		return nil, domain.Run{}, status
+	case strings.HasSuffix(path, "/history/search"):
+		return domain.SearchRequest{}, domain.SearchResult{}, status
+	case strings.HasPrefix(path, "/v1/chats/") && strings.HasSuffix(path, "/events"):
+		return domain.AppendEvent{}, domain.ChatEvent{}, "201"
+	case path == "/v1/chats" || path == "/v1/chats/default":
+		if method == http.MethodPost {
+			return struct{}{}, domain.Chat{}, "201"
+		}
+		return nil, domain.Chat{}, status
+	case strings.HasSuffix(path, "/preferences"):
+		return patchRequest(method, domain.Preferences{}), domain.Preferences{}, status
+	case path == "/v1/admin/settings":
+		return patchRequest(method, domain.Settings{}), domain.Settings{}, status
+	case strings.HasSuffix(path, "/policy"):
+		return patchRequest(method, domain.UserPolicy{}), domain.UserPolicy{}, status
+	case path == "/v1/users/me/credits":
+		return nil, domain.Balance{}, status
+	case strings.HasSuffix(path, "/adjustments"):
+		return billingAdjustmentRequest{}, domain.Balance{}, status
+	case strings.HasPrefix(path, "/v1/artifacts") && !strings.HasSuffix(path, "/content"):
+		if method == http.MethodPost {
+			status = "201"
+		}
+		return nil, domain.Artifact{}, status
+	}
+	return nil, nil, status
+}
+
+func sessionAndReadTypes(method, path string) (any, any, string, bool) {
+	if strings.HasPrefix(path, "/v1/auth/sessions") {
+		request, response, status := authSessionTypes(method, path)
+		return request, response, status, true
+	}
+	if strings.HasPrefix(path, "/v1/admin/diagnostics") {
+		return nil, diagnosticsResponseType(path), "200", true
+	}
+	if path == "/v1/models" {
+		return nil, modelsResponse{}, "200", true
+	}
+	if method == http.MethodGet && strings.HasSuffix(path, "/history") {
+		return nil, historyResponse{}, "200", true
+	}
+	return nil, nil, "", false
+}
+
+func authSessionTypes(method, path string) (any, any, string) {
+	if path == "/v1/auth/sessions" && method == http.MethodPost {
+		return struct{}{}, authSessionReceipt{}, "201"
+	}
+	if strings.HasSuffix(path, "/reauthorize") {
+		return reauthorizeSessionRequest{}, authSessionReceipt{}, "200"
+	}
+	return nil, nil, "204"
+}
+
+func patchRequest(method string, value any) any {
+	if method == http.MethodPatch {
+		return value
+	}
+	return nil
+}
+
+func diagnosticsResponseType(path string) any {
+	switch path {
+	case "/v1/admin/diagnostics":
+		return domain.DiagnosticsSnapshot{}
+	case "/v1/admin/diagnostics/health":
+		return domain.DiagnosticsHealth{}
+	case "/v1/admin/diagnostics/runs":
+		return domain.DiagnosticsRunsPage{}
+	default:
+		return domain.DiagnosticsRunDetail{}
+	}
+}

@@ -1,5 +1,7 @@
 # Авторизация и границы доверия
 
+Этот документ описывает действующие границы и отдельно целевой refreshable flow. Текущий MVP использует access-token sessions с explicit reauthorization; автоматический Token Exchange/refresh и deployment-bound secret authentication не реализованы. [PKCE panel login](operator-login.md) — отдельный действующий механизм.
+
 ## Identity и доступ
 
 Внешний access token проверяется по ожидаемому issuer, signature/alg, audience, exp/nbf и обязательным claims. JWKS URL берётся из доверенного issuer discovery, не из jku заголовка JWT. ID token не принимается вместо access token. Opaque access token проверяется через introspection.
@@ -9,7 +11,7 @@ Harness различает пользователя (`subject`), вызываю�
 Для сервиса необходимы одновременно:
 
 1. Актуальная Docker registration с caller binding.
-2. Доказательство личности сервиса: Zitadel service access token либо deployment-bound secret.
+2. Доказательство личности сервиса: проверенный Zitadel service access token. Deployment-bound secret остаётся будущим режимом и не принимается MVP.
 3. Сервисное право на конкретную операцию.
 4. Пользовательская делегация в допустимой области.
 5. Пользовательские права, если операция затрагивает предметный API.
@@ -36,10 +38,17 @@ Manifest не может назначить права пользователю 
 | `settings.read/write` | Чтение/изменение несекретных системных настроек |
 | `billing.adjust` | Начисления и корректировки с причиной |
 | `operations.reconcile` | Ручная сверка неизвестных результатов с доказательством |
+| `diagnostics.read` | Организационная read-only диагностика и вход в панель |
+| `chat.embeddings.write` | Индексация внешних векторов; также требуется `chat.read` |
 
 Zitadel roles отображаются в эти права явной конфигурацией. Административные права проверяются для целевой организации; произвольного глобального доступа нет. Предметные категории модулей имеют namespace сервиса. Список категорий означает AND; более сложную логику выполняет сам backend.
 
-## Обновляемая делегация
+[Личная память](user-memory.md) доступна каждому авторизованному пользователю без memory roles. Проверки владельца, организации, свежей авторизации и run lease сохраняются; это не cross-user admin доступ.
+
+## Целевой refreshable flow — не реализован
+
+Остальной текст раздела задаёт будущий протокол, а не наличие refresh leases или refresh tokens в текущем коде. Сейчас encrypted session хранит access credentials; при expiry/denial требуется `/v1/auth/sessions/{id}/reauthorize` с той же identity. `refreshable_exchange_enabled: true` отклоняется конфигурацией. Online introspection выполняется при каждой проверке; фактический permission cache TTL сейчас ноль.
+
 
 Предпочтительный путь — confidential harness OAuth client и собственная ограниченная authorization session. Bootstrap принимает действительный subject token. Token Exchange запрашивает существующие допустимые scopes/audiences и, если доступно, offline_access; не расширяет исходные полномочия. Service credentials доказываются отдельно. Actor token не добавляется автоматически: его использование может требовать impersonation permission и должно пройти отдельную настройку.
 
@@ -75,3 +84,6 @@ Tool results, manifests, файлы и история являются недо�
 - [Goja](https://github.com/dop251/goja): runtime и Interrupt не заменяют отмену host operations.
 
 Документация upstream подтверждает общий механизм, не конфигурацию production.
+
+Written by Codex (gpt-6/Codex desktop)
+on behalf of Daniel Drizhuk

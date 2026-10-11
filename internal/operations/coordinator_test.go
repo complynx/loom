@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/complynx/clx-scripter/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/operations"
+	"github.com/complynx/clx-scripter/internal/store"
 )
 
 type backend struct {
@@ -27,7 +28,11 @@ type backend struct {
 }
 
 func (b *backend) Prepare(context.Context, operations.Operation) (operations.Preparation, error) {
-	return operations.Preparation{Token: "confirmation", Preconditions: json.RawMessage(`{"version":7}`), ExpiresAt: b.expiry}, nil
+	return operations.Preparation{
+		Token:         "confirmation",
+		Preconditions: json.RawMessage(`{"version":7}`),
+		ExpiresAt:     b.expiry,
+	}, nil
 }
 func (b *backend) Execute(_ context.Context, op operations.Operation) (operations.Result, error) {
 	b.writes.Add(1)
@@ -57,9 +62,9 @@ func fixture(t *testing.T) (*operations.Coordinator, operations.Request) {
 	_, err = admin.Exec(ctx, "CREATE SCHEMA "+schema)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, err := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
-		if err != nil {
-			t.Errorf("cleanup: %v", err)
+		_, cleanupErr := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		if cleanupErr != nil {
+			t.Errorf("cleanup: %v", cleanupErr)
 		}
 		admin.Close()
 	})
@@ -77,9 +82,32 @@ func fixture(t *testing.T) (*operations.Coordinator, operations.Request) {
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `INSERT INTO chats(id,owner_id,org_id) VALUES($1,$2,'org')`, chat, user)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,lease_owner,lease_until,fence,max_microcredits) VALUES($1,$2,$3,'frontend','org','running','{}','worker',clock_timestamp()+interval '1 hour',7,1000)`, run, chat, user)
+	_, err = pool.Exec(
+		ctx,
+		`INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,lease_owner,lease_until,fence,max_microcredits) VALUES($1,$2,$3,'frontend','org','running','{}','worker',clock_timestamp()+interval '1 hour',7,1000)`,
+		run,
+		chat,
+		user,
+	)
 	require.NoError(t, err)
-	return &operations.Coordinator{Pool: pool}, operations.Request{RunID: run, CallID: "step1/call1/1", Module: "orders", Method: "reserve", Mode: "service_id", Arguments: json.RawMessage(`{"order":42}`), Binding: operations.Binding{UserID: user, Issuer: "test", Subject: "alice", Actor: "frontend", OrgID: "org", ContractHash: "v1"}}
+	return &operations.Coordinator{
+		Pool: pool,
+	}, operations.Request{
+		RunID:     run,
+		CallID:    "step1/call1/1",
+		Module:    "orders",
+		Method:    "reserve",
+		Mode:      "service_id",
+		Arguments: json.RawMessage(`{"order":42}`),
+		Binding: operations.Binding{
+			UserID:       user,
+			Issuer:       "test",
+			Subject:      "alice",
+			Actor:        "frontend",
+			OrgID:        "org",
+			ContractHash: "v1",
+		},
+	}
 }
 func allow(context.Context, operations.Operation) error { return nil }
 func approval(op operations.Operation) operations.Approval {
@@ -87,6 +115,7 @@ func approval(op operations.Operation) operations.Approval {
 }
 
 func TestWriteRequiresExactApprovalAndIsDispatchedOnce(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}
@@ -121,6 +150,7 @@ func TestWriteRequiresExactApprovalAndIsDispatchedOnce(t *testing.T) {
 	require.Equal(t, []string{op.ID}, b.keys)
 }
 func TestLostReplyReconcilesWithoutRepeatingWrite(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{failAfterWrite: true}
@@ -140,6 +170,7 @@ func TestLostReplyReconcilesWithoutRepeatingWrite(t *testing.T) {
 	require.EqualValues(t, 1, b.writes.Load())
 }
 func TestAuthorityLeaseAndExpiryBlockEffects(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}
@@ -148,7 +179,13 @@ func TestAuthorityLeaseAndExpiryBlockEffects(t *testing.T) {
 	_, err = c.Approve(ctx, op.ID, approval(op))
 	require.NoError(t, err)
 	revoked := errors.New("permission revoked")
-	_, err = c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, func(context.Context, operations.Operation) error { return revoked }, b)
+	_, err = c.Dispatch(
+		ctx,
+		op.ID,
+		operations.Lease{Owner: "worker", Fence: 7},
+		func(context.Context, operations.Operation) error { return revoked },
+		b,
+	)
 	require.ErrorIs(t, err, revoked)
 	_, err = c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 6}, allow, b)
 	require.ErrorIs(t, err, operations.ErrLease)
@@ -165,6 +202,7 @@ func TestAuthorityLeaseAndExpiryBlockEffects(t *testing.T) {
 }
 
 func TestConcurrentDispatchSharesOneStableIntent(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}
@@ -175,8 +213,8 @@ func TestConcurrentDispatchSharesOneStableIntent(t *testing.T) {
 	results := make(chan error, 12)
 	for range 12 {
 		go func() {
-			_, err := c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, allow, b)
-			results <- err
+			_, dispatchErr := c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, allow, b)
+			results <- dispatchErr
 		}()
 	}
 	for range 12 {
@@ -187,6 +225,7 @@ func TestConcurrentDispatchSharesOneStableIntent(t *testing.T) {
 }
 
 func TestExactParameterApprovalCannotOutlivePreparation(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	req.Mode = "exact_parameters"
@@ -200,6 +239,7 @@ func TestExactParameterApprovalCannotOutlivePreparation(t *testing.T) {
 }
 
 func TestCancellationDuringFreshAuthorizationPreventsDispatch(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}
@@ -211,8 +251,8 @@ func TestCancellationDuringFreshAuthorizationPreventsDispatch(t *testing.T) {
 	authorize := func(ctx context.Context, _ operations.Operation) error {
 		checks++
 		if checks == 2 {
-			_, err := c.Pool.Exec(ctx, `UPDATE runs SET cancel_requested=true WHERE id=$1`, req.RunID)
-			return err
+			_, cancelErr := c.Pool.Exec(ctx, `UPDATE runs SET cancel_requested=true WHERE id=$1`, req.RunID)
+			return cancelErr
 		}
 		return nil
 	}
@@ -223,6 +263,7 @@ func TestCancellationDuringFreshAuthorizationPreventsDispatch(t *testing.T) {
 }
 
 func TestRepeatedRejectionNeverDispatches(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}
@@ -241,6 +282,7 @@ func TestRepeatedRejectionNeverDispatches(t *testing.T) {
 }
 
 func TestClientCancellationStillPersistsUnknownWriteOutcome(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	base := context.Background()
 	ctx, cancel := context.WithCancel(base)
@@ -263,6 +305,7 @@ func TestClientCancellationStillPersistsUnknownWriteOutcome(t *testing.T) {
 }
 
 func TestSteeringDiscardsUndispatchedIntentWithoutEffects(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}
@@ -290,6 +333,7 @@ func TestSteeringDiscardsUndispatchedIntentWithoutEffects(t *testing.T) {
 }
 
 func TestSteeringCannotHideUnknownRemoteOutcome(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{failAfterWrite: true}
@@ -310,6 +354,7 @@ func TestSteeringCannotHideUnknownRemoteOutcome(t *testing.T) {
 }
 
 func TestStaleOrForeignSteeringCannotDiscardWrite(t *testing.T) {
+	t.Parallel()
 	c, req := fixture(t)
 	ctx := context.Background()
 	b := &backend{}

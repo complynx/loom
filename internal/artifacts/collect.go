@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"runtime"
 
 	"github.com/complynx/clx-scripter/internal/domain"
 )
@@ -36,32 +35,27 @@ func (s *Service) CollectDeleted(ctx context.Context, limit int) (int, error) {
 	}
 	collected := 0
 	for _, artifact := range artifacts {
-		if err := ctx.Err(); err != nil {
-			return collected, err
+		if contextErr := ctx.Err(); contextErr != nil {
+			return collected, contextErr
 		}
-		if !validID(artifact.ID) {
+		id, valid := compactArtifactID(artifact.ID)
+		if !valid {
 			return collected, ErrInvalid
 		}
-		err := s.root.Remove(artifact.ID)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return collected, err
+		artifact.ID = id
+		removeErr := s.root.Remove(artifact.ID)
+		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return collected, removeErr
 		}
-		if runtime.GOOS == "linux" {
-			directory, err := s.root.Open(".")
-			if err != nil {
-				return collected, err
-			}
-			syncErr := directory.Sync()
-			closeErr := directory.Close()
-			if syncErr != nil {
-				return collected, syncErr
-			}
-			if closeErr != nil {
-				return collected, closeErr
-			}
+		if directorySyncErr := s.syncDirectory(); directorySyncErr != nil {
+			return collected, directorySyncErr
 		}
-		if err := collector.MarkArtifactCollected(ctx, artifact.ID); err != nil {
-			return collected, err
+
+		if markArtifactCollectedErr := collector.MarkArtifactCollected(
+			ctx,
+			artifact.ID,
+		); markArtifactCollectedErr != nil {
+			return collected, markArtifactCollectedErr
 		}
 		collected++
 	}

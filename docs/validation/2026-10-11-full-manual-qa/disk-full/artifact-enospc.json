@@ -1,0 +1,4 @@
+{
+  "status": 500,
+  "body": "{\"error\":{\"code\":\"internal_error\",\"message\":\"Request could not be completed\",\"request_id\":\"fae9b702-f7e0-44de-9701-b5893843cce9\",\"retryable\":false}}\n"
+}

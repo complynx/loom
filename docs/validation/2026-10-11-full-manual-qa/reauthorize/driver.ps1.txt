@@ -1,0 +1,38 @@
+$ErrorActionPreference='Stop'
+$dir=$PSScriptRoot;$evidence=Join-Path (Get-Location) 'docs/validation/2026-10-11-full-manual-qa/reauthorize';New-Item $evidence -ItemType Directory -Force|Out-Null
+$s=Get-Content "$dir/state.json" -Raw|ConvertFrom-Json
+$base='http://127.0.0.1:58480';$issuer='https://localhost:58490'
+$pat=[IO.File]::ReadAllText("$dir/data/admin.pat").Trim()
+$fixtureHeaders=@{Authorization="Bearer $pat";Host='peers:9443'}
+$script:token=$s.user.access_token
+function Request($method,$path,$body=$null,$key='',$access='',$expected=200){if(!$access){$access=$script:token};$h=@{Authorization="Bearer $access"};if($key){$h['Idempotency-Key']=$key};$args=@{Method=$method;Uri="$base$path";Headers=$h;SkipHttpErrorCheck=$true;TimeoutSec=15};if($null -ne $body){$args.Body=$body|ConvertTo-Json -Depth 30 -Compress;$args.ContentType='application/json'};$r=Invoke-WebRequest @args;if($r.StatusCode -ne $expected){throw "Unexpected HTTP $($r.StatusCode), wanted $expected on $method $path : $($r.Content)"};if($r.Content){return ($r.Content|ConvertFrom-Json)}}
+function Fixture($suffix){Invoke-RestMethod -SkipCertificateCheck "$issuer/management/v1/users/$($s.human.userId)/$suffix" -Method Post -Headers $fixtureHeaders -ContentType application/json -Body '{}' -TimeoutSec 10|Out-Null}
+function AwaitState($id,$state){for($i=0;$i -lt 100;$i++){$r=Request GET "/v1/runs/$id";if($r.status -eq $state){return $r};if($r.status -in @('failed','cancelled')){throw "Unexpected terminal state $($r.status) reason=$($r.reason)"};Start-Sleep -Milliseconds 200};throw "Timeout awaiting $state"}
+function Save($name,$value){$value|ConvertTo-Json -Depth 40|Set-Content "$evidence/$name.json"}
+$session=Request POST /v1/auth/sessions @{} '' '' 201
+$chat=Request POST /v1/chats @{} '' '' 201
+$r=Request POST /v1/runs @{chat_id=$chat.id;auth_session_id=$session.auth_session_id;input=@{text='QA_QUESTION real issuer queue restart'};interaction=@{questions='choices_and_text';approvals=$true};delivery=@{mode='async'};budget=@{max_microcredits=10000}} ('reauth-'+[Guid]::NewGuid()) '' 202
+$q=AwaitState $r.run_id waiting_input;Save question $q
+Fixture _deactivate
+Request GET '/v1/chats/default' $null '' $script:token 401|Out-Null
+Fixture _reactivate
+& "$dir/refresh.ps1"|Out-Null
+$s=Get-Content "$dir/state.json" -Raw|ConvertFrom-Json;$script:token=$s.user.access_token
+$answer=@{kind='answer';question_id=$q.question.question_id;text='Actual fresh user answer'}
+$answerKey='reauth-answer-'+[Guid]::NewGuid()
+Request POST "/v1/runs/$($r.run_id)/input" $answer $answerKey|Out-Null
+$waiting=AwaitState $r.run_id waiting_auth;Save waiting-auth-before-restart $waiting
+if($waiting.spent_microcredits -ne $q.spent_microcredits -or $waiting.reserved_microcredits -ne 0){throw 'Unauthorized execution altered accounting'}
+docker compose -f "$dir/compose.yaml" restart api|Out-Null
+for($i=0;$i -lt 100;$i++){try{$h=Invoke-WebRequest "$base/healthz" -TimeoutSec 2;if($h.StatusCode -eq 200){break}}catch{};Start-Sleep -Milliseconds 200}
+$waiting=AwaitState $r.run_id waiting_auth;Save waiting-auth-after-restart $waiting
+Request POST "/v1/auth/sessions/$($session.auth_session_id)/reauthorize" @{version=$session.version} '' $s.userSame.access_token 409|Out-Null
+Request GET "/v1/runs/$($r.run_id)" $null '' $s.userSame.access_token 404|Out-Null
+Request POST "/v1/auth/sessions/$($session.auth_session_id)/reauthorize" @{version=$session.version} '' $s.user2.access_token 409|Out-Null
+$renew=Request POST "/v1/auth/sessions/$($session.auth_session_id)/reauthorize" @{version=$session.version};Save reauthorized $renew
+Request POST "/v1/auth/sessions/$($session.auth_session_id)/reauthorize" @{version=$session.version} '' '' 409|Out-Null
+$completed=AwaitState $r.run_id completed;Save completed $completed
+if($completed.run_id -ne $q.run_id -or $completed.spent_microcredits -ne 220 -or $completed.reserved_microcredits -ne 0){throw 'Run identity or final accounting mismatch'}
+Save assertions @{same_run=$true;real_zitadel_user_revocation=$true;old_access_token_denied=$true;waiting_auth_durable_across_river_restart=$true;fresh_actual_zitadel_credentials=$true;same_org_other_user_denied=$true;other_org_denied=$true;stale_cas_denied=$true;spent_microcredits=$completed.spent_microcredits;reserved_microcredits=$completed.reserved_microcredits;paid_openai_calls=0;run_id=$r.run_id}
+docker compose -f "$dir/compose.yaml" exec -T postgres psql -U clx -d clx -c "SELECT state,count(*) FROM river_job GROUP BY state; SELECT state,count(*),sum((usage->>'microcredits')::bigint) AS microcredits FROM steps GROUP BY state; SELECT count(*) AS ledger_rows,sum(amount) FROM credit_ledger;"|Set-Content "$evidence/durable-db.txt"
+'PASS real issuer revocation, durable waiting_auth, River restart, owner boundaries, CAS and same-run completion without duplicate charge.'

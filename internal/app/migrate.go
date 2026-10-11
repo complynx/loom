@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+
+	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/clx-scripter/internal/store"
 )
 
 // Migrate is a separate deployment step; the HTTP runtime does not run DDL.

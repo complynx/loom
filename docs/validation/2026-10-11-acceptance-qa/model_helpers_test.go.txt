@@ -1,0 +1,89 @@
+package integration_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/domain"
+
+	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/clx-scripter/internal/runs"
+)
+
+type modelFixture struct {
+	server   *httptest.Server
+	mu       sync.Mutex
+	requests []json.RawMessage
+	respond  func(int) any
+}
+
+func fakeModel(t *testing.T, f *fixture, respond func(int) any) (*modelFixture, *runs.Engine) {
+	t.Helper()
+	model := &modelFixture{respond: respond}
+	model.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" || r.Header.Get("Authorization") != "Bearer test-provider-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var raw json.RawMessage
+		if json.NewDecoder(r.Body).Decode(&raw) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		model.mu.Lock()
+		model.requests = append(model.requests, raw)
+		index := len(model.requests)
+		model.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(model.respond(index))
+	}))
+	t.Cleanup(model.server.Close)
+	client, err := provider.NewResponses(model.server.URL, "test-provider-key", model.server.Client())
+	require.NoError(t, err)
+	engine := runs.New(
+		f.repository,
+		client,
+		runs.Options{
+			Owner: "qa-worker",
+			Authorize: func(ctx context.Context, run domain.Run) (domain.Principal, string, error) {
+				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://boundary", nil)
+				req.Header.Set("Authorization", "Bearer "+run.ActorID)
+				p, authErr := testAuth{}.Authenticate(ctx, req)
+				return p, "user-token", authErr
+			},
+		},
+	)
+	return model, engine
+}
+func finalResponse(text string) any {
+	return map[string]any{
+		"id":     "provider-final",
+		"status": "completed",
+		"output": []any{
+			map[string]any{
+				"type":    "message",
+				"role":    "assistant",
+				"content": []any{map[string]string{"type": "output_text", "text": text}},
+			},
+		},
+		"usage": map[string]int{"input_tokens": 10, "output_tokens": 5},
+	}
+}
+func (f *fixture) createRun(t *testing.T, request domain.CreateRun, key string) domain.Run {
+	t.Helper()
+	code, raw := f.request(t, "alice", "POST", "/v1/runs", key, request)
+	require.Equal(t, 202, code, string(raw))
+	return decode[domain.Run](t, raw)
+}
+func (f *fixture) run(t *testing.T, id string) domain.Run {
+	t.Helper()
+	code, raw := f.request(t, "alice", "GET", "/v1/runs/"+id, "", nil)
+	require.Equal(t, 200, code, string(raw))
+	return decode[domain.Run](t, raw)
+}

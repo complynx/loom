@@ -5,22 +5,30 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
-	jose "github.com/go-jose/go-jose/v4"
-	"github.com/go-jose/go-jose/v4/jwt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	jose "github.com/go-jose/go-jose/v4"
+
+	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/clx-scripter/internal/domain"
+)
+
+const (
+	identityRequestTimeout = 3 * time.Second
+	signedTokenSeparators  = 2
+	identityResponseLimit  = 1 << 20
 )
 
 var ErrUnauthorized = errors.New("authentication denied")
 var ErrUnavailable = errors.New("identity provider unavailable")
 
-// BindingResolver consults current trusted deployment registration. Headers alone are not proof.
+// Binding describes current trusted deployment registration. Headers alone are not proof.
 type Binding struct {
 	Actor       string
 	Permissions map[string]bool
@@ -71,8 +79,8 @@ func (a *audience) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var ss []string
-	if e := json.Unmarshal(b, &ss); e != nil {
-		return e
+	if unmarshalErr := json.Unmarshal(b, &ss); unmarshalErr != nil {
+		return unmarshalErr
 	}
 	*a = ss
 	return nil
@@ -81,8 +89,8 @@ func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Au
 	if cfg.Issuer == "" || cfg.Audience == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil, errors.New("identity trust root and introspection credentials required")
 	}
-	if e := config.ValidateIdentityURL(cfg.Issuer); e != nil {
-		return nil, e
+	if validateIdentityURLErr := config.ValidateIdentityURL(cfg.Issuer); validateIdentityURLErr != nil {
+		return nil, validateIdentityURLErr
 	}
 	if cfg.RefreshableExchangeEnabled {
 		return nil, errors.New("refreshable exchange integration gate unsupported")
@@ -91,22 +99,22 @@ func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Au
 		client = &http.Client{}
 	}
 	bounded := *client
-	bounded.Timeout = 3 * time.Second
+	bounded.Timeout = identityRequestTimeout
 	bounded.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &Authenticator{cfg: cfg, client: &bounded, binding: binding}, nil
 }
 func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (domain.Principal, error) {
-	token, e := bearer(r.Header.Get("Authorization"))
-	if e != nil {
-		return domain.Principal{}, e
+	token, err := bearer(r.Header.Get("Authorization"))
+	if err != nil {
+		return domain.Principal{}, err
 	}
-	p, e := a.authenticateToken(ctx, token)
-	if e != nil {
-		return domain.Principal{}, e
+	p, err := a.authenticateToken(ctx, token)
+	if err != nil {
+		return domain.Principal{}, err
 	}
-	service, e := a.classifyService(ctx, p)
-	if e != nil {
-		return domain.Principal{}, e
+	service, err := a.classifyService(ctx, p)
+	if err != nil {
+		return domain.Principal{}, err
 	}
 	delegated := r.Header.Get("X-Subject-Token")
 	if !service {
@@ -115,7 +123,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (doma
 		}
 		return p, nil
 	}
-	sessionID := r.Header.Get("X-Auth-Session-ID")
+	sessionID := r.Header.Get("X-Auth-Session-Id")
 	if delegated == "" && sessionID != "" {
 		return a.authenticateSession(ctx, r, p, sessionID)
 	}
@@ -125,17 +133,17 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (doma
 	if delegated == "" || a.binding == nil {
 		return domain.Principal{}, ErrUnauthorized
 	}
-	bound, e := a.binding(ctx, r, p)
-	if e != nil || bound.Actor != p.Subject {
+	bound, err := a.binding(ctx, r, p)
+	if err != nil || bound.Actor != p.Subject {
 		return domain.Principal{}, ErrUnauthorized
 	}
-	user, e := a.authenticateToken(ctx, delegated)
-	if e != nil {
-		return domain.Principal{}, e
+	user, err := a.authenticateToken(ctx, delegated)
+	if err != nil {
+		return domain.Principal{}, err
 	}
-	delegatedService, e := a.classifyService(ctx, user)
-	if e != nil {
-		return domain.Principal{}, e
+	delegatedService, err := a.classifyService(ctx, user)
+	if err != nil {
+		return domain.Principal{}, err
 	}
 	if delegatedService || user.OrgID == "" || user.OrgID != p.OrgID {
 		return domain.Principal{}, ErrUnauthorized
@@ -148,12 +156,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (doma
 	return user, nil
 }
 func (a *Authenticator) isService(subject string) bool {
-	for _, s := range a.cfg.ServiceSubjects {
-		if s == subject {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(a.cfg.ServiceSubjects, subject)
 }
 func bearer(h string) (string, error) {
 	v := strings.Fields(h)
@@ -178,64 +181,33 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 	if token == "" || len(token) > 16384 {
 		return domain.Principal{}, ErrUnauthorized
 	}
-	d, e := a.discover(ctx)
-	if e != nil {
-		return domain.Principal{}, e
+	d, err := a.discover(ctx)
+	if err != nil {
+		return domain.Principal{}, err
 	}
-	var signed jwt.Claims
-	if strings.Count(token, ".") == 2 {
-		parsed, e := jwt.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
-		if e != nil {
-			return domain.Principal{}, ErrUnauthorized
-		}
-		keys, e := a.getKeys(ctx, d.JWKSURI, false)
-		if e != nil {
-			return domain.Principal{}, e
-		}
-		// Only an unknown key ID can request an early refresh; a forged signature using a known ID cannot.
-		if len(parsed.Headers) != 1 {
-			return domain.Principal{}, ErrUnauthorized
-		}
-		kid := parsed.Headers[0].KeyID
-		if kid != "" && !containsKey(keys, kid) {
-			keys, e = a.getKeys(ctx, d.JWKSURI, true)
-			if e != nil {
-				return domain.Principal{}, e
-			}
-		}
-		valid := false
-		for _, key := range keys.Keys {
-			if kid != "" && key.KeyID != kid {
-				continue
-			}
-			if key.Use != "" && key.Use != "sig" {
-				continue
-			}
-			if e := parsed.Claims(key.Key, &signed); e == nil {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return domain.Principal{}, ErrUnauthorized
-		}
-		if signed.Expiry == nil || signed.Subject == "" || signed.ValidateWithLeeway(jwt.Expected{Issuer: a.cfg.Issuer, AnyAudience: jwt.Audience{a.cfg.Audience}, Time: time.Now()}, 0) != nil {
-			return domain.Principal{}, ErrUnauthorized
-		}
+	signed, err := a.verifySignedToken(ctx, token, d.JWKSURI)
+	if err != nil {
+		return domain.Principal{}, err
 	}
 	form := url.Values{"token": {token}, "token_type_hint": {"access_token"}}
-	req, e := http.NewRequestWithContext(ctx, http.MethodPost, d.IntrospectionEndpoint, strings.NewReader(form.Encode()))
-	if e != nil {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		d.IntrospectionEndpoint,
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
 		return domain.Principal{}, ErrUnavailable
 	}
 	req.SetBasicAuth(a.cfg.ClientID, a.cfg.ClientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	var info tokenInfo
-	if e := a.fetch(req, &info); e != nil {
-		return domain.Principal{}, e
+	if fetchErr := a.fetch(req, &info); fetchErr != nil {
+		return domain.Principal{}, fetchErr
 	}
 	now := time.Now()
-	if !info.Active || info.Subject == "" || info.Issuer != a.cfg.Issuer || info.Expires <= now.Unix() || info.NotBefore > now.Unix() {
+	if !info.Active || info.Subject == "" || info.Issuer != a.cfg.Issuer || info.Expires <= now.Unix() ||
+		info.NotBefore > now.Unix() {
 		return domain.Principal{}, ErrUnauthorized
 	}
 	allowed := false
@@ -250,6 +222,17 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 	if signed.Expiry != nil && int64(*signed.Expiry) < info.Expires {
 		info.Expires = int64(*signed.Expiry)
 	}
+	return domain.Principal{
+		Issuer:      info.Issuer,
+		Subject:     info.Subject,
+		Actor:       info.Subject,
+		OrgID:       info.OrgID,
+		Permissions: a.rolePermissions(info),
+		ExpiresAt:   time.Unix(info.Expires, 0),
+	}, nil
+}
+
+func (a *Authenticator) rolePermissions(info tokenInfo) map[string]bool {
 	perms := map[string]bool{}
 	for role, orgs := range info.Roles {
 		if info.OrgID == "" {
@@ -258,11 +241,11 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 		if _, ok := orgs[info.OrgID]; !ok {
 			continue
 		}
-		for _, p := range a.cfg.RolePermissions[role] {
-			perms[p] = true
+		for _, permission := range a.cfg.RolePermissions[role] {
+			perms[permission] = true
 		}
 	}
-	return domain.Principal{Issuer: info.Issuer, Subject: info.Subject, Actor: info.Subject, OrgID: info.OrgID, Permissions: perms, ExpiresAt: time.Unix(info.Expires, 0)}, nil
+	return perms
 }
 func (a *Authenticator) discover(ctx context.Context) (discovery, error) {
 	a.mu.Lock()
@@ -279,14 +262,20 @@ func (a *Authenticator) discover(ctx context.Context) (discovery, error) {
 	if d.Issuer != "" {
 		return d, nil
 	}
-	req, e := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(a.cfg.Issuer, "/")+"/.well-known/openid-configuration", nil)
-	if e != nil {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		strings.TrimSuffix(a.cfg.Issuer, "/")+"/.well-known/openid-configuration",
+		nil,
+	)
+	if err != nil {
 		return d, ErrUnavailable
 	}
-	if e := a.fetch(req, &d); e != nil {
-		return d, e
+	if fetchErr := a.fetch(req, &d); fetchErr != nil {
+		return d, fetchErr
 	}
-	if d.Issuer != a.cfg.Issuer || !trustedURL(d.JWKSURI, a.cfg.Issuer) || !trustedURL(d.IntrospectionEndpoint, a.cfg.Issuer) {
+	if d.Issuer != a.cfg.Issuer || !trustedURL(d.JWKSURI, a.cfg.Issuer) ||
+		!trustedURL(d.IntrospectionEndpoint, a.cfg.Issuer) {
 		return discovery{}, ErrUnauthorized
 	}
 	a.mu.Lock()
@@ -295,9 +284,11 @@ func (a *Authenticator) discover(ctx context.Context) (discovery, error) {
 	return d, nil
 }
 func trustedURL(endpoint, issuer string) bool {
-	u, e := url.Parse(endpoint)
-	root, e2 := url.Parse(issuer)
-	return e == nil && e2 == nil && u.Scheme == root.Scheme && u.Host == root.Host && u.User == nil && u.Fragment == "" && u.RawQuery == ""
+	u, err := url.Parse(endpoint)
+	root, rootErr := url.Parse(issuer)
+	return err == nil && rootErr == nil && u.Scheme == root.Scheme && u.Host == root.Host && u.User == nil &&
+		u.Fragment == "" &&
+		u.RawQuery == ""
 }
 func containsKey(keys jose.JSONWebKeySet, id string) bool {
 	for _, key := range keys.Keys {
@@ -330,15 +321,15 @@ func (a *Authenticator) getKeys(ctx context.Context, endpoint string, force bool
 	if force {
 		a.nextKeyRefresh = time.Now().Add(time.Second)
 	}
-	req, e := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if e != nil {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
 		return keys, ErrUnavailable
 	}
 	var fetched jose.JSONWebKeySet
-	if e := a.fetch(req, &fetched); e != nil {
+	if fetchErr := a.fetch(req, &fetched); fetchErr != nil {
 		a.nextKeyRefresh = time.Now().Add(time.Second)
-		a.keyRefreshError = e
-		return keys, e
+		a.keyRefreshError = fetchErr
+		return keys, fetchErr
 	}
 	if len(fetched.Keys) == 0 || len(fetched.Keys) > 64 {
 		a.nextKeyRefresh = time.Now().Add(time.Second)
@@ -357,16 +348,16 @@ func (a *Authenticator) getKeys(ctx context.Context, endpoint string, force bool
 	return fetched, nil
 }
 func (a *Authenticator) fetch(req *http.Request, out any) error {
-	resp, e := a.client.Do(req)
-	if e != nil {
+	resp, err := a.client.Do(req)
+	if err != nil {
 		return fmt.Errorf("%w: request failed", ErrUnavailable)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: upstream status %d", ErrUnavailable, resp.StatusCode)
 	}
-	b, e := io.ReadAll(io.LimitReader(resp.Body, 1048577))
-	if e != nil || len(b) > 1048576 {
+	b, err := io.ReadAll(io.LimitReader(resp.Body, identityResponseLimit+1))
+	if err != nil || len(b) > identityResponseLimit {
 		return ErrUnavailable
 	}
 	if json.Unmarshal(b, out) != nil {
@@ -412,9 +403,9 @@ func (a *Authenticator) classifyService(ctx context.Context, p domain.Principal)
 	if a.serviceClassifier == nil {
 		return static, nil
 	}
-	discovered, e := a.serviceClassifier(ctx, p)
-	if e != nil {
-		return false, e
+	discovered, err := a.serviceClassifier(ctx, p)
+	if err != nil {
+		return false, err
 	}
 	return static || discovered, nil
 }

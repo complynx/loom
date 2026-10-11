@@ -6,8 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/domain"
 	"image"
 	"image/png"
 	"io"
@@ -17,6 +15,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/complynx/clx-scripter/internal/artifacts"
+	"github.com/complynx/clx-scripter/internal/domain"
 )
 
 type metadataStore struct {
@@ -52,41 +53,43 @@ func (m *metadataStore) GetArtifact(_ context.Context, id string) (domain.Artifa
 	}
 	return a, nil
 }
-func service(t *testing.T, max, quota int64) (*artifacts.Service, *metadataStore) {
+func service(t *testing.T, maxUpload, quota int64) (*artifacts.Service, *metadataStore) {
 	t.Helper()
 	store := &metadataStore{rows: make(map[string]domain.Artifact)}
-	s, err := artifacts.New(t.TempDir(), store, artifacts.Limits{MaxUploadBytes: max, QuotaBytes: quota})
+	s, err := artifacts.New(t.TempDir(), store, artifacts.Limits{MaxUploadBytes: maxUpload, QuotaBytes: quota})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := s.Close(); err != nil {
-			t.Error(err)
+		if closeErr := s.Close(); closeErr != nil {
+			t.Error(closeErr)
 		}
 	})
 	return s, store
 }
 
-var owner = artifacts.Principal{OwnerID: "user", OrgID: "org"}
+func testOwner() artifacts.Principal { return artifacts.Principal{OwnerID: "user", OrgID: "org"} }
 
 func TestUploadAndReadImmutableArtifact(t *testing.T) {
+	t.Parallel()
 	s, _ := service(t, 1024, 2048)
 	content := []byte("hello artifact")
-	a, err := s.Upload(context.Background(), owner, "", bytes.NewReader(content))
+	a, err := s.Upload(context.Background(), testOwner(), "", bytes.NewReader(content))
 	if err != nil {
 		t.Fatal(err)
 	}
 	hash := sha256.Sum256(content)
-	if a.Size != int64(len(content)) || a.SHA256 != hex.EncodeToString(hash[:]) || a.MIME != "text/plain; charset=utf-8" {
+	if a.Size != int64(len(content)) || a.SHA256 != hex.EncodeToString(hash[:]) ||
+		a.MIME != "text/plain; charset=utf-8" {
 		t.Fatalf("unexpected metadata: %+v", a)
 	}
-	metadata, r, err := s.Download(context.Background(), owner, a.ID)
+	metadata, r, err := s.Download(context.Background(), testOwner(), a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := r.Close(); err != nil {
-			t.Error(err)
+		if closeErr := r.Close(); closeErr != nil {
+			t.Error(closeErr)
 		}
 	}()
 	got, err := io.ReadAll(r)
@@ -95,72 +98,116 @@ func TestUploadAndReadImmutableArtifact(t *testing.T) {
 	}
 }
 func TestUploadLimitsAndQuota(t *testing.T) {
+	t.Parallel()
 	s, _ := service(t, 8, 10)
-	if _, err := s.Upload(context.Background(), owner, "", bytes.NewBufferString("123456789")); !errors.Is(err, artifacts.ErrTooLarge) {
-		t.Fatalf("oversize: %v", err)
+	if _, uploadErr := s.Upload(
+		context.Background(),
+		testOwner(),
+		"",
+		bytes.NewBufferString("123456789"),
+	); !errors.Is(
+		uploadErr,
+		artifacts.ErrTooLarge,
+	) {
+		t.Fatalf("oversize: %v", uploadErr)
 	}
-	if _, err := s.Upload(context.Background(), owner, "text/plain", bytes.NewBufferString("12345678")); err != nil {
-		t.Fatal(err)
+	if _, uploadErr := s.Upload(
+		context.Background(),
+		testOwner(),
+		"text/plain",
+		bytes.NewBufferString("12345678"),
+	); uploadErr != nil {
+		t.Fatal(uploadErr)
 	}
-	if _, err := s.Upload(context.Background(), owner, "text/plain", bytes.NewBufferString("123")); err == nil {
+	if _, uploadErr := s.Upload(
+		context.Background(),
+		testOwner(),
+		"text/plain",
+		bytes.NewBufferString("123"),
+	); uploadErr == nil {
 		t.Fatal("quota upload succeeded")
 	}
 }
 func TestReadRejectsOtherOwnerAndOrganization(t *testing.T) {
+	t.Parallel()
 	s, _ := service(t, 10, 20)
-	a, err := s.Upload(context.Background(), owner, "text/plain", bytes.NewBufferString("ok"))
+	a, err := s.Upload(context.Background(), testOwner(), "text/plain", bytes.NewBufferString("ok"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []artifacts.Principal{{OwnerID: "other", OrgID: "org"}, {OwnerID: "user", OrgID: "other"}, {}} {
-		if _, _, err := s.Download(context.Background(), p, a.ID); !errors.Is(err, artifacts.ErrForbidden) {
-			t.Fatalf("unauthorized read: %v", err)
+		if _, _, downloadErr := s.Download(
+			context.Background(),
+			p,
+			a.ID,
+		); !errors.Is(
+			downloadErr,
+			artifacts.ErrForbidden,
+		) {
+			t.Fatalf("unauthorized read: %v", downloadErr)
 		}
 	}
 	for _, id := range []string{"../secret", "/etc/passwd", "..\\secret", a.ID + "/../secret"} {
-		if _, _, err := s.Download(context.Background(), owner, id); !errors.Is(err, artifacts.ErrNotFound) {
-			t.Fatalf("path accepted %q: %v", id, err)
+		if _, _, downloadErr := s.Download(
+			context.Background(),
+			testOwner(),
+			id,
+		); !errors.Is(
+			downloadErr,
+			artifacts.ErrNotFound,
+		) {
+			t.Fatalf("path accepted %q: %v", id, downloadErr)
 		}
 	}
 }
 func TestCanceledUploadAndRead(t *testing.T) {
+	t.Parallel()
 	s, _ := service(t, 10, 20)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := s.Upload(ctx, owner, "", bytes.NewBufferString("ok")); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled upload: %v", err)
+	if _, uploadErr := s.Upload(
+		ctx,
+		testOwner(),
+		"",
+		bytes.NewBufferString("ok"),
+	); !errors.Is(
+		uploadErr,
+		context.Canceled,
+	) {
+		t.Fatalf("canceled upload: %v", uploadErr)
 	}
-	a, err := s.Upload(context.Background(), owner, "", bytes.NewBufferString("ok"))
+	a, err := s.Upload(context.Background(), testOwner(), "", bytes.NewBufferString("ok"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, r, err := s.Download(ctx, owner, a.ID)
+	_, r, err := s.Download(ctx, testOwner(), a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := r.Close(); err != nil {
-			t.Error(err)
+		if closeErr := r.Close(); closeErr != nil {
+			t.Error(closeErr)
 		}
 	}()
-	if _, err := io.ReadAll(r); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled read: %v", err)
+	if _, readAllErr := io.ReadAll(r); !errors.Is(readAllErr, context.Canceled) {
+		t.Fatalf("canceled read: %v", readAllErr)
 	}
 }
 func TestLostCommitResponsePreservesUploadedContent(t *testing.T) {
+	t.Parallel()
 	s, store := service(t, 10, 20)
 	store.ambiguous = true
-	a, err := s.Upload(context.Background(), owner, "", bytes.NewBufferString("ok"))
+	a, err := s.Upload(context.Background(), testOwner(), "", bytes.NewBufferString("ok"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, r, err := s.Download(context.Background(), owner, a.ID)
+	_, r, err := s.Download(context.Background(), testOwner(), a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := r.Close(); err != nil {
-			t.Error(err)
+		if closeErr := r.Close(); closeErr != nil {
+			t.Error(closeErr)
 		}
 	}()
 	got, err := io.ReadAll(r)
@@ -169,19 +216,42 @@ func TestLostCommitResponsePreservesUploadedContent(t *testing.T) {
 	}
 }
 func TestExternalDisclosureRequiresOwnerAndExplicitDestination(t *testing.T) {
-	a := domain.Artifact{OwnerID: owner.OwnerID, OrgID: owner.OrgID, ExternalDisclosureAllowed: true}
-	if err := artifacts.AllowDisclosure(a, owner, "openai", []string{"openai"}); err != nil {
-		t.Fatal(err)
+	t.Parallel()
+	a := domain.Artifact{OwnerID: testOwner().OwnerID, OrgID: testOwner().OrgID, ExternalDisclosureAllowed: true}
+	if allowDisclosureErr := artifacts.AllowDisclosure(
+		a,
+		testOwner(),
+		"openai",
+		[]string{"openai"},
+	); allowDisclosureErr != nil {
+		t.Fatal(allowDisclosureErr)
 	}
-	if err := artifacts.AllowDisclosure(a, owner, "other", []string{"openai"}); !errors.Is(err, artifacts.ErrForbidden) {
-		t.Fatal(err)
+	if allowDisclosureErr := artifacts.AllowDisclosure(
+		a,
+		testOwner(),
+		"other",
+		[]string{"openai"},
+	); !errors.Is(
+		allowDisclosureErr,
+		artifacts.ErrForbidden,
+	) {
+		t.Fatal(allowDisclosureErr)
 	}
-	if err := artifacts.AllowDisclosure(a, artifacts.Principal{OwnerID: "other", OrgID: "org"}, "openai", []string{"openai"}); !errors.Is(err, artifacts.ErrForbidden) {
-		t.Fatal(err)
+	if allowDisclosureErr := artifacts.AllowDisclosure(
+		a,
+		artifacts.Principal{OwnerID: "other", OrgID: "org"},
+		"openai",
+		[]string{"openai"},
+	); !errors.Is(
+		allowDisclosureErr,
+		artifacts.ErrForbidden,
+	) {
+		t.Fatal(allowDisclosureErr)
 	}
 }
 
 func TestReadRejectsReplacedSymlink(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows requires symlink privileges; production platform is Linux")
 	}
@@ -192,33 +262,41 @@ func TestReadRejectsReplacedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := s.Close(); err != nil {
-			t.Error(err)
+		if closeErr := s.Close(); closeErr != nil {
+			t.Error(closeErr)
 		}
 	}()
-	a, err := s.Upload(context.Background(), owner, "", bytes.NewBufferString("ok"))
+	a, err := s.Upload(context.Background(), testOwner(), "", bytes.NewBufferString("ok"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(volume, a.ID)
-	if err := os.Remove(target); err != nil {
-		t.Fatal(err)
+	if removeErr := os.Remove(target); removeErr != nil {
+		t.Fatal(removeErr)
 	}
-	if err := os.Symlink("../secret", target); err != nil {
-		t.Fatal(err)
+	if symlinkErr := os.Symlink("../secret", target); symlinkErr != nil {
+		t.Fatal(symlinkErr)
 	}
-	if _, _, err := s.Download(context.Background(), owner, a.ID); !errors.Is(err, artifacts.ErrInvalid) {
-		t.Fatalf("symlink accepted: %v", err)
+	if _, _, downloadErr := s.Download(
+		context.Background(),
+		testOwner(),
+		a.ID,
+	); !errors.Is(
+		downloadErr,
+		artifacts.ErrInvalid,
+	) {
+		t.Fatalf("symlink accepted: %v", downloadErr)
 	}
 }
 func TestConcurrentUploadsCannotExceedQuota(t *testing.T) {
+	t.Parallel()
 	s, _ := service(t, 10, 10)
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
 	for range 2 {
 		wg.Go(func() {
-			_, err := s.Upload(context.Background(), owner, "", bytes.NewBufferString("12345678"))
-			results <- err
+			_, uploadErr := s.Upload(context.Background(), testOwner(), "", bytes.NewBufferString("12345678"))
+			results <- uploadErr
 		})
 	}
 	wg.Wait()
@@ -235,34 +313,84 @@ func TestConcurrentUploadsCannotExceedQuota(t *testing.T) {
 }
 
 func TestModelImageRequiresDisclosureAndCapability(t *testing.T) {
+	t.Parallel()
 	s, _ := service(t, 1024, 4096)
 	var content bytes.Buffer
-	if err := png.Encode(&content, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
-		t.Fatal(err)
+	if encodeErr := png.Encode(&content, image.NewRGBA(image.Rect(0, 0, 1, 1))); encodeErr != nil {
+		t.Fatal(encodeErr)
 	}
-	a, err := s.Upload(context.Background(), owner, "image/png", bytes.NewReader(content.Bytes()))
+	a, err := s.Upload(context.Background(), testOwner(), "image/png", bytes.NewReader(content.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	image, err := s.ForModel(context.Background(), owner, a.ID, "openai", []string{"openai"}, true, 1024)
+	image, err := s.ForModel(context.Background(), testOwner(), a.ID, "openai", []string{"openai"}, true, 1024)
 	if err != nil || !bytes.Equal(image.Bytes, content.Bytes()) {
 		t.Fatalf("forward image: %v", err)
 	}
-	if _, err := s.ForModel(context.Background(), owner, a.ID, "openai", nil, true, 1024); !errors.Is(err, artifacts.ErrForbidden) {
-		t.Fatalf("disclosure not denied: %v", err)
+	if _, forModelErr := s.ForModel(
+		context.Background(),
+		testOwner(),
+		a.ID,
+		"openai",
+		nil,
+		true,
+		1024,
+	); !errors.Is(
+		forModelErr,
+		artifacts.ErrForbidden,
+	) {
+		t.Fatalf("disclosure not denied: %v", forModelErr)
 	}
-	if _, err := s.ForModel(context.Background(), owner, a.ID, "openai", []string{"openai"}, false, 1024); !errors.Is(err, artifacts.ErrForbidden) {
-		t.Fatalf("capability not denied: %v", err)
+	if _, forModelErr := s.ForModel(
+		context.Background(),
+		testOwner(),
+		a.ID,
+		"openai",
+		[]string{"openai"},
+		false,
+		1024,
+	); !errors.Is(
+		forModelErr,
+		artifacts.ErrForbidden,
+	) {
+		t.Fatalf("capability not denied: %v", forModelErr)
 	}
-	if _, err := s.ForModel(context.Background(), owner, a.ID, "openai", []string{"openai"}, true, 1); !errors.Is(err, artifacts.ErrTooLarge) {
-		t.Fatalf("size not denied: %v", err)
+	if _, forModelErr := s.ForModel(
+		context.Background(),
+		testOwner(),
+		a.ID,
+		"openai",
+		[]string{"openai"},
+		true,
+		1,
+	); !errors.Is(
+		forModelErr,
+		artifacts.ErrTooLarge,
+	) {
+		t.Fatalf("size not denied: %v", forModelErr)
 	}
-	forged, err := s.Upload(context.Background(), owner, "image/png", bytes.NewBufferString("this is text"))
+	forged, err := s.Upload(
+		context.Background(),
+		testOwner(),
+		"image/png",
+		bytes.NewBufferString("this is text"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ForModel(context.Background(), owner, forged.ID, "openai", []string{"openai"}, true, 1024); !errors.Is(err, artifacts.ErrInvalid) {
-		t.Fatalf("forged MIME not denied: %v", err)
+	if _, forModelErr := s.ForModel(
+		context.Background(),
+		testOwner(),
+		forged.ID,
+		"openai",
+		[]string{"openai"},
+		true,
+		1024,
+	); !errors.Is(
+		forModelErr,
+		artifacts.ErrInvalid,
+	) {
+		t.Fatalf("forged MIME not denied: %v", forModelErr)
 	}
 }
 
@@ -280,6 +408,7 @@ func (r *blockedUploadInput) Read([]byte) (int, error) {
 	return 0, io.EOF
 }
 func TestConcurrentUploadLimitCancelsQueuedClientBeforeReading(t *testing.T) {
+	t.Parallel()
 	s, store := service(t, 10, 100)
 	entered := make(chan struct{}, 5)
 	release := make(chan struct{})
@@ -287,9 +416,14 @@ func TestConcurrentUploadLimitCancelsQueuedClientBeforeReading(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() {
-			_, err := s.Upload(activeCtx, owner, "", &blockedUploadInput{entered: entered, release: release})
-			if !errors.Is(err, context.Canceled) {
-				t.Errorf("active canceled upload: %v", err)
+			_, uploadErr := s.Upload(
+				activeCtx,
+				testOwner(),
+				"",
+				&blockedUploadInput{entered: entered, release: release},
+			)
+			if !errors.Is(uploadErr, context.Canceled) {
+				t.Errorf("active canceled upload: %v", uploadErr)
 			}
 		})
 	}
@@ -307,14 +441,14 @@ func TestConcurrentUploadLimitCancelsQueuedClientBeforeReading(t *testing.T) {
 	defer cancelQueued()
 	result := make(chan error, 1)
 	go func() {
-		_, err := s.Upload(queuedCtx, owner, "", &blockedUploadInput{entered: entered, release: release})
-		result <- err
+		_, uploadErr := s.Upload(queuedCtx, testOwner(), "", &blockedUploadInput{entered: entered, release: release})
+		result <- uploadErr
 	}()
 	cancelQueued()
 	select {
-	case err := <-result:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("queued cancellation: %v", err)
+	case operationErr := <-result:
+		if !errors.Is(operationErr, context.Canceled) {
+			t.Fatalf("queued cancellation: %v", operationErr)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("queued upload cancellation blocked")

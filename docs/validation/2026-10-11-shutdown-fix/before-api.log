@@ -1,0 +1,11 @@
+{"time":"2026-10-11T16:43:52.243263325Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T16:43:52.255752606Z","level":"INFO","msg":"runtime started","service":"clx-scripter","metrics_enabled":true,"workers":32,"log_payloads":false}
+{"time":"2026-10-11T16:43:52.266186684Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"database","available":true}
+{"time":"2026-10-11T16:43:52.266254438Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"artifact_volume","available":true}
+{"time":"2026-10-11T16:43:52.266267524Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"discovery","available":true}
+{"time":"2026-10-11T16:43:52.26792057Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"sandbox","available":true}
+{"time":"2026-10-11T16:44:11.623125143Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T16:44:14.701531868Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T16:44:15.622124149Z","level":"WARN","msg":"shutdown checkpoint deadline exceeded","service":"clx-scripter"}
+{"time":"2026-10-11T16:44:15.622172635Z","level":"WARN","msg":"shutdown component deadline exceeded","service":"clx-scripter"}
+{"time":"2026-10-11T16:44:15.622181653Z","level":"INFO","msg":"runtime stopped","service":"clx-scripter","duration_ms":5000,"deadline_exceeded":true}

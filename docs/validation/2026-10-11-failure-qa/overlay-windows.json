@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "C:\\Users\\ddriz\\Projects\\clx-scripter\\integration\\failure_process_qa_test.go": "C:\\Users\\ddriz\\Projects\\clx-scripter\\management.local\\failure-qa\\failure_process_test.go.txt"
+  }
+}

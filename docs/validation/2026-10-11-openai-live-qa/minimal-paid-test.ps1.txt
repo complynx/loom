@@ -1,0 +1,33 @@
+param([switch]$AllowAdditionalRun)
+$ErrorActionPreference='Stop'
+$base='http://127.0.0.1:58280'
+$headers=@{Authorization='Bearer qa-live-write'}
+$ready=Invoke-WebRequest "$base/readyz" -SkipHttpErrorCheck
+if($ready.StatusCode -ne 200){throw 'Stand is not ready. Start it first. No run was admitted.'}
+$stamp=[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
+$latch=Join-Path $PSScriptRoot 'paid-run-admission.json'
+if($AllowAdditionalRun){$latch=Join-Path $PSScriptRoot "paid-run-admission-$stamp.json"}
+try{$lock=[IO.File]::Open($latch,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);$lock.Dispose()}catch{throw 'A live attempt was already reserved. Do not repeat it automatically. -AllowAdditionalRun requires a deliberate additional paid-test decision.'}
+function Request($method,$path,$body=$null,$key=''){
+ $h=$headers.Clone();if($key){$h['Idempotency-Key']=$key};$p=@{Uri="$base$path";Method=$method;Headers=$h;SkipHttpErrorCheck=$true};if($null-ne$body){$p.Body=$body|ConvertTo-Json -Depth 20 -Compress;$p.ContentType='application/json'};$r=Invoke-WebRequest @p;if($r.StatusCode-ge400){throw "HTTP $($r.StatusCode) $path"};return($r.Content|ConvertFrom-Json)
+}
+$chat=Request POST /v1/chats @{}
+$text='Reply with exactly: LIVE_OK. Do not use tools or ask questions.'
+$run=Request POST /v1/runs @{chat_id=$chat.id;input=@{text=$text};interaction=@{questions='none';approvals=$false};delivery=@{mode='async'};budget=@{max_microcredits=10000}} "live-minimal-$stamp"
+[pscustomobject]@{RunID=$run.run_id;ChatID=$chat.id;ReservedAt=$stamp}|ConvertTo-Json|Set-Content $latch
+Write-Output "Admitted one live run $($run.run_id). No further run will be submitted by this script."
+$final=$run
+for($i=0;$i-lt360;$i++){$final=Request GET "/v1/runs/$($run.run_id)";if($final.status-notin@('queued','running')){break};Start-Sleep -Milliseconds 500}
+$path=Join-Path $PSScriptRoot "live-result-$stamp.json"
+$final|ConvertTo-Json -Depth 40|Set-Content $path
+Write-Output "Status: $($final.status); result: $($final.result); spent_microcredits: $($final.spent_microcredits); reserved_microcredits: $($final.reserved_microcredits)."
+Write-Output "Evidence: $path"
+if($final.status-ne'completed'){Write-Output 'Stop here. Investigate this existing run; no retry/resume/additional live request was submitted.'}
+# Persist only model-step counters and usage, never credentials or request bodies.
+if($run.run_id -match '^[0-9a-f-]{36}$'){
+ $query="SELECT ordinal,kind,state,usage FROM steps WHERE run_id='$($run.run_id)' ORDER BY ordinal; SELECT kind,count(*) AS persisted_steps FROM steps WHERE run_id='$($run.run_id)' GROUP BY kind ORDER BY kind;"
+ docker compose -f (Join-Path $PSScriptRoot 'compose.yaml') exec -T postgres psql -U clx -d clx -c $query | Set-Content (Join-Path $PSScriptRoot "live-usage-$stamp.txt")
+ Write-Output 'Persisted step counts and reported token usage saved; token-count HTTP preflight calls are not counted as inference steps.'
+}
+if($final.status -eq 'completed' -and $final.result.Trim() -ne 'LIVE_OK'){throw 'Completed response differs from the expected LIVE_OK. Inspect saved evidence; no extra live request will be submitted.'}
+

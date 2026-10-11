@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/complynx/clx-scripter/internal/domain"
@@ -40,7 +41,43 @@ type Source struct {
 // Import converts a bounded authenticated service blob into an owned immutable
 // artifact. It rejects redirects, traversal, MIME mismatch, changed content and
 // revoked delegation before any metadata is committed.
-func (s *Service) Import(ctx context.Context, p Principal, source Source, descriptor Descriptor) (domain.Artifact, error) {
+func (s *Service) Import(
+	ctx context.Context,
+	p Principal,
+	source Source,
+	descriptor Descriptor,
+) (domain.Artifact, error) {
+	return s.importWithCommit(ctx, p, source, descriptor, s.store.CommitArtifact)
+}
+
+// ImportToChat commits imported metadata and its required chat reference together.
+// Stores without atomic chat attachment cannot accept this import.
+func (s *Service) ImportToChat(
+	ctx context.Context,
+	p domain.Principal,
+	ownerID, chatID string,
+	source Source,
+	descriptor Descriptor,
+) (domain.Artifact, error) {
+	store, ok := s.store.(interface {
+		CommitChatArtifact(context.Context, domain.Principal, string, domain.Artifact, int64) error
+	})
+	if !ok {
+		return domain.Artifact{}, ErrInvalid
+	}
+	return s.importWithCommit(ctx, Principal{OwnerID: ownerID, OrgID: p.OrgID}, source, descriptor,
+		func(ctx context.Context, item domain.Artifact, quota int64) error {
+			return store.CommitChatArtifact(ctx, p, chatID, item, quota)
+		})
+}
+
+func (s *Service) importWithCommit(
+	ctx context.Context,
+	p Principal,
+	source Source,
+	descriptor Descriptor,
+	commit func(context.Context, domain.Artifact, int64) error,
+) (domain.Artifact, error) {
 	if source.ServiceID == "" {
 		return domain.Artifact{}, ErrInvalid
 	}
@@ -48,7 +85,10 @@ func (s *Service) Import(ctx context.Context, p Principal, source Source, descri
 		return domain.Artifact{}, ErrForbidden
 	}
 	base, err := url.Parse(source.BaseURL)
-	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" ||
+		base.User != nil ||
+		base.RawQuery != "" ||
+		base.Fragment != "" {
 		return domain.Artifact{}, ErrInvalid
 	}
 	if !safeBlobPath(descriptor.Path) || descriptor.Size < 0 || descriptor.Size > s.limits.MaxUploadBytes {
@@ -62,17 +102,11 @@ func (s *Service) Import(ctx context.Context, p Principal, source Source, descri
 	if err != nil {
 		return domain.Artifact{}, ErrInvalid
 	}
-	allowed := false
-	for _, candidate := range source.AllowedMIMETypes {
-		if candidate == contentType {
-			allowed = true
-		}
-	}
-	if !allowed {
+	if !slices.Contains(source.AllowedMIMETypes, contentType) {
 		return domain.Artifact{}, ErrForbidden
 	}
-	if err := source.Authorize(ctx); err != nil {
-		return domain.Artifact{}, err
+	if authorizeErr := source.Authorize(ctx); authorizeErr != nil {
+		return domain.Artifact{}, authorizeErr
 	}
 	endpoint := *base
 	endpoint.Path = descriptor.Path
@@ -103,15 +137,22 @@ func (s *Service) Import(ctx context.Context, p Principal, source Source, descri
 	if response.ContentLength >= 0 && response.ContentLength != descriptor.Size {
 		return domain.Artifact{}, ErrInvalid
 	}
-	reader := &verifiedBlobReader{ctx: ctx, reader: response.Body, expectedSize: descriptor.Size, expectedDigest: strings.ToLower(descriptor.SHA256), hash: sha256.New(), authorize: source.Authorize}
-	return s.upload(ctx, p, contentType, reader, source.ExternalDisclosureAllowed, source.ServiceID)
+	reader := &verifiedBlobReader{
+		ctx:            ctx,
+		reader:         response.Body,
+		expectedSize:   descriptor.Size,
+		expectedDigest: strings.ToLower(descriptor.SHA256),
+		hash:           sha256.New(),
+		authorize:      source.Authorize,
+	}
+	return s.upload(ctx, p, contentType, reader, source.ExternalDisclosureAllowed, source.ServiceID, commit)
 }
 
 func safeBlobPath(path string) bool {
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "\\%?#:") {
 		return false
 	}
-	for _, segment := range strings.Split(path, "/") {
+	for segment := range strings.SplitSeq(path, "/") {
 		if segment == "." || segment == ".." {
 			return false
 		}
@@ -130,8 +171,8 @@ type verifiedBlobReader struct {
 }
 
 func (r *verifiedBlobReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
+	if contextErr := r.ctx.Err(); contextErr != nil {
+		return 0, contextErr
 	}
 	n, err := r.reader.Read(p)
 	if n > 0 {

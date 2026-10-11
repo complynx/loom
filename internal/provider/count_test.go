@@ -1,4 +1,4 @@
-package provider
+package provider_test
 
 import (
 	"context"
@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/complynx/clx-scripter/internal/provider"
 )
 
 func TestInputCountingIncludesVisionAndTools(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/responses/input_tokens" || r.Header.Get("Authorization") != "Bearer secret" {
 			t.Error("wrong count endpoint")
@@ -23,8 +26,19 @@ func TestInputCountingIncludesVisionAndTools(t *testing.T) {
 		_, _ = w.Write([]byte(`{"object":"response.input_tokens","input_tokens":4096}`))
 	}))
 	defer s.Close()
-	p, _ := NewResponses(s.URL, "secret", s.Client())
-	count, err := p.CountInputTokens(context.Background(), Request{Model: "test", Input: []Item{json.RawMessage(`{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,fixture"}]}`)}, Tools: []Tool{{Type: "function", Name: "f", Parameters: json.RawMessage(`{}`)}}})
+	p, _ := provider.NewResponses(s.URL, "secret", s.Client())
+	count, err := p.CountInputTokens(
+		context.Background(),
+		provider.Request{
+			Model: "test",
+			Input: []provider.Item{
+				json.RawMessage(
+					`{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,fixture"}]}`,
+				),
+			},
+			Tools: []provider.Tool{{Type: "function", Name: "f", Parameters: json.RawMessage(`{}`)}},
+		},
+	)
 	if err != nil || count != 4096 {
 		t.Fatalf("wrong count %d %v", count, err)
 	}

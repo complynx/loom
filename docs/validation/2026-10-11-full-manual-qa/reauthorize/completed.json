@@ -1,0 +1,112 @@
+{
+  "active_milliseconds": 276,
+  "disconnect_policy": "continue",
+  "model_snapshot": {
+    "provider": "openai",
+    "input_cached_microcredits_per_million": 1000000,
+    "context_tokens": 272000,
+    "id": "qa-model",
+    "provider_model": "qa-model",
+    "efforts": [
+      "low"
+    ],
+    "max_effort": "low",
+    "max_output_tokens": 4000,
+    "input_microcredits_per_million": 1000000,
+    "output_microcredits_per_million": 1000000,
+    "supports_images": false
+  },
+  "settings_snapshot": {
+    "run_active_time_seconds": 600,
+    "regex_pattern_max_chars": 256,
+    "regex_scan_max_bytes": 1048576,
+    "regex_deadline_ms": 500,
+    "run_lifetime_seconds": 604800,
+    "input_wait_seconds": 86400,
+    "approval_wait_seconds": 900,
+    "paused_wait_seconds": 604800,
+    "history_retention": {
+      "mode": "duration",
+      "days": 365
+    },
+    "artifact_retention": {
+      "mode": "duration",
+      "days": 365
+    },
+    "trace_retention": {
+      "mode": "forever",
+      "days": 0
+    },
+    "external_disclosure": true,
+    "models": [
+      {
+        "provider": "openai",
+        "input_cached_microcredits_per_million": 1000000,
+        "context_tokens": 272000,
+        "id": "qa-model",
+        "provider_model": "qa-model",
+        "efforts": [
+          "low"
+        ],
+        "max_effort": "low",
+        "max_output_tokens": 4000,
+        "input_microcredits_per_million": 1000000,
+        "output_microcredits_per_million": 1000000,
+        "supports_images": false
+      }
+    ],
+    "default_model_id": "qa-model",
+    "default_effort": "low",
+    "initial_credits": 1000000,
+    "max_run_microcredits": 1000000,
+    "active_run_limit": 2,
+    "history_recent_limit": 100,
+    "max_steps": 30,
+    "question_timeout_seconds": 86400,
+    "version": 1
+  },
+  "run_id": "91e25c39-d42b-43db-b1b6-945e04d072dc",
+  "chat_id": "897f2c94-8863-499a-bdc3-8148fa3f51b6",
+  "owner_id": "3aabbf2d-01ff-427b-bfae-7874bc7d7fa2",
+  "actor_id": "394671129601570308",
+  "org_id": "394671085527889412",
+  "status": "completed",
+  "input": {
+    "text": "QA_QUESTION real issuer queue restart"
+  },
+  "result": "QA runtime completed",
+  "model_id": "qa-model",
+  "effort": "low",
+  "interaction": {
+    "questions": "choices_and_text",
+    "approvals": true
+  },
+  "auth_session_id": "6f6886a7-8ae1-4de8-9293-103d6372e93e",
+  "max_microcredits": 10000,
+  "spent_microcredits": 220,
+  "reserved_microcredits": 0,
+  "version": 14,
+  "pause_requested": false,
+  "cancel_requested": false,
+  "created_at": "2026-10-11T17:55:49.051616Z",
+  "updated_at": "2026-10-11T17:56:04.049377Z",
+  "question": {
+    "question_id": "qa-call-01",
+    "text": "Choose QA answer",
+    "choices": [
+      {
+        "id": "yes",
+        "label": "Yes"
+      }
+    ],
+    "allow_text": true,
+    "expires_at": "2026-10-12T17:55:49.190286913Z",
+    "answer": {
+      "id": "9e1c701d-8b49-4465-aeb1-9f3d27f1b985",
+      "kind": "answer",
+      "text": "Actual fresh user answer",
+      "question_id": "qa-call-01",
+      "applied": false
+    }
+  }
+}

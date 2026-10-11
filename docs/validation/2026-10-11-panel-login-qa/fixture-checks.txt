@@ -1,0 +1,8 @@
+PASS real public OIDC client auth method NONE
+PASS approved exact loopback callback /admin
+PASS disposable loopback HTTP development mode
+PASS real provider issues signed JWT access tokens
+PASS unauthenticated diagnostics denies HTTP401
+PASS actual instance selects built-in legacy login
+PASS actual disposable human email is verified
+PASS actual disposable human email is verified

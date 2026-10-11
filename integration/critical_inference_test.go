@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"context"
@@ -9,29 +9,54 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/complynx/clx-scripter/internal/domain"
 	"github.com/complynx/clx-scripter/internal/provider"
 	"github.com/complynx/clx-scripter/internal/runs"
-	"github.com/stretchr/testify/require"
 )
 
 func TestIncompletePaidResponseDoesNotExecuteOrReplayToolCalls(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	model, _ := fakeModel(t, f, func(index int) any {
 		if index == 1 {
-			return map[string]any{"id": "incomplete-response", "status": "incomplete", "output": []any{map[string]any{"type": "function_call", "call_id": "incomplete-never-execute", "name": "script", "arguments": `{"code":"return modules.booking.book({slot_id:'slot'})"}`}}, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}}
+			return map[string]any{
+				"id":     "incomplete-response",
+				"status": "incomplete",
+				"output": []any{
+					map[string]any{
+						"type":      "function_call",
+						"call_id":   "incomplete-never-execute",
+						"name":      "script",
+						"arguments": `{"code":"return modules.booking.book({slot_id:'slot'})"}`,
+					},
+				},
+				"usage": map[string]int{"input_tokens": 10, "output_tokens": 5},
+			}
 		}
 		return finalResponse("Recovered after incomplete response")
 	})
 	client, err := provider.NewResponses(model.server.URL, "test-provider-key", model.server.Client())
 	require.NoError(t, err)
 	var effects atomic.Int32
-	engine := runs.New(f.repository, client, runs.Options{Owner: "incomplete-worker", Authorize: func(context.Context, domain.Run) (domain.Principal, string, error) {
-		return domain.Principal{Subject: "alice", Permissions: map[string]bool{"chat.read": true, "runs.create": true}}, "token", nil
-	}, Script: func(context.Context, domain.Run, domain.Principal, string, string) (json.RawMessage, error) {
-		effects.Add(1)
-		return json.RawMessage(`{"executed":true}`), nil
-	}})
+	engine := runs.New(
+		f.repository,
+		client,
+		runs.Options{
+			Owner: "incomplete-worker",
+			Authorize: func(context.Context, domain.Run) (domain.Principal, string, error) {
+				return domain.Principal{
+					Subject:     "alice",
+					Permissions: map[string]bool{"chat.read": true, "runs.create": true},
+				}, "token", nil
+			},
+			Script: func(context.Context, domain.Run, domain.Principal, string, string) (json.RawMessage, error) {
+				effects.Add(1)
+				return json.RawMessage(`{"executed":true}`), nil
+			},
+		},
+	)
 	run := f.createRun(t, runRequest("", "", "Help with request"), "incomplete-run")
 	require.NoError(t, engine.Execute(context.Background(), run.ID))
 	paused := f.run(t, run.ID)
@@ -52,6 +77,7 @@ func TestIncompletePaidResponseDoesNotExecuteOrReplayToolCalls(t *testing.T) {
 	model.mu.Unlock()
 }
 func TestCancelDuringInferenceCannotBeOverwrittenByLateFinal(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -71,9 +97,19 @@ func TestCancelDuringInferenceCannotBeOverwrittenByLateFinal(t *testing.T) {
 	t.Cleanup(endpoint.Close)
 	client, err := provider.NewResponses(endpoint.URL, "test-provider-key", endpoint.Client())
 	require.NoError(t, err)
-	engine := runs.New(f.repository, client, runs.Options{Owner: "cancel-worker", Authorize: func(context.Context, domain.Run) (domain.Principal, string, error) {
-		return domain.Principal{Subject: "alice", Permissions: map[string]bool{"chat.read": true, "runs.create": true}}, "token", nil
-	}})
+	engine := runs.New(
+		f.repository,
+		client,
+		runs.Options{
+			Owner: "cancel-worker",
+			Authorize: func(context.Context, domain.Run) (domain.Principal, string, error) {
+				return domain.Principal{
+					Subject:     "alice",
+					Permissions: map[string]bool{"chat.read": true, "runs.create": true},
+				}, "token", nil
+			},
+		},
+	)
 	run := f.createRun(t, runRequest("", "", "Long provider request"), "cancel-run")
 	done := make(chan error, 1)
 	go func() { done <- engine.Execute(context.Background(), run.ID) }()
@@ -87,8 +123,8 @@ func TestCancelDuringInferenceCannotBeOverwrittenByLateFinal(t *testing.T) {
 	requireControlReceipt(t, raw)
 	close(release)
 	select {
-	case err := <-done:
-		require.NoError(t, err)
+	case resultErr := <-done:
+		require.NoError(t, resultErr)
 	case <-time.After(time.Second):
 		t.Fatal("cancelled worker did not stop")
 	}

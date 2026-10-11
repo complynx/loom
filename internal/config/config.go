@@ -5,11 +5,23 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"go.yaml.in/yaml/v3"
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
+)
+
+const (
+	maxShutdownDeadlineMS        = 5000
+	heartbeatLeaseFactor         = 2
+	maxJWKSCacheTTLSeconds       = 3600
+	encryptionKeyBytes           = 32
+	defaultSponsoredAttemptLimit = 2
+	maxSponsoredAttemptLimit     = 8
 )
 
 type HTTP struct {
@@ -34,6 +46,7 @@ type Identity struct {
 	RefreshableExchangeEnabled bool                `yaml:"refreshable_exchange_enabled"`
 	EncryptionKeyFile          string              `yaml:"encryption_key_file"`
 	EncryptionKeyID            string              `yaml:"encryption_key_id"`
+	PreviousEncryptionKeys     map[string]string   `yaml:"previous_encryption_keys"`
 	PermissionsCacheTTLSeconds int                 `yaml:"permissions_cache_ttl_seconds"`
 	JWKSCacheTTLSeconds        int                 `yaml:"jwks_cache_ttl_seconds"`
 	RolePermissions            map[string][]string `yaml:"role_permissions"`
@@ -50,8 +63,12 @@ type Discovery struct {
 	DynamicCacheCeilingSeconds int      `yaml:"dynamic_cache_ceiling_seconds"`
 }
 type Provider struct {
-	Endpoint string `yaml:"endpoint"`
-	APIKey   string `yaml:"api_key"`
+	Kind       string `yaml:"kind"`
+	Mailbox    string `yaml:"mailbox"`
+	Executable string `yaml:"executable"`
+	CodexHome  string `yaml:"codex_home"`
+	Endpoint   string `yaml:"endpoint"`
+	APIKey     string `yaml:"api_key"`
 }
 type Artifacts struct {
 	Root              string `yaml:"root"`
@@ -69,31 +86,48 @@ type Sandbox struct {
 	CleanupMS              int    `yaml:"cleanup_ms"`
 }
 type Execution struct {
-	LeaseSeconds             int `yaml:"lease_seconds"`
-	HeartbeatSeconds         int `yaml:"heartbeat_seconds"`
-	ShutdownTargetMS         int `yaml:"shutdown_target_ms"`
-	ShutdownDeadlineMS       int `yaml:"shutdown_deadline_ms"`
-	ActiveRunsPerUserCeiling int `yaml:"active_runs_per_user_ceiling"`
-	ActiveRunsTotalCeiling   int `yaml:"active_runs_total_ceiling"`
+	ProviderRetryAttemptLimit  int `yaml:"provider_retry_attempt_limit"`
+	ProviderRetryWindowSeconds int `yaml:"provider_retry_window_seconds"`
+	ProviderRetryShortLimit    int `yaml:"provider_retry_short_limit"`
+	ProviderRetryShortBudgetMS int `yaml:"provider_retry_short_budget_ms"`
+	SponsoredAttemptLimit      int `yaml:"sponsored_attempt_limit"`
+	LeaseSeconds               int `yaml:"lease_seconds"`
+	HeartbeatSeconds           int `yaml:"heartbeat_seconds"`
+	ShutdownTargetMS           int `yaml:"shutdown_target_ms"`
+	ShutdownDeadlineMS         int `yaml:"shutdown_deadline_ms"`
+	ActiveRunsPerUserCeiling   int `yaml:"active_runs_per_user_ceiling"`
+	ActiveRunsTotalCeiling     int `yaml:"active_runs_total_ceiling"`
 }
 type Model struct {
-	ID              string   `yaml:"id"`
-	Provider        string   `yaml:"provider"`
-	Model           string   `yaml:"model"`
-	Efforts         []string `yaml:"efforts"`
-	MaxEffort       string   `yaml:"max_effort"`
-	InputModalities []string `yaml:"input_modalities"`
-	ParallelTools   bool     `yaml:"parallel_tools"`
-	Steering        bool     `yaml:"steering"`
-	Questions       bool     `yaml:"questions"`
-	ContextTokens   int      `yaml:"context_tokens"`
-	MaxOutputTokens int      `yaml:"max_output_tokens"`
+	InputTokenLimit           int64    `yaml:"input_token_limit"`
+	CompactionThresholdTokens int64    `yaml:"compaction_threshold_tokens"`
+	CompactionTargetTokens    int64    `yaml:"compaction_target_tokens"`
+	ID                        string   `yaml:"id"`
+	Provider                  string   `yaml:"provider"`
+	Model                     string   `yaml:"model"`
+	Efforts                   []string `yaml:"efforts"`
+	MaxEffort                 string   `yaml:"max_effort"`
+	InputModalities           []string `yaml:"input_modalities"`
+	ParallelTools             bool     `yaml:"parallel_tools"`
+	Steering                  bool     `yaml:"steering"`
+	Questions                 bool     `yaml:"questions"`
+	ContextTokens             int      `yaml:"context_tokens"`
+	MaxOutputTokens           int      `yaml:"max_output_tokens"`
+}
+type LongContextTariff struct {
+	ThresholdTokens              int64 `yaml:"threshold_tokens"`
+	InputCreditsPerMillion       int64 `yaml:"input_credits_per_million"`
+	CachedInputCreditsPerMillion int64 `yaml:"cached_input_credits_per_million"`
+	CacheWriteCreditsPerMillion  int64 `yaml:"cache_write_credits_per_million"`
+	OutputCreditsPerMillion      int64 `yaml:"output_credits_per_million"`
 }
 type Tariff struct {
-	ModelID                      string `yaml:"model_id"`
-	InputCreditsPerMillion       int64  `yaml:"input_credits_per_million"`
-	CachedInputCreditsPerMillion int64  `yaml:"cached_input_credits_per_million"`
-	OutputCreditsPerMillion      int64  `yaml:"output_credits_per_million"`
+	CacheWriteCreditsPerMillion  int64              `yaml:"cache_write_credits_per_million"`
+	LongContext                  *LongContextTariff `yaml:"long_context"`
+	ModelID                      string             `yaml:"model_id"`
+	InputCreditsPerMillion       int64              `yaml:"input_credits_per_million"`
+	CachedInputCreditsPerMillion int64              `yaml:"cached_input_credits_per_million"`
+	OutputCreditsPerMillion      int64              `yaml:"output_credits_per_million"`
 }
 type Retention struct {
 	Mode string `yaml:"mode"`
@@ -127,10 +161,17 @@ type Settings struct {
 	ExternalDisclosureDefault bool      `yaml:"external_disclosure_default"`
 }
 type Observability struct {
-	LogLevel    string `yaml:"log_level"`
-	LogPayloads bool   `yaml:"log_payloads"`
+	LogLevel      string `yaml:"log_level"`
+	MetricsListen string `yaml:"metrics_listen"`
+	LogPayloads   bool   `yaml:"log_payloads"`
 }
+type Search struct {
+	SemanticEnabled bool `yaml:"semantic_enabled"`
+}
+
 type Config struct {
+	Operator          Operator            `yaml:"operator"`
+	Search            Search              `yaml:"search"`
 	HTTP              HTTP                `yaml:"http"`
 	Database          Database            `yaml:"database"`
 	Identity          Identity            `yaml:"identity"`
@@ -144,7 +185,9 @@ type Config struct {
 }
 
 func Load(path string) (Config, error) {
-	b, e := os.ReadFile(path) // #nosec G304 -- Config path is supplied by the operator at startup, never by an HTTP request.
+	b, e := os.ReadFile(
+		path,
+	) // #nosec G304 -- Config path is supplied by the operator at startup, never by an HTTP request.
 	if e != nil {
 		return Config{}, e
 	}
@@ -186,23 +229,50 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	}
 	strict := yaml.NewDecoder(bytes.NewReader(expanded))
 	strict.KnownFields(true)
-	var c Config
-	if e := strict.Decode(&c); e != nil {
-		return Config{}, e
+	c := Config{
+		Execution: Execution{
+			SponsoredAttemptLimit:      defaultSponsoredAttemptLimit,
+			ProviderRetryAttemptLimit:  defaultProviderRetryAttempts,
+			ProviderRetryWindowSeconds: defaultProviderRetryWindowSeconds,
+			ProviderRetryShortLimit:    maxProviderShortRetries,
+			ProviderRetryShortBudgetMS: maxProviderShortBudgetMS,
+		},
 	}
+	if decodeErr := strict.Decode(&c); decodeErr != nil {
+		return Config{}, decodeErr
+	}
+	applyOpenAIDefaults(&c)
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	for _, check := range []func() error{c.validateTrust, c.validateDeployment, c.validateLimits, c.validateCatalog, c.validateProviders, c.validateRetention} {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c Config) validateTrust() error {
+	if err := c.Operator.Validate(); err != nil {
+		return err
+	}
 	if c.Sandbox.EngineCandidate != "" && c.Sandbox.EngineCandidate != "goja" {
 		return errors.New("only goja sandbox engine is supported")
 	}
-	if c.Observability.LogPayloads {
-		return errors.New("raw payload logging is unsupported")
+	switch strings.ToLower(c.Observability.LogLevel) {
+	case "", "debug", "info", "warn", "error":
+	default:
+		return errors.New("log level must be debug, info, warn or error")
+	}
+	if c.Observability.LogPayloads && !strings.EqualFold(c.Observability.LogLevel, "debug") {
+		return errors.New("payload logging requires debug log level")
 	}
 	if c.HTTP.Listen == "" || c.Database.DSN == "" {
 		return errors.New("http.listen and database.dsn required")
 	}
-	if c.Identity.Issuer == "" || c.Identity.Audience == "" || c.Identity.ClientID == "" || c.Identity.ClientSecret == "" {
+	if c.Identity.Issuer == "" || c.Identity.Audience == "" || c.Identity.ClientID == "" ||
+		c.Identity.ClientSecret == "" {
 		return errors.New("identity trust roots and introspection credentials required")
 	}
 	if e := validateURL(c.Identity.Issuer); e != nil {
@@ -211,39 +281,81 @@ func (c Config) Validate() error {
 	if c.Identity.RefreshableExchangeEnabled {
 		return errors.New("refreshable exchange requires external Zitadel integration gate; unsupported in MVP")
 	}
-	if c.Execution.ShutdownDeadlineMS <= 0 || c.Execution.ShutdownDeadlineMS > 5000 || c.Execution.ShutdownTargetMS <= 0 || c.Execution.ShutdownTargetMS > c.Execution.ShutdownDeadlineMS {
+	return nil
+}
+
+func (c Config) validateDeployment() error {
+	if err := c.Execution.validateProviderRetry(); err != nil {
+		return err
+	}
+	if err := validateSponsoredAttempts(c.Execution.SponsoredAttemptLimit); err != nil {
+		return err
+	}
+	if c.Execution.ShutdownDeadlineMS <= 0 || c.Execution.ShutdownDeadlineMS > maxShutdownDeadlineMS ||
+		c.Execution.ShutdownTargetMS <= 0 ||
+		c.Execution.ShutdownTargetMS > c.Execution.ShutdownDeadlineMS {
 		return errors.New("shutdown deadline must be positive and at most 5000ms")
 	}
-	if c.Execution.HeartbeatSeconds <= 0 || c.Execution.LeaseSeconds <= 2*c.Execution.HeartbeatSeconds {
+	if c.Execution.HeartbeatSeconds <= 0 ||
+		c.Execution.LeaseSeconds <= heartbeatLeaseFactor*c.Execution.HeartbeatSeconds {
 		return errors.New("lease must exceed twice heartbeat interval")
 	}
-	if c.HTTP.MaxRequestBytes <= 0 || c.Database.MaxConnections <= 0 || c.Sandbox.MaxWorkers <= 0 || c.Sandbox.ScriptTimeoutCeilingMS <= 0 {
+	if c.HTTP.MaxRequestBytes <= 0 || c.Database.MaxConnections <= 0 || c.Sandbox.MaxWorkers <= 0 ||
+		c.Sandbox.ScriptTimeoutCeilingMS <= 0 {
 		return errors.New("request size, connections and sandbox limits must be positive")
 	}
+	return nil
+}
+
+func validateSponsoredAttempts(limit int) error {
+	if limit < 0 || limit > maxSponsoredAttemptLimit {
+		return errors.New("sponsored attempt limit must be between 0 and 8")
+	}
+	return nil
+}
+
+func (c Config) validateLimits() error {
 	if c.Identity.EncryptionKeyFile == "" || c.Identity.EncryptionKeyID == "" {
 		return errors.New("identity encryption key file and ID required")
 	}
-	if c.Sandbox.MemoryCeilingBytes <= 0 || c.Sandbox.PIDsCeiling <= 0 || c.Sandbox.ParallelRPCCeiling <= 0 || c.Artifacts.MaxUploadBytes <= 0 || c.Artifacts.QuotaPerUserBytes < c.Artifacts.MaxUploadBytes {
+	for keyID, path := range c.Identity.PreviousEncryptionKeys {
+		if keyID == "" || path == "" || keyID == c.Identity.EncryptionKeyID {
+			return errors.New("previous encryption key IDs must be nonempty, distinct from active, and have a file")
+		}
+	}
+	if c.Sandbox.MemoryCeilingBytes <= 0 || c.Sandbox.PIDsCeiling <= 0 || c.Sandbox.ParallelRPCCeiling <= 0 ||
+		c.Artifacts.MaxUploadBytes <= 0 ||
+		c.Artifacts.QuotaPerUserBytes < c.Artifacts.MaxUploadBytes {
 		return errors.New("sandbox and artifact limits must be positive and quota cover one upload")
 	}
-	if c.BootstrapSettings.ScriptTimeoutMS <= 0 || c.BootstrapSettings.ScriptTimeoutMS > c.Sandbox.ScriptTimeoutCeilingMS || c.BootstrapSettings.ParallelRPCLimit <= 0 || c.BootstrapSettings.ParallelRPCLimit > c.Sandbox.ParallelRPCCeiling {
+	if c.BootstrapSettings.ScriptTimeoutMS <= 0 ||
+		c.BootstrapSettings.ScriptTimeoutMS > c.Sandbox.ScriptTimeoutCeilingMS ||
+		c.BootstrapSettings.ParallelRPCLimit <= 0 ||
+		c.BootstrapSettings.ParallelRPCLimit > c.Sandbox.ParallelRPCCeiling {
 		return errors.New("bootstrap execution limits exceed deployment ceilings")
 	}
-	if c.Identity.JWKSCacheTTLSeconds <= 0 || c.Identity.JWKSCacheTTLSeconds > 3600 {
+	if c.Identity.JWKSCacheTTLSeconds <= 0 || c.Identity.JWKSCacheTTLSeconds > maxJWKSCacheTTLSeconds {
 		return errors.New("JWKS TTL must be within 1..3600 seconds")
 	}
+	return nil
+}
+
+func (c Config) validateCatalog() error {
 	ids := map[string]bool{}
 	for _, m := range c.BootstrapSettings.ModelCatalog {
 		if m.ID == "" || ids[m.ID] || m.Model == "" || m.ContextTokens <= 0 || m.MaxOutputTokens <= 0 {
 			return errors.New("invalid or duplicate model")
 		}
-		if _, ok := c.Providers[m.Provider]; !ok {
-			return errors.New("model provider missing")
+		if err := m.validate(c.Providers); err != nil {
+			return err
 		}
 		ids[m.ID] = true
 	}
-	if c.BootstrapSettings.DefaultModelID != "" && !ids[c.BootstrapSettings.DefaultModelID] {
+	if !ids[c.BootstrapSettings.DefaultModelID] {
 		return errors.New("default model missing")
+	}
+	if err := c.validateDefaultEffort(); err != nil {
+		return err
 	}
 	tariffIDs := map[string]bool{}
 	for _, t := range c.BootstrapSettings.Tariffs {
@@ -251,8 +363,8 @@ func (c Config) Validate() error {
 			return errors.New("duplicate model tariff")
 		}
 		tariffIDs[t.ModelID] = true
-		if !ids[t.ModelID] || t.InputCreditsPerMillion < 0 || t.CachedInputCreditsPerMillion < 0 || t.OutputCreditsPerMillion < 0 {
-			return errors.New("invalid tariff")
+		if err := t.validate(ids); err != nil {
+			return err
 		}
 	}
 	for modelID := range ids {
@@ -263,16 +375,71 @@ func (c Config) Validate() error {
 	if c.BootstrapSettings.InitialCredits < 0 || c.BootstrapSettings.MaxRunMicrocredits < 0 {
 		return errors.New("credit limits must be nonnegative")
 	}
-	for _, p := range c.Providers {
-		if e := validateURL(p.Endpoint); e != nil {
-			return e
+	return nil
+}
+
+func (c Config) validateDefaultEffort() error {
+	for _, model := range c.BootstrapSettings.ModelCatalog {
+		if model.ID != c.BootstrapSettings.DefaultModelID {
+			continue
 		}
-		if p.APIKey == "" {
-			return errors.New("provider API key required")
+		effort := c.BootstrapSettings.DefaultEffort
+		index := slices.Index(model.Efforts, effort)
+		ceiling := slices.Index(model.Efforts, model.MaxEffort)
+		if len(model.Efforts) == 0 && effort == "" {
+			return nil
+		}
+		if index < 0 || (model.MaxEffort != "" && (ceiling < 0 || index > ceiling)) {
+			return errors.New("default effort is not allowed by the default model")
 		}
 	}
+	return nil
+}
+
+func (c Config) validateProviders() error {
+	for _, p := range c.Providers {
+		if err := p.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p Provider) validate() error {
+	switch p.Kind {
+	case "", "responses":
+		if p.Mailbox != "" || p.Executable != "" || p.CodexHome != "" {
+			return errors.New("responses provider cannot use development provider settings")
+		}
+	case "mock":
+		if !filepath.IsAbs(p.Mailbox) || p.Executable != "" || p.CodexHome != "" || p.Endpoint != "" ||
+			p.APIKey != "" {
+			return errors.New("mock provider requires an absolute mailbox only")
+		}
+		return nil
+	case "codex":
+		if !filepath.IsAbs(p.Executable) || !filepath.IsAbs(p.CodexHome) || p.Mailbox != "" || p.Endpoint != "" ||
+			p.APIKey != "" {
+			return errors.New("codex provider requires absolute executable and dedicated home only")
+		}
+		return nil
+	default:
+		return errors.New("unknown provider kind")
+	}
+	if e := validateURL(p.Endpoint); e != nil {
+		return e
+	}
+	if p.APIKey == "" {
+		return errors.New("provider API key required")
+	}
+	return nil
+}
+
+func (c Config) validateRetention() error {
 	if c.BootstrapSettings.TraceRetention.Mode != "" && c.BootstrapSettings.TraceRetention.Mode != "forever" {
-		return errors.New("trace duration retention is not supported; use forever until a diagnostic trace store exists")
+		return errors.New(
+			"trace duration retention is not supported; use forever until a diagnostic trace store exists",
+		)
 	}
 	for _, r := range []Retention{c.BootstrapSettings.HistoryRetention, c.BootstrapSettings.ArtifactRetention} {
 		if r.Mode != "forever" && (r.Mode != "duration" || r.Days <= 0) {
@@ -283,7 +450,8 @@ func (c Config) Validate() error {
 }
 func validateURL(s string) error {
 	u, e := url.Parse(s)
-	if e != nil || u.Host == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" || (u.Scheme != "https" && u.Scheme != "http") {
+	if e != nil || u.Host == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" ||
+		(u.Scheme != "https" && u.Scheme != "http") {
 		return errors.New("expected HTTP(S) URL without credentials, query or fragment")
 	}
 	if u.Scheme == "http" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" {
@@ -292,15 +460,17 @@ func validateURL(s string) error {
 	return nil
 }
 func LoadEncryptionKey(path string) ([]byte, error) {
-	b, e := os.ReadFile(path) // #nosec G304 -- Credential file path comes from validated operator configuration, never from a client or manifest.
+	b, e := os.ReadFile(
+		path,
+	) // #nosec G304 -- Credential file path comes from validated operator configuration, never from a client or manifest.
 	if e != nil {
 		return nil, e
 	}
-	if len(b) == 32 {
+	if len(b) == encryptionKeyBytes {
 		return bytes.Clone(b), nil
 	}
 	decoded, e := base64.StdEncoding.DecodeString(strings.TrimSpace(string(b)))
-	if e != nil || len(decoded) != 32 {
+	if e != nil || len(decoded) != encryptionKeyBytes {
 		return nil, errors.New("encryption key must contain 32 raw bytes or base64 thereof")
 	}
 	return decoded, nil
@@ -308,3 +478,32 @@ func LoadEncryptionKey(path string) ([]byte, error) {
 
 // ValidateIdentityURL validates an immutable OIDC trust root.
 func ValidateIdentityURL(issuer string) error { return validateURL(issuer) }
+
+func (m Model) validate(providers map[string]Provider) error {
+	if m.InputTokenLimit < 0 ||
+		(m.InputTokenLimit > 0 && (m.InputTokenLimit > int64(m.ContextTokens) || m.CompactionThresholdTokens > m.InputTokenLimit)) {
+		return errors.New("invalid model input token limit")
+	}
+	if m.CompactionThresholdTokens < 0 || m.CompactionTargetTokens < 0 ||
+		(m.CompactionThresholdTokens > 0 && (m.CompactionThresholdTokens > int64(m.ContextTokens) || m.CompactionTargetTokens >= m.CompactionThresholdTokens)) ||
+		(m.CompactionThresholdTokens == 0 && m.CompactionTargetTokens != 0) {
+		return errors.New("invalid model compaction limits")
+	}
+	if _, ok := providers[m.Provider]; !ok {
+		return errors.New("model provider missing")
+	}
+	return nil
+}
+
+func (t Tariff) validate(ids map[string]bool) error {
+	if !ids[t.ModelID] || t.InputCreditsPerMillion < 0 || t.CachedInputCreditsPerMillion < 0 ||
+		t.OutputCreditsPerMillion < 0 ||
+		t.CacheWriteCreditsPerMillion < 0 {
+		return errors.New("invalid tariff")
+	}
+	if band := t.LongContext; band != nil &&
+		(band.ThresholdTokens <= 0 || band.InputCreditsPerMillion < 0 || band.CachedInputCreditsPerMillion < 0 || band.CacheWriteCreditsPerMillion < 0 || band.OutputCreditsPerMillion < 0) {
+		return errors.New("invalid long context tariff")
+	}
+	return nil
+}

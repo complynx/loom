@@ -1,0 +1,21 @@
+{
+  "reason": "limit",
+  "truncated_seqs": [
+    1
+  ],
+  "events": [
+    {
+      "action": "menu.opened",
+      "seq": 1,
+      "type": "user.action",
+      "text": "Opened lav",
+      "data": null,
+      "source_actor": "qa-human",
+      "source_event_id": "passive-f67acbc4-b537-4c94-b07a-4ad2bb17aa1e-one",
+      "occurred_at": "2026-10-11T18:01:32.447239Z",
+      "received_at": "2026-10-11T18:01:32.461225Z"
+    }
+  ],
+  "partial": true,
+  "next_cursor": 1
+}

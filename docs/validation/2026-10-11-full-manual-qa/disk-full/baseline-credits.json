@@ -1,0 +1,4 @@
+{
+  "status": 200,
+  "body": "{\"available_microcredits\":1000000,\"spent_microcredits\":0,\"reserved_microcredits\":0}\n"
+}

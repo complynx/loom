@@ -6,13 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/domain"
 )
 
 func TestExhaustedQueueRecoveryPreservesUncertaintyAndLiveWork(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -21,17 +24,18 @@ func TestExhaustedQueueRecoveryPreservesUncertaintyAndLiveWork(t *testing.T) {
 	_, e = migrator.Migrate(ctx, rivermigrate.DirectionUp, nil)
 	require.NoError(t, e)
 	create := func(key string) domain.Run {
-		chat, e := s.CreateChat(ctx, p)
-		require.NoError(t, e)
+		chat, runErr := s.CreateChat(ctx, p)
+		require.NoError(t, runErr)
 		in := request()
 		in.ChatID = chat.ID
-		r, e := s.CreateRun(ctx, p, key, in)
-		require.NoError(t, e)
+		r, runErr := s.CreateRun(ctx, p, key, in)
+		require.NoError(t, runErr)
 		return r
 	}
 	job := func(r domain.Run, state string) {
-		_, e := s.Pool().Exec(ctx, `INSERT INTO river_job(args,kind,max_attempts,priority,queue,state,scheduled_at,finalized_at) VALUES($1,'clx_execute_run',5,1,'default',$2::river_job_state,now(),CASE WHEN $2::text IN('discarded','cancelled') THEN now() ELSE NULL END)`, json.RawMessage(`{"run_id":"`+r.ID+`"}`), state)
-		require.NoError(t, e)
+		_, insertErr := s.Pool().
+			Exec(ctx, `INSERT INTO river_job(args,kind,max_attempts,priority,queue,state,scheduled_at,finalized_at) VALUES($1,'clx_execute_run',5,1,'default',$2::river_job_state,now(),CASE WHEN $2::text IN('discarded','cancelled') THEN now() ELSE NULL END)`, json.RawMessage(`{"run_id":"`+r.ID+`"}`), state)
+		require.NoError(t, insertErr)
 	}
 	paused := create("paused")
 	job(paused, "discarded")
@@ -44,7 +48,8 @@ func TestExhaustedQueueRecoveryPreservesUncertaintyAndLiveWork(t *testing.T) {
 	require.NoError(t, e)
 	job(uncertain, "discarded")
 	writeUncertain := create("write")
-	_, e = s.Pool().Exec(ctx, `INSERT INTO write_operations(id,run_id,call_id,state,doc) VALUES(gen_random_uuid(),$1,'call','dispatching','{}')`, writeUncertain.ID)
+	_, e = s.Pool().
+		Exec(ctx, `INSERT INTO write_operations(id,run_id,call_id,state,doc) VALUES(gen_random_uuid(),$1,'call','dispatching','{}')`, writeUncertain.ID)
 	require.NoError(t, e)
 	job(writeUncertain, "discarded")
 	live := create("live")
@@ -67,7 +72,10 @@ func TestExhaustedQueueRecoveryPreservesUncertaintyAndLiveWork(t *testing.T) {
 	require.EqualValues(t, 10, got.ReservedMicrocredits)
 	_, e = s.Control(ctx, p, uncertain.ID, "resume", "resume")
 	code(t, e, "inference_uncertain")
-	require.Error(t, s.CompleteStep(ctx, uncertain.ID, "worker", uncertain.Fence, step.ID, json.RawMessage(`{}`), domain.Usage{}))
+	require.Error(
+		t,
+		s.CompleteStep(ctx, uncertain.ID, "worker", uncertain.Fence, step.ID, json.RawMessage(`{}`), domain.Usage{}),
+	)
 	got, e = s.GetRun(ctx, p, writeUncertain.ID)
 	require.NoError(t, e)
 	require.Equal(t, domain.Reconciling, got.State)

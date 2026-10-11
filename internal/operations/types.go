@@ -46,6 +46,7 @@ type Preparation struct {
 
 type Operation struct {
 	Request
+
 	ID           string          `json:"operation_id"`
 	State        string          `json:"state"`
 	CancelReason string          `json:"cancel_reason,omitempty"`

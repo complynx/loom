@@ -1,0 +1,82 @@
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.80s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.73s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.80s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.71s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.54s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.67s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.55s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.61s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.55s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.48s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.53s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.51s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.49s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.50s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.52s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.48s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.47s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.48s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.49s)
+=== RUN   TestQACancelAtDatabaseReadDiagnostic
+    failure_process_qa_test.go:75: injected read cancellation err=<nil> state=cancelled cancel_requested=true result="" reason=client_cancel spent=15 reserved=0
+Cancellation DB-load window checkpointed
+--- PASS: TestQACancelAtDatabaseReadDiagnostic (0.50s)
+PASS
+ok  	github.com/complynx/clx-scripter/integration	12.484s

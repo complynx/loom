@@ -1,0 +1,29 @@
+?   	github.com/complynx/clx-scripter/cmd/clx-acceptance	[no test files]
+?   	github.com/complynx/clx-scripter/cmd/clx-scripter	[no test files]
+--- FAIL: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (1.77s)
+    critical_inference_test.go:127: 
+        	Error Trace:	/src/integration/critical_inference_test.go:127
+        	Error:      	Received unexpected error:
+        	            	context canceled
+        	Test:       	TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+FAIL
+FAIL	github.com/complynx/clx-scripter/integration	19.389s
+ok  	github.com/complynx/clx-scripter/internal/acceptance	1.242s
+ok  	github.com/complynx/clx-scripter/internal/api	1.149s
+ok  	github.com/complynx/clx-scripter/internal/app	7.475s
+ok  	github.com/complynx/clx-scripter/internal/artifacts	1.303s
+ok  	github.com/complynx/clx-scripter/internal/config	1.219s
+ok  	github.com/complynx/clx-scripter/internal/domain	1.100s
+ok  	github.com/complynx/clx-scripter/internal/history	1.050s
+ok  	github.com/complynx/clx-scripter/internal/identity	1.747s
+ok  	github.com/complynx/clx-scripter/internal/lifecycle	5.427s
+ok  	github.com/complynx/clx-scripter/internal/modules	2.013s
+ok  	github.com/complynx/clx-scripter/internal/operations	4.569s
+ok  	github.com/complynx/clx-scripter/internal/provider	3.469s
+?   	github.com/complynx/clx-scripter/internal/runs	[no test files]
+ok  	github.com/complynx/clx-scripter/internal/sandbox	2.261s
+ok  	github.com/complynx/clx-scripter/internal/store	32.842s
+?   	github.com/complynx/clx-scripter/internal/store/dbgen	[no test files]
+ok  	github.com/complynx/clx-scripter/internal/telemetry	1.063s
+?   	github.com/complynx/clx-scripter/migrations	[no test files]
+FAIL

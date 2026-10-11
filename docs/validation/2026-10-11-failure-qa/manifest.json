@@ -1,0 +1,34 @@
+[
+  {
+    "Hash": "6B9D260AFBD307239108E99809006E759D6E1719F40F0EECF7ED8CA3C00282D3",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\cancel-linux-race.txt"
+  },
+  {
+    "Hash": "6DD6B2A49E570D922AF486462BF628883C3CC1825E898B461B575C51FE5A76DF",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\cancel-windows.txt"
+  },
+  {
+    "Hash": "3F59C1E35E28854E929531D1669B8EBB2BDAF8BDBA0A7F6973289EB93FF0666E",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\failure_process_test.go.txt"
+  },
+  {
+    "Hash": "32A53F9F98BCCBE5FB94F640F4C8C90000CA5CD09B752F4346DD7CC5A9BF44D3",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\overlay-linux.json"
+  },
+  {
+    "Hash": "5ACA107CA988FC0631D3E8C5D00A44CA885D88AB0A037315E439D2471300FDF5",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\overlay-windows.json"
+  },
+  {
+    "Hash": "900454CFFCA78EB9508D795F51CD1FD8D0191F9E0323DB022BB7E69A644967EA",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\process-boundaries-linux-race.txt"
+  },
+  {
+    "Hash": "1BE46143365D7D66D2E87C4CBBA3529D2AEB15A11EAD5DCAF2ED5E4DB10D1D0E",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\process-boundaries.txt"
+  },
+  {
+    "Hash": "FD54D04E00E8B706CE3EB4372AEF5CDEAD8055B7EF7F5DFC8A120EC05988ABDF",
+    "Path": "C:\\Users\\ddriz\\Projects\\clx-scripter\\docs\\validation\\2026-10-11-failure-qa\\report.md"
+  }
+]

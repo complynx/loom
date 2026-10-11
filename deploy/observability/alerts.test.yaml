@@ -1,0 +1,33 @@
+rule_files: [alerts.yaml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'clx_dependency_up{job="integrations/clx-scripter",component="database"}'
+        values: '1 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ClxScripterDependencyUnavailable
+        exp_alerts:
+          - exp_labels: {job: integrations/clx-scripter, component: database, severity: critical}
+            exp_annotations:
+              summary: Harness dependency database unavailable
+              description: Check safe dependency status logs and container state.
+      - eval_time: 4m
+        alertname: ClxScripterDependencyUnavailable
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'clx_unknown_inference_steps{job="integrations/clx-scripter"}'
+        values: '0 1 1 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ClxScripterUnknownInference
+        exp_alerts:
+          - exp_labels: {job: integrations/clx-scripter, severity: warning}
+            exp_annotations:
+              summary: Inference requires usage reconciliation
+              description: Find the run checkpoint in Loki; reconcile with provider proof. Never replay an unknown billed request.
+      - eval_time: 4m
+        alertname: ClxScripterUnknownInference
+        exp_alerts: []

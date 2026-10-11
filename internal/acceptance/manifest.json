@@ -1,0 +1,119 @@
+{
+  "protocol_version": 1,
+  "service_id": "acceptance",
+  "revision": "v1",
+  "description": "Acceptance fixture only. English caveman prose. Static read, dynamic methods, confirmed durable write, status and blob.",
+  "modules": [
+    {
+      "id": "fixture",
+      "description": "Static read and confirmed durable write",
+      "permissions": [
+        "qa.access"
+      ],
+      "discovery": "static",
+      "methods": [
+        {
+          "id": "read",
+          "description": "read",
+          "permissions": [
+            "qa.read"
+          ],
+          "path": "/read",
+          "effect": "read",
+          "timeout_ms": 3000,
+          "max_result_bytes": 65536,
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "idempotency": false,
+          "confirmation": {
+            "mode": "none"
+          },
+          "artifact_mime_types": [
+            "text/plain"
+          ],
+          "external_disclosure": true
+        },
+        {
+          "id": "write",
+          "description": "write",
+          "permissions": [
+            "qa.write"
+          ],
+          "path": "/write",
+          "effect": "write",
+          "timeout_ms": 3000,
+          "max_result_bytes": 65536,
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "idempotency": true,
+          "confirmation": {
+            "mode": "service_id",
+            "prepare_path": "/prepare"
+          },
+          "artifact_mime_types": [
+            "text/plain"
+          ],
+          "external_disclosure": true,
+          "status_path": "/status",
+          "deduplication_window_seconds": 86400
+        }
+      ]
+    },
+    {
+      "id": "fixture_dynamic",
+      "description": "User-scoped dynamic read methods",
+      "permissions": [
+        "qa.access"
+      ],
+      "discovery": "dynamic",
+      "discovery_path": "/discover",
+      "cache_ttl_seconds": 60
+    }
+  ]
+}

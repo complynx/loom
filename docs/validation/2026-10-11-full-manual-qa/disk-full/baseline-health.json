@@ -1,0 +1,10 @@
+{
+  "readiness": {
+    "status": 200,
+    "body": "{\"status\":\"ready\"}\n"
+  },
+  "health": {
+    "status": 200,
+    "body": "{\"status\":\"ok\"}\n"
+  }
+}

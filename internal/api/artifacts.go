@@ -12,6 +12,8 @@ import (
 	"github.com/complynx/clx-scripter/internal/domain"
 )
 
+const artifactTransferTimeout = 30 * time.Second
+
 func (s *server) artifactPrincipal(ctx context.Context, p domain.Principal) (artifacts.Principal, error) {
 	uid, err := s.store.ResolveUser(ctx, p)
 	return artifacts.Principal{OwnerID: uid, OrgID: p.OrgID}, err
@@ -19,26 +21,29 @@ func (s *server) artifactPrincipal(ctx context.Context, p domain.Principal) (art
 func artifactError(err error) error {
 	switch {
 	case errors.Is(err, artifacts.ErrTooLarge):
-		return apiError(413, "artifact_too_large", "Artifact exceeds the upload limit")
+		return apiError(http.StatusRequestEntityTooLarge, "artifact_too_large", "Artifact exceeds the upload limit")
 	case errors.Is(err, artifacts.ErrNotFound), errors.Is(err, artifacts.ErrForbidden):
-		return apiError(404, "not_found", "Artifact is unavailable")
+		return apiError(http.StatusNotFound, "not_found", "Artifact is unavailable")
 	case errors.Is(err, artifacts.ErrInvalid):
-		return apiError(422, "invalid_artifact", "Artifact does not match the contract")
+		return apiError(http.StatusUnprocessableEntity, "invalid_artifact", "Artifact does not match the contract")
 	default:
 		return err
 	}
 }
 func (s *server) uploadArtifact(w http.ResponseWriter, r *http.Request, p domain.Principal) error {
 	if s.options.Artifacts == nil {
-		return apiError(503, "dependency_unavailable", "Artifact storage is unavailable")
+		return apiError(http.StatusServiceUnavailable, "dependency_unavailable", "Artifact storage is unavailable")
 	}
 	owner, err := s.artifactPrincipal(r.Context(), p)
 	if err != nil {
 		return err
 	}
 	controller := http.NewResponseController(w)
-	if err := controller.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		return apiError(408, "request_timeout", "Upload could not be read")
+	if deadlineErr := controller.SetReadDeadline(
+		time.Now().Add(artifactTransferTimeout),
+	); deadlineErr != nil &&
+		!errors.Is(deadlineErr, http.ErrNotSupported) {
+		return apiError(http.StatusRequestTimeout, "request_timeout", "Upload could not be read")
 	}
 	stop := context.AfterFunc(r.Context(), func() { _ = r.Body.Close() })
 	defer stop()
@@ -46,12 +51,12 @@ func (s *server) uploadArtifact(w http.ResponseWriter, r *http.Request, p domain
 	if err != nil {
 		return artifactError(err)
 	}
-	write(w, 201, artifact)
+	write(w, http.StatusCreated, artifact)
 	return nil
 }
 func (s *server) artifactMetadata(w http.ResponseWriter, r *http.Request, p domain.Principal) error {
 	if s.options.Artifacts == nil {
-		return apiError(503, "dependency_unavailable", "Artifact storage is unavailable")
+		return apiError(http.StatusServiceUnavailable, "dependency_unavailable", "Artifact storage is unavailable")
 	}
 	owner, err := s.artifactPrincipal(r.Context(), p)
 	if err != nil {
@@ -61,12 +66,12 @@ func (s *server) artifactMetadata(w http.ResponseWriter, r *http.Request, p doma
 	if err != nil {
 		return artifactError(err)
 	}
-	write(w, 200, artifact)
+	write(w, http.StatusOK, artifact)
 	return nil
 }
 func (s *server) artifactContent(w http.ResponseWriter, r *http.Request, p domain.Principal) error {
 	if s.options.Artifacts == nil {
-		return apiError(503, "dependency_unavailable", "Artifact storage is unavailable")
+		return apiError(http.StatusServiceUnavailable, "dependency_unavailable", "Artifact storage is unavailable")
 	}
 	owner, err := s.artifactPrincipal(r.Context(), p)
 	if err != nil {
@@ -90,8 +95,11 @@ func (s *server) artifactContent(w http.ResponseWriter, r *http.Request, p domai
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				fresh, err := s.auth.Authenticate(ctx, r)
-				if err != nil || fresh.Issuer != p.Issuer || fresh.Subject != p.Subject || fresh.Actor != p.Actor || fresh.OrgID != p.OrgID || !fresh.Has("artifacts.read") || (!fresh.ExpiresAt.IsZero() && !time.Now().Before(fresh.ExpiresAt)) {
+				fresh, authErr := s.auth.Authenticate(ctx, r)
+				if authErr != nil || fresh.Issuer != p.Issuer || fresh.Subject != p.Subject || fresh.Actor != p.Actor ||
+					fresh.OrgID != p.OrgID ||
+					!fresh.Has("artifacts.read") ||
+					(!fresh.ExpiresAt.IsZero() && !time.Now().Before(fresh.ExpiresAt)) {
 					cancel()
 					return
 				}
@@ -103,7 +111,10 @@ func (s *server) artifactContent(w http.ResponseWriter, r *http.Request, p domai
 	w.Header().Set("Content-Disposition", `attachment; filename="artifact"`)
 	w.Header().Set("ETag", `"`+artifact.SHA256+`"`)
 	controller := http.NewResponseController(w)
-	if err := controller.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+	if deadlineErr := controller.SetWriteDeadline(
+		time.Now().Add(artifactTransferTimeout),
+	); deadlineErr != nil &&
+		!errors.Is(deadlineErr, http.ErrNotSupported) {
 		return nil
 	}
 	_, _ = io.Copy(w, reader)

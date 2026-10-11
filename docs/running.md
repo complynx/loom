@@ -33,7 +33,7 @@ JS supervisor запускается без сети, секретов, Linux ca
 
 ## Границы MVP
 
-Реализованы HTTP one-shot и SSE. WebSocket, автоматический OAuth token exchange/refresh, входящие непрозрачные сервисные секреты и отдельный metrics endpoint не входят в этот срез. Сервисы используют проверенные Zitadel access tokens. Динамическая конфигурация моделей может добавлять модели в пределах provider aliases, заданных deployment config; новый provider требует перезапуска.
+Реализованы HTTP one-shot и SSE. WebSocket, автоматический OAuth token exchange/refresh, входящие непрозрачные сервисные секреты не входят в этот срез. Приватные метрики и JSON-логи настроены под [Alloy/Grafana Cloud](observability.md). Сервисы используют проверенные Zitadel access tokens. Динамическая конфигурация моделей может добавлять модели в пределах provider aliases, заданных deployment config; новый provider требует перезапуска.
 
 ## Клиент
 
@@ -52,15 +52,21 @@ curl -H "Authorization: Bearer $USER_TOKEN" \
 
 Сервис начинает делегацию с собственного Bearer и `X-Subject-Token` пользователя. Затем может использовать `X-Auth-Session-ID` со свежим собственным Bearer. Сессия связана с user, actor, issuer, audience и организацией. Просроченная или отозванная авторизация блокирует дальнейшее исполнение; reauthorize заменяет сессию авторизацией той же стороны.
 
+## Дополнительные возможности
+
+[Личная память](user-memory.md) доступна каждому авторизованному пользователю без отдельных ролей. Micro-профиль добавляется в каждый inference; три уровня остальной памяти читаются по необходимости. [API](api.md) описывает bounded history search/read, previous-run cache hints и temporary artifact handles. `search.semantic_enabled: false` полностью скрывает vector tool и отключает indexing route; включённый режим требует pgvector и готовых векторов, без embeddings-сервиса. Для сервера используйте [подробный rollout](server-rollout.md).
+
 ## Восстановление
 
-При SIGTERM сервис прекращает приём, отменяет inference/скрипты, сохраняет состояние и закрывает соединения в пределах пяти секунд. Клиент возвращается с прежним run ID. Если удалённый inference или write мог выполниться, состояние `reconciling` сохраняет неопределённость; новый worker не повторяет действие вслепую.
+При SIGTERM сервис прекращает приём, отменяет inference/скрипты, сохраняет состояние и закрывает соединения в пределах пяти секунд. Клиент возвращается с прежним run ID. Неопределённый inference учитывается по [sponsored policy](active-compaction.md); исключённые случаи сохраняют `reconciling` до сверки. Неизвестный write новый worker не повторяет вслепую. [Hybrid retry](hybrid-retry.md) применяется отдельно к доказанным output-free отказам.
 
 После исчерпания пяти попыток River задания startup/periodic sweep переводит run без живого job и lease в `paused` с причиной `queue_attempts_exhausted`. После восстановления зависимости клиент явно вызывает resume. При неопределённых результатах вместо этого требуется reconciliation; резерв сохраняется.
 
 Write сверяется через status API модуля с прежним operation ID. Потерянную оплату inference сверяет оператор через `/v1/admin/runs/{id}/steps/{step}/reconcile`, с receipt или явной attestation, причиной и точной тарифицированной usage. После сверки resumable run становится paused. Резерв не освобождается по догадке; отменённые terminal run не возобновляются.
 
 Удаление чата закрывает доступ и отменяет run. История и summaries очищаются согласно retention; финансовый аудит и необходимые recovery records сохраняются. Это контролируемое удаление, без обещания secure erase всех резервных копий и operational checkpoints. Retention новых ресурсов фиксируется при создании; обычный settings patch не сокращает срок уже существующих данных.
+
+Для ротации шифрования сессий используйте [keyring и пакетную миграцию](session-key-rotation.md). Удаление старого ключа из конфигурации до завершения миграции блокирует startup; ключи для исторических backup сохраняйте отдельно.
 
 ## Проверки
 
@@ -71,7 +77,7 @@ python3 scripts/dependency-lock.py --check
 go mod verify
 ```
 
-Без тестового DSN SQL/integration проверки пропускаются. Для acceptance нужен отдельный PostgreSQL и Linux `-race` gate. Реальные Zitadel и provider credentials не используются в тестах; installed-version validation и production deployment остаются отдельной проверкой оператора.
+Без тестового DSN SQL/integration проверки пропускаются. Для acceptance нужен отдельный PostgreSQL и Linux `-race` gate. Обычные тесты используют fixtures. Отдельные отчёты фиксируют [local Zitadel browser QA](validation/2026-10-11-panel-login-qa/README.md) и [один live OpenAI call](validation/2026-10-11-openai-live-qa/LIVE-RESULT.md). Эти проверки не подтверждают production-настройки или все live model capabilities; deployment остаётся отдельной проверкой оператора.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk

@@ -9,12 +9,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/complynx/clx-scripter/internal/modules"
 	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/stretchr/testify/require"
 )
 
 func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	var effects atomic.Int32
@@ -30,23 +33,26 @@ func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
 			IdempotencyKey string          `json:"idempotency_key"`
 			Confirmation   map[string]any  `json:"confirmation"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		require.Equal(t, "operation-stable", request.OperationID)
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		assert.Equal(t, "operation-stable", request.OperationID)
 		switch r.URL.Path {
 		case "/internal/agent/massage/prepare-booking":
-			require.JSONEq(t, `{"slot_id":"slot-one"}`, string(request.Arguments))
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "prepared", "operation_id": request.OperationID, "confirmation_id": "prepared-confirmation", "arguments": json.RawMessage(`{"slot_id":"slot-one"}`), "expires_at": time.Now().Add(time.Minute), "description": "Book requested slot"})
+			assert.JSONEq(t, `{"slot_id":"slot-one"}`, string(request.Arguments))
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"status": "prepared", "operation_id": request.OperationID, "confirmation_id": "prepared-confirmation", "arguments": json.RawMessage(`{"slot_id":"slot-one"}`), "expires_at": time.Now().Add(time.Minute), "description": "Book requested slot"})
 		case "/internal/agent/massage/book-slot":
 			effects.Add(1)
-			require.Equal(t, request.OperationID, request.IdempotencyKey)
-			require.Equal(t, "prepared-confirmation", request.Confirmation["confirmation_id"])
+			assert.Equal(t, request.OperationID, request.IdempotencyKey)
+			assert.Equal(t, "prepared-confirmation", request.Confirmation["confirmation_id"])
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "accepted", "operation_id": request.OperationID})
 		case "/internal/agent/operations/status":
 			status.Add(1)
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "not_found", "operation_id": request.OperationID})
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
@@ -61,7 +67,21 @@ func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
 	actions, err := registry.ListActions(context.Background(), p)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	operation := operations.Operation{ID: "operation-stable", Request: operations.Request{RunID: "run", Module: "massage", Method: "book_slot", Mode: "service_id", Arguments: json.RawMessage(`{"slot_id":"slot-one"}`), Binding: operations.Binding{Issuer: p.Issuer, Subject: p.Subject, Actor: p.Actor, OrgID: p.Organization, ContractHash: descriptor.ContractHash}}}
+	operation := operations.Operation{
+		ID:        "operation-stable",
+		RunID:     "run",
+		Module:    "massage",
+		Method:    "book_slot",
+		Mode:      "service_id",
+		Arguments: json.RawMessage(`{"slot_id":"slot-one"}`),
+		Binding: operations.Binding{
+			Issuer:       p.Issuer,
+			Subject:      p.Subject,
+			Actor:        p.Actor,
+			OrgID:        p.Organization,
+			ContractHash: descriptor.ContractHash,
+		},
+	}
 	backend := modules.WriteBackend{Registry: registry, Principal: p}
 	prep, err := backend.Prepare(context.Background(), operation)
 	require.NoError(t, err)
@@ -76,7 +96,11 @@ func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
 	require.EqualValues(t, 1, status.Load())
 	revoked := p
 	revoked.Permissions = []string{"zns.massage.access"}
-	liveBackend := modules.WriteBackend{Registry: registry, Principal: p, RefreshPrincipal: func(context.Context) (modules.Principal, error) { return revoked, nil }}
+	liveBackend := modules.WriteBackend{
+		Registry:         registry,
+		Principal:        p,
+		RefreshPrincipal: func(context.Context) (modules.Principal, error) { return revoked, nil },
+	}
 	_, err = liveBackend.Execute(context.Background(), operation)
 	require.ErrorIs(t, err, modules.ErrForbidden)
 	require.EqualValues(t, 1, effects.Load())
@@ -86,6 +110,7 @@ func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
 	require.EqualValues(t, 1, effects.Load())
 }
 func TestExactParametersRejectsInvalidPreparedArguments(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	manifest.Modules[0].Methods[1].Confirmation.Mode = "exact_parameters"
@@ -97,8 +122,11 @@ func TestExactParametersRejectsInvalidPreparedArguments(t *testing.T) {
 		var request struct {
 			OperationID string `json:"operation_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "prepared", "operation_id": request.OperationID, "arguments": json.RawMessage(`{"slot_id":123}`), "preconditions": map[string]string{"version": "one"}, "expires_at": time.Now().Add(time.Minute)})
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "prepared", "operation_id": request.OperationID, "arguments": json.RawMessage(`{"slot_id":123}`), "preconditions": map[string]string{"version": "one"}, "expires_at": time.Now().Add(time.Minute)})
 	}))
 	defer server.Close()
 	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
@@ -109,12 +137,20 @@ func TestExactParametersRejectsInvalidPreparedArguments(t *testing.T) {
 	p := principal()
 	descriptor, err := registry.Describe(context.Background(), p, "massage", "book_slot")
 	require.NoError(t, err)
-	op := operations.Operation{ID: "stable", Request: operations.Request{Module: "massage", Method: "book_slot", Mode: "exact_parameters", Arguments: json.RawMessage(`{"slot_id":"original-slot"}`), Binding: operations.Binding{Issuer: p.Issuer, Subject: p.Subject, ContractHash: descriptor.ContractHash}}}
+	op := operations.Operation{
+		ID:        "stable",
+		Module:    "massage",
+		Method:    "book_slot",
+		Mode:      "exact_parameters",
+		Arguments: json.RawMessage(`{"slot_id":"original-slot"}`),
+		Binding:   operations.Binding{Issuer: p.Issuer, Subject: p.Subject, ContractHash: descriptor.ContractHash},
+	}
 	_, err = (modules.WriteBackend{Registry: registry, Principal: p}).Prepare(context.Background(), op)
 	require.Error(t, err)
 }
 
 func TestApprovedDynamicContractChangePreventsWrite(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	method := manifest.Modules[0].Methods[1]
 	manifest.Modules = manifest.Modules[1:]
@@ -136,13 +172,17 @@ func TestApprovedDynamicContractChangePreventsWrite(t *testing.T) {
 		var request struct {
 			ID string `json:"operation_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
 		if r.URL.Path == method.Confirmation.PreparePath {
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "prepared", "operation_id": request.ID, "confirmation_id": "confirmation", "arguments": json.RawMessage(`{"slot_id":"slot"}`), "expires_at": time.Now().Add(time.Minute)})
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"status": "prepared", "operation_id": request.ID, "confirmation_id": "confirmation", "arguments": json.RawMessage(`{"slot_id":"slot"}`), "expires_at": time.Now().Add(time.Minute)})
 			return
 		}
 		effects.Add(1)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]string{"booking_id": "booking"}})
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]string{"booking_id": "booking"}})
 	}))
 	defer server.Close()
 	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
@@ -153,7 +193,15 @@ func TestApprovedDynamicContractChangePreventsWrite(t *testing.T) {
 	p := principal()
 	descriptor, err := registry.Describe(context.Background(), p, "orders", "book_slot")
 	require.NoError(t, err)
-	operation := operations.Operation{ID: "stable", State: "approved", Request: operations.Request{Module: "orders", Method: "book_slot", Mode: "service_id", Arguments: json.RawMessage(`{"slot_id":"slot"}`), Binding: operations.Binding{Issuer: p.Issuer, Subject: p.Subject, ContractHash: descriptor.ContractHash}}}
+	operation := operations.Operation{
+		ID:        "stable",
+		State:     "approved",
+		Module:    "orders",
+		Method:    "book_slot",
+		Mode:      "service_id",
+		Arguments: json.RawMessage(`{"slot_id":"slot"}`),
+		Binding:   operations.Binding{Issuer: p.Issuer, Subject: p.Subject, ContractHash: descriptor.ContractHash},
+	}
 	backend := modules.WriteBackend{Registry: registry, Principal: p}
 	operation.Preparation, err = backend.Prepare(context.Background(), operation)
 	require.NoError(t, err)

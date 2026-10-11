@@ -14,11 +14,18 @@ func recoverExhaustedQueue(ctx context.Context, repository *store.Store, logger 
 	timer := time.NewTicker(time.Minute)
 	defer timer.Stop()
 	for {
-		work, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_, err := repository.SweepQueueExhaustion(work, 100)
+		work, cancel := context.WithTimeout(ctx, maintenanceTimeout)
+		result, err := repository.SweepQueueExhaustion(work, maintenanceBatch)
+		logger.DebugContext(ctx, "queue recovery sweep finished", "component", "queue_recovery", "result", result)
 		cancel()
 		if err != nil && ctx.Err() == nil {
-			logger.Warn("queue recovery unavailable")
+			logger.ErrorContext(ctx,
+				"queue recovery unavailable",
+				"component",
+				"queue_recovery",
+				"error_code",
+				"dependency_unavailable",
+			)
 		}
 		select {
 		case <-ctx.Done():

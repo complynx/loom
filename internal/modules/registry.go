@@ -20,9 +20,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/sandbox"
 	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/complynx/clx-scripter/internal/sandbox"
 )
 
 //go:embed manifest.schema.json
@@ -32,14 +33,48 @@ var ErrUnavailable = errors.New("module unavailable")
 var ErrForbidden = errors.New("module permission denied")
 var ErrWriteDisabled = errors.New("write requires durable operation coordinator")
 
+const (
+	fieldProtocolVersion       = "protocol_version"
+	fieldRunID                 = "run_id"
+	fieldOperationID           = "operation_id"
+	effectRead                 = "read"
+	fieldArguments             = "arguments"
+	fieldResult                = "result"
+	fieldArtifacts             = "artifacts"
+	stateSucceeded             = "succeeded"
+	stateUnknown               = "unknown"
+	stateFailed                = "failed"
+	maxSchemaDepth             = 48
+	defaultRequestTimeout      = 10 * time.Second
+	defaultDynamicCacheCeiling = time.Minute
+	defaultFreshTTL            = 5 * time.Minute
+	defaultManifestLimit       = 256 << 10
+	defaultDialTimeout         = 5 * time.Second
+	dynamicDiscoveryLimit      = 256 << 10
+	dynamicDiscoveryTimeout    = 5 * time.Second
+	maxDynamicMethods          = 200
+	maxDynamicCacheEntries     = 1024
+	maxArgumentBytes           = 65536
+	maxDocumentNodes           = 16384
+	maxDocumentDepth           = 32
+	maxObjectFields            = 256
+	maxArrayItems              = 4096
+	defaultPreparationTTL      = 5 * time.Minute
+)
+
 type Principal struct {
 	UserID, Subject, Issuer, Organization, Actor, PolicyRevision string
 	Permissions                                                  []string
 	Token                                                        string
 }
 type Tool struct {
-	ServiceID, Module, Method, Description, Effect, ConfirmationMode string
-	InputSchema                                                      json.RawMessage
+	ServiceID        string          `json:"ServiceID"`
+	Module           string          `json:"Module"`
+	Method           string          `json:"Method"`
+	Description      string          `json:"Description"`
+	Effect           string          `json:"Effect"`
+	ConfirmationMode string          `json:"ConfirmationMode"`
+	InputSchema      json.RawMessage `json:"InputSchema"`
 }
 type Confirmation struct {
 	Mode        string `json:"mode"`
@@ -136,9 +171,27 @@ type deniedLoader struct{}
 func (deniedLoader) Load(string) (any, error) {
 	return nil, errors.New("external schema references disabled")
 }
+
+// Preserve exact JSON numbers for schema bounds and downstream dispatch.
+func decodeJSONDocument(raw json.RawMessage, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return errors.New("multiple JSON values")
+	}
+	return nil
+}
+
 func compileSchema(raw json.RawMessage) (*jsonschema.Schema, error) {
 	var doc any
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	if err := decodeJSONDocument(raw, &doc); err != nil {
 		return nil, err
 	}
 	if err := checkDepth(doc, 0); err != nil {
@@ -153,7 +206,7 @@ func compileSchema(raw json.RawMessage) (*jsonschema.Schema, error) {
 	return c.Compile("https://clx.invalid/schema")
 }
 func checkDepth(v any, n int) error {
-	if n > 48 {
+	if n > maxSchemaDepth {
 		return errors.New("schema nesting too deep")
 	}
 	switch x := v.(type) {
@@ -181,21 +234,27 @@ func NewRegistry(source Source, opts Options) (*Registry, error) {
 		return nil, err
 	}
 	if opts.RequestTimeout <= 0 {
-		opts.RequestTimeout = 10 * time.Second
+		opts.RequestTimeout = defaultRequestTimeout
 	}
 	if opts.DynamicCacheCeiling <= 0 {
-		opts.DynamicCacheCeiling = 60 * time.Second
+		opts.DynamicCacheCeiling = defaultDynamicCacheCeiling
 	}
 	if opts.FreshTTL <= 0 {
-		opts.FreshTTL = 5 * time.Minute
+		opts.FreshTTL = defaultFreshTTL
 	}
 	if opts.PollInterval <= 0 {
 		opts.PollInterval = time.Minute
 	}
 	if opts.ManifestLimit <= 0 {
-		opts.ManifestLimit = 256 << 10
+		opts.ManifestLimit = defaultManifestLimit
 	}
-	return &Registry{source: source, opts: opts, schema: s, services: map[string]registered{}, dynamic: map[string]dynamicEntry{}}, nil
+	return &Registry{
+		source:   source,
+		opts:     opts,
+		schema:   s,
+		services: map[string]registered{},
+		dynamic:  map[string]dynamicEntry{},
+	}, nil
 }
 func (r *Registry) Run(ctx context.Context) {
 	_ = r.Refresh(ctx)
@@ -222,9 +281,6 @@ func (r *Registry) Refresh(ctx context.Context) error {
 		r.mu.Unlock()
 		return err
 	}
-	if err != nil {
-		return err
-	}
 	r.mu.RLock()
 	old := r.services
 	r.mu.RUnlock()
@@ -242,52 +298,7 @@ func (r *Registry) Refresh(ctx context.Context) error {
 			next[id] = s
 		}
 	}
-	for _, ep := range endpoints {
-		u, e := validateURI(ep.URI)
-		if e != nil {
-			failures = append(failures, e)
-			continue
-		}
-		client, e := pinnedClient(ep)
-		if e != nil {
-			failures = append(failures, e)
-			continue
-		}
-		request, e := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-		if e != nil {
-			failures = append(failures, e)
-			continue
-		}
-		response, e := client.Do(request)
-		if e != nil {
-			failures = append(failures, e)
-			continue
-		}
-		raw, e := readResponse(response, r.opts.ManifestLimit)
-		_ = response.Body.Close()
-		if e != nil {
-			failures = append(failures, e)
-			continue
-		}
-		manifest, e := r.decodeManifest(raw)
-		if e != nil {
-			failures = append(failures, e)
-			continue
-		}
-		// A valid replacement retires the prior identity at this deployment endpoint.
-		for id, prior := range next {
-			if id != manifest.ServiceID && prior.endpoint == ep {
-				delete(next, id)
-			}
-		}
-		sum := sha256.Sum256(raw)
-		hash := hex.EncodeToString(sum[:])
-		if prior, ok := observed[manifest.ServiceID]; ok && prior != hash {
-			conflicts[manifest.ServiceID] = true
-		}
-		observed[manifest.ServiceID] = hash
-		next[manifest.ServiceID] = registered{endpoint: ep, manifest: manifest, hash: hash, fresh: time.Now(), client: client}
-	}
+	failures = r.refreshEndpoints(ctx, endpoints, next, conflicts, observed)
 	for id := range conflicts {
 		delete(next, id)
 		failures = append(failures, fmt.Errorf("manifest replica conflict: %s", id))
@@ -304,12 +315,12 @@ func (r *Registry) Refresh(ctx context.Context) error {
 				})
 			}
 		}
-		if err := r.opts.OnCallerBindings(ctx, bindings); err != nil {
+		if bindingErr := r.opts.OnCallerBindings(ctx, bindings); bindingErr != nil {
 			r.mu.Lock()
 			r.services = map[string]registered{}
-			r.lastRefreshErr = err
+			r.lastRefreshErr = bindingErr
 			r.mu.Unlock()
-			return err
+			return bindingErr
 		}
 	}
 	r.mu.Lock()
@@ -324,7 +335,7 @@ func (r *Registry) Refresh(ctx context.Context) error {
 func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	var m Manifest
 	var doc any
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	if err := decodeJSONDocument(raw, &doc); err != nil {
 		return m, err
 	}
 	if err := r.schema.Validate(doc); err != nil {
@@ -335,7 +346,8 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	}
 	seen := map[string]bool{}
 	for _, module := range m.Modules {
-		if seen[module.ID] || reserved(module.ID) || module.ID == "history" || module.ID == "artifacts" {
+		if seen[module.ID] || reserved(module.ID) || module.ID == "history" || module.ID == fieldArtifacts ||
+			module.ID == "diagnostics" || module.ID == "memory" {
 			return m, errors.New("duplicate or reserved module id")
 		}
 		seen[module.ID] = true
@@ -358,31 +370,42 @@ func validateMethods(methods []Method) error {
 			return errors.New("duplicate or reserved method id")
 		}
 		seen[method.ID] = true
-		if method.TimeoutMS < 1 || method.TimeoutMS > 300000 || method.MaxResultBytes < 1 || method.MaxResultBytes > 10<<20 {
-			return errors.New("invalid method limits")
-		}
-		if method.Effect != "read" && method.Effect != "write" && method.Effect != "delete" {
-			return errors.New("invalid method effect")
-		}
-		for _, p := range []string{method.Path, method.StatusPath, method.CancelPath, method.Confirmation.PreparePath} {
-			if p != "" {
-				if err := validPath(p); err != nil {
-					return err
-				}
-			}
-		}
-		if _, err := compileSchema(method.InputSchema); err != nil {
+		if err := validateMethod(method); err != nil {
 			return err
-		}
-		if _, err := compileSchema(method.OutputSchema); err != nil {
-			return err
-		}
-		if method.Effect != "read" && (!method.Idempotency || method.StatusPath == "" || method.DeduplicationWindowSeconds < 86400) {
-			return errors.New("unsafe write contract")
 		}
 	}
 	return nil
 }
+
+func validateMethod(method Method) error {
+	if method.TimeoutMS < 1 || method.TimeoutMS > 300000 || method.MaxResultBytes < 1 ||
+		method.MaxResultBytes > 10<<20 {
+		return errors.New("invalid method limits")
+	}
+	if method.Effect != effectRead && method.Effect != "write" && method.Effect != "delete" {
+		return errors.New("invalid method effect")
+	}
+	for _, path := range []string{method.Path, method.StatusPath, method.CancelPath, method.Confirmation.PreparePath} {
+		if path == "" {
+			continue
+		}
+		if err := validPath(path); err != nil {
+			return err
+		}
+	}
+	if _, err := compileSchema(method.InputSchema); err != nil {
+		return err
+	}
+	if _, err := compileSchema(method.OutputSchema); err != nil {
+		return err
+	}
+	if method.Effect != effectRead &&
+		(!method.Idempotency || method.StatusPath == "" || method.DeduplicationWindowSeconds < 86400) {
+		return errors.New("unsafe write contract")
+	}
+	return nil
+}
+
 func validPath(path string) error {
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "?#\\") {
 		return errors.New("invalid module path")
@@ -394,7 +417,7 @@ func validPath(path string) error {
 	if strings.Contains(decoded, "%") || strings.ContainsAny(decoded, "?#\\") {
 		return errors.New("encoded module path rejected")
 	}
-	for _, segment := range strings.Split(decoded, "/") {
+	for segment := range strings.SplitSeq(decoded, "/") {
 		if segment == ".." || segment == "." {
 			return errors.New("path traversal rejected")
 		}
@@ -406,11 +429,12 @@ func validateURI(raw string) (*url.URL, error) {
 	if err != nil {
 		return nil, err
 	}
-	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" ||
+		u.Fragment != "" {
 		return nil, errors.New("invalid registered URI")
 	}
-	if err := validPath(u.EscapedPath()); err != nil {
-		return nil, err
+	if pathErr := validPath(u.EscapedPath()); pathErr != nil {
+		return nil, pathErr
 	}
 	return u, nil
 }
@@ -429,16 +453,22 @@ func pinnedClient(ep Endpoint) (*http.Client, error) {
 			port = "443"
 		}
 	}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, errors.New("default HTTP transport must be *http.Transport")
+	}
+	tr := baseTransport.Clone()
 	tr.Proxy = nil
 	tr.DisableKeepAlives = true
 	tr.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(ep.Address, port))
+		return (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "tcp", net.JoinHostPort(ep.Address, port))
 	}
-	return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("module redirects forbidden") }}, nil
+	return &http.Client{
+		Transport:     tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("module redirects forbidden") },
+	}, nil
 }
 func readResponse(response *http.Response, limit int64) ([]byte, error) {
-
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("module HTTP status %d", response.StatusCode)
 	}
@@ -478,7 +508,20 @@ func cacheKey(p Principal, s registered, module Module) string {
 	permissions := append([]string(nil), p.Permissions...)
 	sort.Strings(permissions)
 	token := sha256.Sum256([]byte(p.Token))
-	raw, _ := json.Marshal([]any{p.Issuer, p.Subject, p.Organization, p.Actor, p.PolicyRevision, permissions, s.manifest.ServiceID, s.hash, module.ID, hex.EncodeToString(token[:])})
+	raw, _ := json.Marshal(
+		[]any{
+			p.Issuer,
+			p.Subject,
+			p.Organization,
+			p.Actor,
+			p.PolicyRevision,
+			permissions,
+			s.manifest.ServiceID,
+			s.hash,
+			module.ID,
+			hex.EncodeToString(token[:]),
+		},
+	)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -496,7 +539,15 @@ func (r *Registry) methods(ctx context.Context, p Principal, s registered, modul
 	if p.Token == "" {
 		return nil, ErrForbidden
 	}
-	raw, err := invoke(ctx, s, p, module.DiscoveryPath, json.RawMessage("{}"), 256<<10, 5*time.Second)
+	raw, err := invoke(
+		ctx,
+		s,
+		p,
+		module.DiscoveryPath,
+		json.RawMessage("{}"),
+		dynamicDiscoveryLimit,
+		dynamicDiscoveryTimeout,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -509,27 +560,25 @@ func (r *Registry) methods(ctx context.Context, p Principal, s registered, modul
 		return nil, err
 	}
 	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+	if trailingErr := decoder.Decode(&trailing); !errors.Is(trailingErr, io.EOF) {
 		return nil, errors.New("discovery must contain one JSON value")
 	}
-	if len(response.Methods) > 200 {
+	if len(response.Methods) > maxDynamicMethods {
 		return nil, errors.New("too many dynamic methods")
 	}
 	for _, method := range response.Methods {
-		if err := r.validateMethodShape(method); err != nil {
-			return nil, err
+		if shapeErr := r.validateMethodShape(method); shapeErr != nil {
+			return nil, shapeErr
 		}
 	}
 	if err = validateMethods(response.Methods); err != nil {
 		return nil, err
 	}
 	ttl := time.Duration(module.CacheTTLSeconds) * time.Second
-	if ttl > r.opts.DynamicCacheCeiling {
-		ttl = r.opts.DynamicCacheCeiling
-	}
+	ttl = min(ttl, r.opts.DynamicCacheCeiling)
 	if ttl > 0 {
 		r.mu.Lock()
-		if len(r.dynamic) >= 1024 {
+		if len(r.dynamic) >= maxDynamicCacheEntries {
 			for key := range r.dynamic {
 				delete(r.dynamic, key)
 				break
@@ -548,7 +597,7 @@ func (r *Registry) List(ctx context.Context, p Principal) ([]Tool, error) {
 			if !allowed(p, module.Permissions) {
 				continue
 			}
-			if previous, ok := seen[module.ID]; ok && previous != s.manifest.ServiceID {
+			if ambiguousModule(seen, module.ID, s.manifest.ServiceID) {
 				return nil, errors.New("ambiguous module id")
 			}
 			seen[module.ID] = s.manifest.ServiceID
@@ -557,27 +606,42 @@ func (r *Registry) List(ctx context.Context, p Principal) ([]Tool, error) {
 				return nil, err
 			}
 			for _, method := range methods {
-				if method.Effect == "read" && allowed(p, method.Permissions) {
-					tools = append(tools, Tool{ServiceID: s.manifest.ServiceID, Module: module.ID, Method: method.ID, Description: method.Description, InputSchema: method.InputSchema})
+				if method.Effect == effectRead && allowed(p, method.Permissions) {
+					tools = append(
+						tools,
+						Tool{
+							ServiceID:   s.manifest.ServiceID,
+							Module:      module.ID,
+							Method:      method.ID,
+							Description: method.Description,
+							InputSchema: method.InputSchema,
+						},
+					)
 				}
 			}
 		}
 	}
-	sort.Slice(tools, func(i, j int) bool {
-		if tools[i].Module == tools[j].Module {
-			return tools[i].Method < tools[j].Method
-		}
-		return tools[i].Module < tools[j].Module
-	})
+	sortTools(tools)
 	return tools, nil
 }
 func (r *Registry) lookup(ctx context.Context, p Principal, moduleName, methodName string) (registered, Method, error) {
 	return r.lookupWithFresh(ctx, p, moduleName, methodName, false)
 }
-func (r *Registry) lookupFresh(ctx context.Context, p Principal, moduleName, methodName string) (registered, Method, error) {
+
+func (r *Registry) lookupFresh(
+	ctx context.Context,
+	p Principal,
+	moduleName, methodName string,
+) (registered, Method, error) {
 	return r.lookupWithFresh(ctx, p, moduleName, methodName, true)
 }
-func (r *Registry) lookupWithFresh(ctx context.Context, p Principal, moduleName, methodName string, fresh bool) (registered, Method, error) {
+
+func (r *Registry) lookupWithFresh(
+	ctx context.Context,
+	p Principal,
+	moduleName, methodName string,
+	fresh bool,
+) (registered, Method, error) {
 	var found *registered
 	var module Module
 	for _, s := range r.snapshot() {
@@ -586,8 +650,8 @@ func (r *Registry) lookupWithFresh(ctx context.Context, p Principal, moduleName,
 				if found != nil {
 					return registered{}, Method{}, ErrUnavailable
 				}
-				copy := s
-				found = &copy
+				candidate := s
+				found = &candidate
 				module = m
 			}
 		}
@@ -605,16 +669,26 @@ func (r *Registry) lookupWithFresh(ctx context.Context, p Principal, moduleName,
 		return registered{}, Method{}, err
 	}
 	for _, m := range methods {
-		if m.ID == methodName {
-			if !allowed(p, m.Permissions) {
-				return registered{}, Method{}, ErrForbidden
-			}
-			return *found, m, nil
+		if m.ID != methodName {
+			continue
 		}
+		if !allowed(p, m.Permissions) {
+			return registered{}, Method{}, ErrForbidden
+		}
+		return *found, m, nil
 	}
 	return registered{}, Method{}, ErrUnavailable
 }
-func invoke(ctx context.Context, s registered, p Principal, path string, payload json.RawMessage, limit int64, timeout time.Duration) (json.RawMessage, error) {
+
+func invoke(
+	ctx context.Context,
+	s registered,
+	p Principal,
+	path string,
+	payload json.RawMessage,
+	limit int64,
+	timeout time.Duration,
+) (json.RawMessage, error) {
 	if err := validPath(path); err != nil {
 		return nil, err
 	}
@@ -647,94 +721,97 @@ func (r *Registry) Broker(p Principal, runID string, guard func(context.Context)
 }
 
 // BrokerLive refreshes user rights and credentials before every read.
-func (r *Registry) BrokerLive(principal func(context.Context) (Principal, error), runID string, guard func(context.Context) error) sandbox.Broker {
-	return sandbox.BrokerFunc(func(ctx context.Context, module, method string, args json.RawMessage) (json.RawMessage, error) {
-		if len(args) > 65536 {
-			return nil, errors.New("module arguments exceed 65536 bytes")
-		}
-		if guard != nil {
-			if err := guard(ctx); err != nil {
-				return nil, err
-			}
-		}
-		p, err := principal(ctx)
-		if err != nil {
-			return nil, err
-		}
-		s, m, err := r.lookup(ctx, p, module, method)
-		if err != nil {
-			return nil, err
-		}
-		if m.Effect != "read" {
-			return nil, ErrWriteDisabled
-		}
-		input, err := compileSchema(m.InputSchema)
-		if err != nil {
-			return nil, err
-		}
-		var doc any
-		if err = json.Unmarshal(args, &doc); err != nil {
-			return nil, err
-		}
-		if err = validateDocument(doc); err != nil {
-			return nil, err
-		}
-		if err = input.Validate(doc); err != nil {
-			return nil, fmt.Errorf("invalid arguments: %w", err)
-		}
-		if guard != nil {
-			if err = guard(ctx); err != nil {
-				return nil, err
-			}
-		}
-		operationID := uuid.NewString()
-		envelope, _ := json.Marshal(map[string]any{"protocol_version": 1, "operation_id": operationID, "run_id": runID, "arguments": doc})
-		raw, err := invoke(ctx, s, p, m.Path, envelope, min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)), time.Duration(m.TimeoutMS)*time.Millisecond)
-		if err != nil {
-			return nil, err
-		}
-		var response struct {
-			Status      string          `json:"status"`
-			OperationID string          `json:"operation_id"`
-			Result      json.RawMessage `json:"result"`
-			Artifacts   json.RawMessage `json:"artifacts"`
-			Error       json.RawMessage `json:"error"`
-		}
-		if err = json.Unmarshal(raw, &response); err != nil {
-			return nil, err
-		}
-		if response.OperationID != operationID {
-			return nil, errors.New("module operation ID mismatch")
-		}
-		if response.Status != "succeeded" {
-			return nil, errors.New("read method did not succeed")
-		}
-		output, err := compileSchema(m.OutputSchema)
-		if err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal(response.Result, &doc); err != nil {
-			return nil, err
-		}
-		if err = validateDocument(doc); err != nil {
-			return nil, err
-		}
-		if err = output.Validate(doc); err != nil {
-			return nil, fmt.Errorf("invalid module result: %w", err)
-		}
-		artifacts, err := r.importArtifacts(ctx, p, s, module, runID, m, response.Artifacts, guard, principal)
-		if err != nil {
-			return nil, err
-		}
-		if len(artifacts) > 0 {
-			result, err := json.Marshal(map[string]any{"result": response.Result, "artifacts": artifacts})
-			if err != nil {
-				return nil, err
-			}
-			return result, nil
-		}
-		return response.Result, nil
-	})
+func (r *Registry) BrokerLive(
+	principal func(context.Context) (Principal, error),
+	runID string,
+	guard func(context.Context) error,
+) sandbox.Broker {
+	return sandbox.BrokerFunc(
+		func(ctx context.Context, module, method string, args json.RawMessage) (json.RawMessage, error) {
+			return r.readCall(ctx, principal, runID, guard, module, method, args)
+		},
+	)
+}
+
+func (r *Registry) readCall(ctx context.Context, principal func(context.Context) (Principal, error), runID string,
+	guard func(context.Context) error, module, method string, args json.RawMessage) (json.RawMessage, error) {
+	if len(args) > maxArgumentBytes {
+		return nil, errors.New("module arguments exceed 65536 bytes")
+	}
+	if guardErr := checkGuard(ctx, guard); guardErr != nil {
+		return nil, guardErr
+	}
+	p, err := principal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s, m, err := r.lookup(ctx, p, module, method)
+	if err != nil {
+		return nil, err
+	}
+	if m.Effect != effectRead {
+		return nil, ErrWriteDisabled
+	}
+	doc, err := validateReadArguments(m.InputSchema, args)
+	if err != nil {
+		return nil, err
+	}
+	if err = checkGuard(ctx, guard); err != nil {
+		return nil, err
+	}
+	operationID := uuid.NewString()
+	envelope, _ := json.Marshal(
+		map[string]any{fieldProtocolVersion: 1, fieldOperationID: operationID, fieldRunID: runID, fieldArguments: doc},
+	)
+	raw, err := invoke(
+		ctx,
+		s,
+		p,
+		m.Path,
+		envelope,
+		min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)),
+		time.Duration(m.TimeoutMS)*time.Millisecond,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Status      string          `json:"status"`
+		OperationID string          `json:"operation_id"`
+		Result      json.RawMessage `json:"result"`
+		Artifacts   json.RawMessage `json:"artifacts"`
+		Error       json.RawMessage `json:"error"`
+	}
+	if err = json.Unmarshal(raw, &response); err != nil {
+		return nil, err
+	}
+	if response.OperationID != operationID {
+		return nil, errors.New("module operation ID mismatch")
+	}
+	if response.Status != stateSucceeded {
+		return nil, errors.New("read method did not succeed")
+	}
+	output, err := compileSchema(m.OutputSchema)
+	if err != nil {
+		return nil, err
+	}
+	if err = decodeJSONDocument(response.Result, &doc); err != nil {
+		return nil, err
+	}
+	if err = validateDocument(doc); err != nil {
+		return nil, err
+	}
+	if err = output.Validate(doc); err != nil {
+		return nil, fmt.Errorf("invalid module result: %w", err)
+	}
+	artifacts, err := r.importArtifacts(ctx, p, s, module, runID, m, response.Artifacts, guard, principal)
+	if err != nil {
+		return nil, err
+	}
+	if len(artifacts) > 0 {
+		return json.Marshal(map[string]any{fieldResult: response.Result, fieldArtifacts: artifacts})
+	}
+	return response.Result, nil
 }
 
 // CallerBinding exposes deployment-approved identity metadata, never a credential.
@@ -749,7 +826,14 @@ func (r *Registry) CallerBindings() []CallerBinding {
 	for _, service := range r.snapshot() {
 		if service.manifest.Caller != nil {
 			caller := service.manifest.Caller
-			result = append(result, CallerBinding{ServiceID: service.manifest.ServiceID, Permissions: append([]string(nil), caller.Permissions...), Auth: caller.Auth})
+			result = append(
+				result,
+				CallerBinding{
+					ServiceID:   service.manifest.ServiceID,
+					Permissions: append([]string(nil), caller.Permissions...),
+					Auth:        caller.Auth,
+				},
+			)
 		}
 	}
 	return result
@@ -765,7 +849,7 @@ func (r *Registry) CheckCaller(serviceID string) error {
 
 func (r *Registry) validateMethodShape(method Method) error {
 	var schemaDoc map[string]any
-	if err := json.Unmarshal(manifestSchema, &schemaDoc); err != nil {
+	if err := decodeJSONDocument(manifestSchema, &schemaDoc); err != nil {
 		return err
 	}
 	c := jsonschema.NewCompiler()
@@ -783,7 +867,7 @@ func (r *Registry) validateMethodShape(method Method) error {
 		return err
 	}
 	var doc any
-	if err = json.Unmarshal(raw, &doc); err != nil {
+	if err = decodeJSONDocument(raw, &doc); err != nil {
 		return err
 	}
 	return schema.Validate(doc)
@@ -798,7 +882,7 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 			if !allowed(p, module.Permissions) {
 				continue
 			}
-			if previous, ok := seen[module.ID]; ok && previous != s.manifest.ServiceID {
+			if ambiguousModule(seen, module.ID, s.manifest.ServiceID) {
 				return nil, errors.New("ambiguous module id")
 			}
 			seen[module.ID] = s.manifest.ServiceID
@@ -807,53 +891,61 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 				return nil, err
 			}
 			for _, method := range methods {
-				if method.Effect != "read" && allowed(p, method.Permissions) {
-					tools = append(tools, Tool{ServiceID: s.manifest.ServiceID, Module: module.ID, Method: method.ID, Description: method.Description, InputSchema: method.InputSchema, Effect: method.Effect, ConfirmationMode: method.Confirmation.Mode})
+				if method.Effect != effectRead && allowed(p, method.Permissions) {
+					tools = append(
+						tools,
+						Tool{
+							ServiceID:        s.manifest.ServiceID,
+							Module:           module.ID,
+							Method:           method.ID,
+							Description:      method.Description,
+							InputSchema:      method.InputSchema,
+							Effect:           method.Effect,
+							ConfirmationMode: method.Confirmation.Mode,
+						},
+					)
 				}
 			}
 		}
 	}
-	sort.Slice(tools, func(i, j int) bool {
-		if tools[i].Module == tools[j].Module {
-			return tools[i].Method < tools[j].Method
-		}
-		return tools[i].Module < tools[j].Module
-	})
+	sortTools(tools)
 	return tools, nil
 }
 
 // Bound data before schema checks so a script cannot force unbounded validation work.
 func validateDocument(value any) error {
-	nodes := 0
-	var walk func(any, int) error
-	walk = func(value any, depth int) error {
-		nodes++
-		if nodes > 16384 || depth > 32 {
-			return errors.New("module JSON complexity limit exceeded")
-		}
-		switch value := value.(type) {
-		case map[string]any:
-			if len(value) > 256 {
-				return errors.New("module JSON object too large")
-			}
-			for _, v := range value {
-				if err := walk(v, depth+1); err != nil {
-					return err
-				}
-			}
-		case []any:
-			if len(value) > 4096 {
-				return errors.New("module JSON array too large")
-			}
-			for _, v := range value {
-				if err := walk(v, depth+1); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+	w := documentWalker{}
+	return w.walk(value, 0)
+}
+
+type documentWalker struct{ nodes int }
+
+func (w *documentWalker) walk(value any, depth int) error {
+	w.nodes++
+	if w.nodes > maxDocumentNodes || depth > maxDocumentDepth {
+		return errors.New("module JSON complexity limit exceeded")
 	}
-	return walk(value, 0)
+	switch value := value.(type) {
+	case map[string]any:
+		if len(value) > maxObjectFields {
+			return errors.New("module JSON object too large")
+		}
+		for _, v := range value {
+			if err := w.walk(v, depth+1); err != nil {
+				return err
+			}
+		}
+	case []any:
+		if len(value) > maxArrayItems {
+			return errors.New("module JSON array too large")
+		}
+		for _, v := range value {
+			if err := w.walk(v, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // TrustReady distinguishes a fresh empty deployment from unknown discovery state.
@@ -864,4 +956,105 @@ func (r *Registry) TrustReady() error {
 		return ErrUnavailable
 	}
 	return nil
+}
+
+func validateReadArguments(schemaRaw, raw json.RawMessage) (any, error) {
+	input, err := compileSchema(schemaRaw)
+	if err != nil {
+		return nil, err
+	}
+	var doc any
+	if err = decodeJSONDocument(raw, &doc); err != nil {
+		return nil, err
+	}
+	if err = validateDocument(doc); err != nil {
+		return nil, err
+	}
+	if err = input.Validate(doc); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+	return doc, nil
+}
+
+func checkGuard(ctx context.Context, guard func(context.Context) error) error {
+	if guard == nil {
+		return nil
+	}
+	return guard(ctx)
+}
+
+func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
+	next map[string]registered, conflicts map[string]bool, observed map[string]string) []error {
+	var failures []error
+	for _, ep := range endpoints {
+		u, e := validateURI(ep.URI)
+		if e != nil {
+			failures = append(failures, e)
+			continue
+		}
+		client, e := pinnedClient(ep)
+		if e != nil {
+			failures = append(failures, e)
+			continue
+		}
+		request, e := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if e != nil {
+			failures = append(failures, e)
+			continue
+		}
+		response, e := client.Do(request)
+		if e != nil {
+			failures = append(failures, e)
+			continue
+		}
+		raw, e := readResponse(response, r.opts.ManifestLimit)
+		_ = response.Body.Close()
+		if e != nil {
+			failures = append(failures, e)
+			continue
+		}
+		manifest, e := r.decodeManifest(raw)
+		if e != nil {
+			failures = append(failures, e)
+			continue
+		}
+		// A valid replacement retires the prior identity at this deployment endpoint.
+		retireEndpointIdentities(next, ep, manifest.ServiceID)
+		sum := sha256.Sum256(raw)
+		hash := hex.EncodeToString(sum[:])
+		if prior, ok := observed[manifest.ServiceID]; ok && prior != hash {
+			conflicts[manifest.ServiceID] = true
+		}
+		observed[manifest.ServiceID] = hash
+		next[manifest.ServiceID] = registered{
+			endpoint: ep,
+			manifest: manifest,
+			hash:     hash,
+			fresh:    time.Now(),
+			client:   client,
+		}
+	}
+	return failures
+}
+
+func sortTools(tools []Tool) {
+	sort.Slice(tools, func(i, j int) bool {
+		if tools[i].Module == tools[j].Module {
+			return tools[i].Method < tools[j].Method
+		}
+		return tools[i].Module < tools[j].Module
+	})
+}
+
+func ambiguousModule(seen map[string]string, moduleID, serviceID string) bool {
+	previous, ok := seen[moduleID]
+	return ok && previous != serviceID
+}
+
+func retireEndpointIdentities(next map[string]registered, ep Endpoint, serviceID string) {
+	for id, prior := range next {
+		if id != serviceID && prior.endpoint == ep {
+			delete(next, id)
+		}
+	}
 }

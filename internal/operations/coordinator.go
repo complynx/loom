@@ -3,17 +3,27 @@ package operations
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+const (
+	statePreparing     = "preparing"
+	stateFailed        = "failed"
+	statePrepared      = "prepared"
+	stateApproved      = "approved"
+	stateRejected      = "rejected"
+	stateUnknown       = "unknown"
+	defaultApprovalTTL = 5 * time.Minute
 )
 
 type Coordinator struct {
@@ -41,13 +51,11 @@ func digest(value any) string {
 	return hex.EncodeToString(s[:])
 }
 func newID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
+	id, err := uuid.NewRandom()
+	if err != nil {
 		return "", err
 	}
-	b[6] = b[6]&15 | 64
-	b[8] = b[8]&63 | 128
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
+	return id.String(), nil
 }
 
 func seal(op Operation) string {
@@ -60,7 +68,9 @@ func seal(op Operation) string {
 // Prepare deduplicates the stable call identity. A changed argument or authority
 // under the same identity is rejected; it does not silently replace an intent.
 func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend) (Operation, error) {
-	if req.CallID == "" || req.Module == "" || req.Method == "" || req.Binding.UserID == "" || req.Binding.Subject == "" || req.Binding.ContractHash == "" {
+	if req.CallID == "" || req.Module == "" || req.Method == "" || req.Binding.UserID == "" ||
+		req.Binding.Subject == "" ||
+		req.Binding.ContractHash == "" {
 		return Operation{}, ErrBinding
 	}
 	if req.Mode != "none" && req.Mode != "service_id" && req.Mode != "exact_parameters" {
@@ -75,7 +85,13 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 	if err != nil {
 		return Operation{}, err
 	}
-	op := Operation{Request: req, ID: id, State: "preparing", ArgumentHash: digest(args), CreatedAt: time.Now().UTC()}
+	op := Operation{
+		Request:      req,
+		ID:           id,
+		State:        statePreparing,
+		ArgumentHash: digest(args),
+		CreatedAt:    time.Now().UTC(),
+	}
 	doc, err := json.Marshal(op)
 	if err != nil {
 		return Operation{}, err
@@ -90,70 +106,27 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 		return Operation{}, err
 	}
 	if tag.RowsAffected() == 0 {
-		var raw []byte
-		if err = c.Pool.QueryRow(ctx, `SELECT doc FROM write_operations WHERE run_id=$1 AND call_id=$2`, req.RunID, req.CallID).Scan(&raw); err != nil {
-			return Operation{}, err
-		}
-		var prior Operation
-		if err = json.Unmarshal(raw, &prior); err != nil {
-			return Operation{}, err
-		}
-		if digest(prior.Request) != digest(req) {
-			return Operation{}, ErrBinding
-		}
-		if prior.State == "preparing" {
-			return prior, ErrState
-		}
-		return prior, nil
+		return c.priorPreparation(ctx, req)
 	}
 	prep, err := backend.Prepare(ctx, op)
 	if err != nil {
-		op.State = "failed"
-		_ = c.saveDetached(ctx, op, "preparing")
+		op.State = stateFailed
+		_ = c.saveDetached(ctx, op, statePreparing)
 		return op, err
 	}
-	if req.Mode == "service_id" && prep.Token == "" {
-		op.State = "failed"
-		_ = c.saveDetached(ctx, op, "preparing")
-		return op, ErrBinding
-	}
-	if len(prep.Arguments) == 0 {
-		prep.Arguments = op.Arguments
-	}
-	prep.Arguments, err = canonical(prep.Arguments)
+	prep, err = c.normalizePreparation(op, prep)
 	if err != nil {
-		op.State = "failed"
-		_ = c.saveDetached(ctx, op, "preparing")
+		op.State = stateFailed
+		_ = c.saveDetached(ctx, op, statePreparing)
 		return op, err
-	}
-	if len(prep.Preconditions) > 0 {
-		prep.Preconditions, err = canonical(prep.Preconditions)
-		if err != nil {
-			op.State = "failed"
-			_ = c.saveDetached(ctx, op, "preparing")
-			return op, err
-		}
-	}
-	ttl := c.ApprovalTTL
-	if ttl <= 0 {
-		ttl = 5 * time.Minute
-	}
-	maxExpiry := time.Now().UTC().Add(ttl)
-	if prep.ExpiresAt.IsZero() || prep.ExpiresAt.After(maxExpiry) {
-		prep.ExpiresAt = maxExpiry
-	}
-	if !prep.ExpiresAt.After(time.Now()) {
-		op.State = "failed"
-		_ = c.saveDetached(ctx, op, "preparing")
-		return op, ErrExpired
 	}
 	op.Preparation = prep
-	op.State = "prepared"
+	op.State = statePrepared
 	if req.Mode == "none" {
-		op.State = "approved"
+		op.State = stateApproved
 	}
 	op.BindingHash = seal(op)
-	if err = c.save(ctx, op, "preparing"); err != nil {
+	if err = c.save(ctx, op, statePreparing); err != nil {
 		return Operation{}, err
 	}
 	return op, nil
@@ -175,7 +148,14 @@ func (c *Coordinator) save(ctx context.Context, op Operation, prior string) erro
 	if err != nil {
 		return err
 	}
-	tag, err := c.Pool.Exec(ctx, `UPDATE write_operations SET state=$2,doc=$3,updated_at=clock_timestamp() WHERE id=$1 AND state=$4`, op.ID, op.State, doc, prior)
+	tag, err := c.Pool.Exec(
+		ctx,
+		`UPDATE write_operations SET state=$2,doc=$3,updated_at=clock_timestamp() WHERE id=$1 AND state=$4`,
+		op.ID,
+		op.State,
+		doc,
+		prior,
+	)
 	if err == nil && tag.RowsAffected() != 1 {
 		return ErrState
 	}
@@ -218,18 +198,18 @@ func (c *Coordinator) ApproveTx(ctx context.Context, tx pgx.Tx, id string, a App
 	if op.Binding != a.Binding || op.BindingHash != a.BindingHash || op.BindingHash != seal(op) {
 		return Operation{}, ErrBinding
 	}
-	if (op.State == "approved" && a.Approve) || (op.State == "rejected" && !a.Approve) {
+	if (op.State == stateApproved && a.Approve) || (op.State == stateRejected && !a.Approve) {
 		return op, nil
 	}
-	if op.State != "prepared" {
+	if op.State != statePrepared {
 		return Operation{}, ErrState
 	}
 	if !op.Preparation.ExpiresAt.After(time.Now()) {
 		return Operation{}, ErrExpired
 	}
-	op.State = "rejected"
+	op.State = stateRejected
 	if a.Approve {
-		op.State = "approved"
+		op.State = stateApproved
 	}
 	if err = updateTx(ctx, tx, op); err != nil {
 		return Operation{}, err
@@ -252,13 +232,25 @@ func updateTx(ctx context.Context, tx pgx.Tx, op Operation) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE write_operations SET state=$2,doc=$3,updated_at=clock_timestamp() WHERE id=$1`, op.ID, op.State, raw)
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE write_operations SET state=$2,doc=$3,updated_at=clock_timestamp() WHERE id=$1`,
+		op.ID,
+		op.State,
+		raw,
+	)
 	return err
 }
 
 // Dispatch consumes approval and writes dispatching intent in one short fenced
 // transaction. Any later call returns the saved state instead of resending.
-func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, authorize Authorize, backend Backend) (Operation, error) {
+func (c *Coordinator) Dispatch(
+	ctx context.Context,
+	id string,
+	lease Lease,
+	authorize Authorize,
+	backend Backend,
+) (Operation, error) {
 	op, err := c.Get(ctx, id)
 	if err != nil {
 		return Operation{}, err
@@ -279,7 +271,8 @@ func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, auth
 		_ = tx.Rollback(rollbackCtx)
 	}()
 	var valid bool
-	err = tx.QueryRow(ctx, `SELECT state='running' AND lease_owner=$2 AND fence=$3 AND lease_until>clock_timestamp() AND NOT pause_requested AND NOT cancel_requested FROM runs WHERE id=$1 AND owner_id=$4 AND actor_id=$5 AND org_id=$6 FOR UPDATE`, op.RunID, lease.Owner, lease.Fence, op.Binding.UserID, op.Binding.Actor, op.Binding.OrgID).Scan(&valid)
+	err = tx.QueryRow(ctx, `SELECT state='running' AND lease_owner=$2 AND fence=$3 AND lease_until>clock_timestamp() AND NOT pause_requested AND NOT cancel_requested FROM runs WHERE id=$1 AND owner_id=$4 AND actor_id=$5 AND org_id=$6 FOR UPDATE`, op.RunID, lease.Owner, lease.Fence, op.Binding.UserID, op.Binding.Actor, op.Binding.OrgID).
+		Scan(&valid)
 	if err != nil {
 		return op, err
 	}
@@ -290,10 +283,10 @@ func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, auth
 	if err != nil {
 		return op, err
 	}
-	if op.State == "prepared" {
+	if op.State == statePrepared {
 		return op, ErrApprovalRequired
 	}
-	if op.State != "approved" {
+	if op.State != stateApproved {
 		return op, nil
 	}
 	if op.BindingHash != seal(op) {
@@ -309,17 +302,27 @@ func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, auth
 	if err = tx.Commit(ctx); err != nil {
 		return op, err
 	}
+	return c.executeIntent(ctx, op, lease, authorize, backend)
+}
+
+func (c *Coordinator) executeIntent(
+	ctx context.Context,
+	op Operation,
+	lease Lease,
+	authorize Authorize,
+	backend Backend,
+) (Operation, error) {
 	// Auth may have changed while waiting for the database lock. Check again
 	// after the intent commit, immediately before the remote side effect.
-	if err = authorize(ctx, op); err != nil {
-		op.State = "failed"
+	if err := authorize(ctx, op); err != nil {
+		op.State = stateFailed
 		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
 			return op, persistErr
 		}
 		return op, err
 	}
 	if !op.Preparation.ExpiresAt.After(time.Now()) {
-		op.State = "failed"
+		op.State = stateFailed
 		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
 			return op, persistErr
 		}
@@ -328,9 +331,10 @@ func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, auth
 	// Authorization may perform network IO. Recheck fencing and cancellation
 	// afterwards so that an expired lease cannot initiate the remote request.
 	var canDispatch bool
-	err = c.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE id=$1 AND state='running' AND lease_owner=$2 AND fence=$3 AND lease_until>clock_timestamp() AND NOT pause_requested AND NOT cancel_requested)`, op.RunID, lease.Owner, lease.Fence).Scan(&canDispatch)
+	err := c.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE id=$1 AND state='running' AND lease_owner=$2 AND fence=$3 AND lease_until>clock_timestamp() AND NOT pause_requested AND NOT cancel_requested)`, op.RunID, lease.Owner, lease.Fence).
+		Scan(&canDispatch)
 	if err != nil || !canDispatch {
-		op.State = "failed"
+		op.State = stateFailed
 		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
 			return op, persistErr
 		}
@@ -341,7 +345,7 @@ func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, auth
 	}
 	result, callErr := backend.Execute(ctx, op)
 	if callErr != nil {
-		op.State = "unknown"
+		op.State = stateUnknown
 	} else {
 		op.State = outcome(result.State)
 		op.Result = result.Output
@@ -355,10 +359,10 @@ func (c *Coordinator) Dispatch(ctx context.Context, id string, lease Lease, auth
 
 func outcome(state string) string {
 	switch state {
-	case "succeeded", "failed", "pending":
+	case "succeeded", stateFailed, "pending":
 		return state
 	default:
-		return "unknown"
+		return stateUnknown
 	}
 }
 
@@ -369,7 +373,7 @@ func (c *Coordinator) Reconcile(ctx context.Context, id string, backend Backend)
 	if err != nil {
 		return op, err
 	}
-	if op.State != "unknown" && op.State != "pending" && op.State != "dispatching" {
+	if op.State != stateUnknown && op.State != "pending" && op.State != "dispatching" {
 		return op, nil
 	}
 	prior := op.State
@@ -387,7 +391,8 @@ func (c *Coordinator) Reconcile(ctx context.Context, id string, backend Backend)
 // superseded tool call. Absence permits the engine to record a skipped call.
 func (c *Coordinator) FindByCall(ctx context.Context, runID, callID string) (Operation, bool, error) {
 	var raw []byte
-	err := c.Pool.QueryRow(ctx, `SELECT doc FROM write_operations WHERE run_id=$1 AND call_id=$2`, runID, callID).Scan(&raw)
+	err := c.Pool.QueryRow(ctx, `SELECT doc FROM write_operations WHERE run_id=$1 AND call_id=$2`, runID, callID).
+		Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Operation{}, false, nil
 	}
@@ -405,7 +410,12 @@ func (c *Coordinator) FindByCall(ctx context.Context, runID, callID string) (Ope
 // have crossed the dispatch boundary. It never cancels or retries a remote
 // action. A false result requires the caller to retain the actual saved outcome
 // or reconcile uncertain states through Status.
-func (c *Coordinator) CancelUndispatched(ctx context.Context, id string, lease Lease, binding Binding) (Operation, bool, error) {
+func (c *Coordinator) CancelUndispatched(
+	ctx context.Context,
+	id string,
+	lease Lease,
+	binding Binding,
+) (Operation, bool, error) {
 	op, err := c.Get(ctx, id)
 	if err != nil {
 		return Operation{}, false, err
@@ -423,7 +433,8 @@ func (c *Coordinator) CancelUndispatched(ctx context.Context, id string, lease L
 		_ = tx.Rollback(rollbackCtx)
 	}()
 	var valid bool
-	err = tx.QueryRow(ctx, `SELECT COALESCE(r.state='running' AND r.lease_owner=$2 AND r.fence=$3 AND r.lease_until>clock_timestamp() AND NOT r.pause_requested AND NOT r.cancel_requested,false) FROM runs r JOIN users u ON u.id=r.owner_id WHERE r.id=$1 AND r.owner_id=$4 AND r.actor_id=$5 AND r.org_id=$6 AND u.issuer=$7 AND u.subject=$8 FOR UPDATE OF r`, op.RunID, lease.Owner, lease.Fence, binding.UserID, binding.Actor, binding.OrgID, binding.Issuer, binding.Subject).Scan(&valid)
+	err = tx.QueryRow(ctx, `SELECT COALESCE(r.state='running' AND r.lease_owner=$2 AND r.fence=$3 AND r.lease_until>clock_timestamp() AND NOT r.pause_requested AND NOT r.cancel_requested,false) FROM runs r JOIN users u ON u.id=r.owner_id WHERE r.id=$1 AND r.owner_id=$4 AND r.actor_id=$5 AND r.org_id=$6 AND u.issuer=$7 AND u.subject=$8 FOR UPDATE OF r`, op.RunID, lease.Owner, lease.Fence, binding.UserID, binding.Actor, binding.OrgID, binding.Issuer, binding.Subject).
+		Scan(&valid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return op, false, ErrLease
 	}
@@ -441,8 +452,8 @@ func (c *Coordinator) CancelUndispatched(ctx context.Context, id string, lease L
 		return op, false, ErrBinding
 	}
 	switch op.State {
-	case "preparing", "prepared", "approved":
-		op.State = "rejected"
+	case statePreparing, statePrepared, stateApproved:
+		op.State = stateRejected
 		op.CancelReason = "steering"
 		if err = updateTx(ctx, tx, op); err != nil {
 			return op, false, err
@@ -451,9 +462,60 @@ func (c *Coordinator) CancelUndispatched(ctx context.Context, id string, lease L
 			return op, false, err
 		}
 		return op, true, nil
-	case "rejected":
+	case stateRejected:
 		return op, true, nil
 	default:
 		return op, false, nil
 	}
+}
+
+func (c *Coordinator) normalizePreparation(op Operation, prep Preparation) (Preparation, error) {
+	if op.Mode == "service_id" && prep.Token == "" {
+		return prep, ErrBinding
+	}
+	if len(prep.Arguments) == 0 {
+		prep.Arguments = op.Arguments
+	}
+	var err error
+	prep.Arguments, err = canonical(prep.Arguments)
+	if err != nil {
+		return prep, err
+	}
+	if len(prep.Preconditions) > 0 {
+		prep.Preconditions, err = canonical(prep.Preconditions)
+		if err != nil {
+			return prep, err
+		}
+	}
+	ttl := c.ApprovalTTL
+	if ttl <= 0 {
+		ttl = defaultApprovalTTL
+	}
+	maxExpiry := time.Now().UTC().Add(ttl)
+	if prep.ExpiresAt.IsZero() || prep.ExpiresAt.After(maxExpiry) {
+		prep.ExpiresAt = maxExpiry
+	}
+	if !prep.ExpiresAt.After(time.Now()) {
+		return prep, ErrExpired
+	}
+	return prep, nil
+}
+
+func (c *Coordinator) priorPreparation(ctx context.Context, req Request) (Operation, error) {
+	var raw []byte
+	if err := c.Pool.QueryRow(ctx, `SELECT doc FROM write_operations WHERE run_id=$1 AND call_id=$2`, req.RunID, req.CallID).
+		Scan(&raw); err != nil {
+		return Operation{}, err
+	}
+	var prior Operation
+	if err := json.Unmarshal(raw, &prior); err != nil {
+		return Operation{}, err
+	}
+	if digest(prior.Request) != digest(req) {
+		return Operation{}, ErrBinding
+	}
+	if prior.State == statePreparing {
+		return prior, ErrState
+	}
+	return prior, nil
 }

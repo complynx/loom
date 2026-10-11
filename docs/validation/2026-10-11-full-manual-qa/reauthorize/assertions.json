@@ -1,0 +1,14 @@
+{
+  "stale_cas_denied": true,
+  "run_id": "91e25c39-d42b-43db-b1b6-945e04d072dc",
+  "fresh_actual_zitadel_credentials": true,
+  "reserved_microcredits": 0,
+  "same_run": true,
+  "spent_microcredits": 220,
+  "paid_openai_calls": 0,
+  "other_org_denied": true,
+  "real_zitadel_user_revocation": true,
+  "waiting_auth_durable_across_river_restart": true,
+  "same_org_other_user_denied": true,
+  "old_access_token_denied": true
+}

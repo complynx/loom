@@ -2,7 +2,7 @@
 
 ## Сущности PostgreSQL
 
-Это логическая схема, не исполняемая миграция. SQL migrations и OpenAPI будут закреплены при реализации после проверки auth/runtime gates.
+Таблица ниже — концептуальная схема первоначального плана; её названия и поля не являются текущей SQL-схемой. Исполняемая схема находится в [migrations](../migrations), точные HTTP DTO — в `/openapi.json`. Например, refresh leases и persisted service registry из плана не означают реализованный refresh или registry в БД.
 
 | Сущность | Основные поля и связи |
 |---|---|
@@ -58,7 +58,7 @@ Summary обновляется при превышении бюджета све
 
 Активный run применяет новые события между шагами. Snapshot сборки контекста имеет верхнюю seq; более поздние события остаются для следующей границы. UI-событие показывает прошлое: перед изменением backend состояние читается заново.
 
-История доступна через fulltext и regex. В v1 PostgreSQL fulltext с языковой конфигурацией по данным, RE2-поиск поверх ограниченного сканирования авторизованного диапазона. Embeddings не обязательны; pgvector доступен в инфраструктуре, но семантический поиск вводится по результатам качества.
+История доступна через literal (default), PostgreSQL fulltext с конфигурацией `simple` и RE2 regex над ограниченным авторизованным диапазоном. Bounded snippets и paged read сохраняют доступ к полным событиям; ответ явно указывает truncation, skipped sequences и продолжение. Опциональный vector API принимает внешние embeddings и выполняет exact cosine ranking через pgvector. `search.semantic_enabled: false` скрывает инструмент и отключает indexing route. Embeddings-сервис и автоматическая индексация не реализованы.
 
 ## Кредиты
 
@@ -72,10 +72,21 @@ Summary обновляется при превышении бюджета све
 
 ## Retention и удаление
 
-Для истории, artifacts, технических trace и idempotency metadata задаётся duration либо `forever`. Default-предложение: история/artifacts 365 дней, технические trace 30 дней; ledger/audit — отдельная долгосрочная политика. `forever` всё равно подчиняется storage quota и явному удалению.
+Для истории, artifacts, технических trace и idempotency metadata задаётся duration либо `forever`. Deployment-пример: история/artifacts 365 дней. Отдельного persisted trace stream нет; duration для trace отклоняется, поддерживается forever/unspecified. Recovery и финансовые records сохраняются; operational Docker/Loki logs имеют отдельную deployment retention policy. `forever` всё равно подчиняется storage quota и явному удалению.
 
 Idempotency записи живут минимум максимального окна повторов/восстановления; после него сохраняются tombstones для запрета повторного исполнения использованных ключей. Принятые операции не исчезают раньше завершения reconciliation. Срок хранения backend deduplication проверяется отдельно от срока чата.
 
 Удаление чата сначала блокирует новые run и доступ, затем отменяет существующий, ставит очистку событий, summary, индексов и blobs. Financial ledger сохраняет минимальные ссылки без содержимого сообщений. Неопределённые внешние операции не уничтожаются до сверки. Удаление default-чата позволяет атомарно создать новый при следующем запросе.
 
-После восстановления старого backup повторно применяются durable deletion/revocation tombstones из отдельного backup-плана. Пользовательское удаление не обещает мгновенного удаления из исторических backups; срок их истечения документируется.
+После восстановления старого backup требуется отдельная сверка удалений, отзывов и внешних эффектов до исполнения. Автоматический post-PITR barrier/replay tombstones не реализован; процедура и ограничения описаны в [server rollout](server-rollout.md). Пользовательское удаление не обещает мгновенного удаления из исторических backups; срок их истечения документируется.
+
+## Реализованные дополнительные слои
+
+`previous_run_id` — необязательный cache hint для terminal run того же чата, владельца и организации. Только совместимый completed run позволяет повторно использовать сохранённый history prefix; model/effort/settings, actor, artifacts, retention и source count проверяются. Текущие права и micro-memory не берутся из этого кеша. TTL prefix — 15 минут; экономия provider cache не гарантируется. Исполнительные tool checkpoints предыдущего run не копируются.
+
+[Active-run compaction](active-compaction.md) сохраняет новую input window отдельно от истории и durable эффектов. Нативный Responses compact и fallback summary учитываются как отдельные платные шаги.
+
+[Личная память](user-memory.md) имеет scope issuer/subject/org, micro до 500 Unicode code points и три уровня on-demand данных. Она доступна без отдельных ролей, не удаляется вместе с чатом и очищается собственным API.
+
+Written by Codex (gpt-6/Codex desktop)
+on behalf of Daniel Drizhuk

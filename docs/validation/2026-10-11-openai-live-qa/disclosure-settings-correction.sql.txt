@@ -1,0 +1,16 @@
+BEGIN;
+DO $$
+DECLARE changed integer;
+BEGIN
+  IF EXISTS(SELECT 1 FROM steps WHERE run_id='8d7a9f3c-e8e2-4733-accc-81397842864a' AND kind='model') THEN RAISE EXCEPTION 'Existing model step: refuse correction'; END IF;
+  UPDATE settings SET doc=jsonb_set(jsonb_set(doc,'{external_disclosure}','true'),'{version}','2'),version=2 WHERE singleton AND version=1 AND doc->'external_disclosure'='false'::jsonb;
+  GET DIAGNOSTICS changed=ROW_COUNT;
+  IF changed<>1 THEN RAISE EXCEPTION 'Settings old-state mismatch'; END IF;
+  UPDATE runs SET doc=jsonb_set(doc,'{settings_snapshot,external_disclosure}','true') WHERE id='8d7a9f3c-e8e2-4733-accc-81397842864a' AND state='paused' AND doc->>'reason'='disclosure_denied' AND doc->'settings_snapshot'->'external_disclosure'='false'::jsonb;
+  GET DIAGNOSTICS changed=ROW_COUNT;
+  IF changed<>1 THEN RAISE EXCEPTION 'Run old-state mismatch'; END IF;
+END $$;
+COMMIT;
+SELECT version,doc->'external_disclosure' AS disclosure FROM settings;
+SELECT id,state,doc->'settings_snapshot'->'external_disclosure' AS disclosure FROM runs WHERE id='8d7a9f3c-e8e2-4733-accc-81397842864a';
+SELECT count(*) AS model_steps_before_resume FROM steps WHERE run_id='8d7a9f3c-e8e2-4733-accc-81397842864a' AND kind='model';

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"net/http"
 	"time"
 )
 
@@ -27,12 +28,12 @@ func (e *Error) Error() string {
 	return e.Code
 }
 func NewError(s int, c string) error { return &Error{Code: c, Status: s} }
-func Conflict(c string) error        { return NewError(409, c) }
+func Conflict(c string) error        { return NewError(http.StatusConflict, c) }
 
-var ErrNotFound = &Error{Code: "not_found", Status: 404}
+var ErrNotFound = &Error{Code: "not_found", Status: http.StatusNotFound}
 
 func NotFound() error  { return ErrNotFound }
-func Forbidden() error { return NewError(403, "forbidden") }
+func Forbidden() error { return NewError(http.StatusForbidden, "forbidden") }
 
 type RunState string
 
@@ -74,17 +75,19 @@ type Delivery struct {
 	WaitMS int    `json:"wait_ms"`
 }
 type CreateRun struct {
+	PreviousRunID    string      `json:"previous_run_id,omitempty"`
 	AutoAuthSession  bool        `json:"-"`
 	ChatID           string      `json:"chat_id,omitempty"`
 	AuthSessionID    string      `json:"auth_session_id,omitempty"`
 	Input            Input       `json:"input"`
 	Interaction      Interaction `json:"interaction"`
 	DisconnectPolicy string      `json:"disconnect_policy,omitempty"`
-	Delivery         Delivery    `json:"delivery,omitempty"`
+	Delivery         Delivery    `json:"delivery"`
 	Budget           Budget      `json:"budget"`
 	BillingAccountID string      `json:"billing_account_id,omitempty"`
 }
 type Run struct {
+	PreviousRunID        string           `json:"previous_run_id,omitempty"`
 	ActiveMilliseconds   int64            `json:"active_milliseconds"`
 	UnresolvedSteps      []UnresolvedStep `json:"unresolved_steps,omitempty"`
 	DisconnectPolicy     string           `json:"disconnect_policy"`
@@ -144,18 +147,30 @@ type AppendEvent struct {
 	OccurredAt    time.Time       `json:"occurred_at"`
 }
 type SearchRequest struct {
-	Mode            string   `json:"mode"`
-	Query           string   `json:"query"`
-	AfterSeq        int64    `json:"after_seq,omitempty"`
-	BeforeSeq       int64    `json:"before_seq,omitempty"`
-	SourceServiceID string   `json:"source_service_id,omitempty"`
-	EventTypes      []string `json:"event_types,omitempty"`
-	Limit           int      `json:"limit"`
+	CaseSensitive   bool      `json:"case_sensitive,omitempty"`
+	MaxBytes        int       `json:"max_bytes,omitempty"`
+	SnippetChars    int       `json:"snippet_chars,omitempty"`
+	Embedding       []float32 `json:"embedding,omitempty"`
+	EmbeddingModel  string    `json:"embedding_model,omitempty"`
+	Offset          int       `json:"offset,omitempty"`
+	Mode            string    `json:"mode"`
+	Query           string    `json:"query"`
+	AfterSeq        int64     `json:"after_seq,omitempty"`
+	BeforeSeq       int64     `json:"before_seq,omitempty"`
+	SourceServiceID string    `json:"source_service_id,omitempty"`
+	EventTypes      []string  `json:"event_types,omitempty"`
+	Limit           int       `json:"limit"`
 }
 type SearchResult struct {
-	Events     []ChatEvent `json:"events"`
-	Partial    bool        `json:"partial"`
-	NextCursor int64       `json:"next_cursor,omitempty"`
+	NextTextOffset int         `json:"next_text_offset,omitempty"`
+	TextPartial    bool        `json:"text_partial,omitempty"`
+	Reason         string      `json:"reason,omitempty"`
+	SkippedSeqs    []int64     `json:"skipped_seqs,omitempty"`
+	TruncatedSeqs  []int64     `json:"truncated_seqs,omitempty"`
+	NextOffset     int         `json:"next_offset,omitempty"`
+	Events         []ChatEvent `json:"events"`
+	Partial        bool        `json:"partial"`
+	NextCursor     int64       `json:"next_cursor,omitempty"`
 }
 type Choice struct {
 	ID    string `json:"id"`
@@ -191,18 +206,32 @@ type RunInput struct {
 	Decision   string   `json:"decision,omitempty"`
 	Applied    bool     `json:"applied"`
 }
+
+// LongContextTariff replaces all token rates above the input threshold.
+type LongContextTariff struct {
+	ThresholdTokens                   int64 `json:"threshold_tokens"`
+	InputMicrocreditsPerMillion       int64 `json:"input_microcredits_per_million"`
+	CachedInputMicrocreditsPerMillion int64 `json:"cached_input_microcredits_per_million"`
+	CacheWriteMicrocreditsPerMillion  int64 `json:"cache_write_microcredits_per_million"`
+	OutputMicrocreditsPerMillion      int64 `json:"output_microcredits_per_million"`
+}
 type Model struct {
-	Provider                          string   `json:"provider,omitempty"`
-	InputCachedMicrocreditsPerMillion int64    `json:"input_cached_microcredits_per_million"`
-	ContextTokens                     int64    `json:"context_tokens"`
-	ID                                string   `json:"id"`
-	ProviderModel                     string   `json:"provider_model"`
-	Efforts                           []string `json:"efforts"`
-	MaxEffort                         string   `json:"max_effort"`
-	MaxOutputTokens                   int      `json:"max_output_tokens"`
-	InputMicrocreditsPerMillion       int64    `json:"input_microcredits_per_million"`
-	OutputMicrocreditsPerMillion      int64    `json:"output_microcredits_per_million"`
-	SupportsImages                    bool     `json:"supports_images"`
+	InputTokenLimit                       int64              `json:"input_token_limit,omitempty"`
+	CompactionThresholdTokens             int64              `json:"compaction_threshold_tokens,omitempty"`
+	CompactionTargetTokens                int64              `json:"compaction_target_tokens,omitempty"`
+	InputCacheWriteMicrocreditsPerMillion int64              `json:"input_cache_write_microcredits_per_million,omitempty"`
+	LongContext                           *LongContextTariff `json:"long_context,omitempty"`
+	Provider                              string             `json:"provider,omitempty"`
+	InputCachedMicrocreditsPerMillion     int64              `json:"input_cached_microcredits_per_million"`
+	ContextTokens                         int64              `json:"context_tokens"`
+	ID                                    string             `json:"id"`
+	ProviderModel                         string             `json:"provider_model"`
+	Efforts                               []string           `json:"efforts"`
+	MaxEffort                             string             `json:"max_effort"`
+	MaxOutputTokens                       int                `json:"max_output_tokens"`
+	InputMicrocreditsPerMillion           int64              `json:"input_microcredits_per_million"`
+	OutputMicrocreditsPerMillion          int64              `json:"output_microcredits_per_million"`
+	SupportsImages                        bool               `json:"supports_images"`
 }
 type Preferences struct {
 	ModelID string `json:"model_id"`
@@ -249,6 +278,7 @@ type Message struct {
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 type Usage struct {
+	CacheWriteTokens  int64  `json:"cache_write_tokens,omitempty"`
 	CachedInputTokens int64  `json:"cached_input_tokens"`
 	InputTokens       int64  `json:"input_tokens"`
 	OutputTokens      int64  `json:"output_tokens"`
@@ -337,4 +367,34 @@ type UnresolvedStep struct {
 type Retention struct {
 	Mode string `json:"mode"`
 	Days int    `json:"days"`
+}
+
+// CachedContext contains conversation data only, never tool execution state or authorization.
+type CachedContext struct {
+	Items      []json.RawMessage `json:"items"`
+	ThroughSeq int64             `json:"through_seq"`
+}
+
+type EventEmbedding struct {
+	Seq    int64     `json:"seq"`
+	Model  string    `json:"model"`
+	Vector []float32 `json:"vector"`
+}
+
+type ReadHistoryRequest struct {
+	EventSeq     int64 `json:"event_seq,omitempty"`
+	OffsetChars  int   `json:"offset_chars,omitempty"`
+	AfterSeq     int64 `json:"after_seq,omitempty"`
+	BeforeSeq    int64 `json:"before_seq,omitempty"`
+	Limit        int   `json:"limit,omitempty"`
+	MaxBytes     int   `json:"max_bytes,omitempty"`
+	SnippetChars int   `json:"snippet_chars,omitempty"`
+}
+
+type ArtifactHandle struct {
+	ID          string    `json:"handle_id"`
+	RunID       string    `json:"run_id"`
+	ArtifactID  string    `json:"artifact_id"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	ContentPath string    `json:"content_path"`
 }

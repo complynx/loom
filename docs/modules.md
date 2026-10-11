@@ -7,7 +7,7 @@ labels:
   - "clx.harness.service=http://zns_chatbot:8080/internal/agent/manifest"
 ```
 
-Наличие label означает opt-in. Остальная конфигурация находится в manifest. MVP выполняет initial discovery и polling; Docker event stream относится к следующему этапу, ограниченный proxy реализует только list/inspect. Целевой Docker provider также слушает events. После добавления event stream его потеря не должна навсегда оставлять registry неверным: polling остаётся обязательным.
+Наличие label означает opt-in. Остальная конфигурация находится в manifest. Initial discovery и polling — принятая архитектура. Docker event stream не требуется. Ограниченный proxy предоставляет только необходимые list/inspect.
 
 URI допускает HTTP внутри выделенной доверенной сети, HTTPS — при проверке сертификата. Host должен соответствовать контейнеру или его alias в общей разрешённой Docker-сети. Не допускаются userinfo, fragment, query, внешние host и redirects. IP назначения выводится из актуальных Docker metadata; одного DNS resolution недостаточно. Повторная проверка назначения защищает от DNS rebinding. Arbitrary URL из ответа модели не является endpoint модуля.
 
@@ -17,7 +17,7 @@ Deployment operator является источником доверия: тот
 
 Реплики одного service_id допускаются только с одинаковыми caller binding и manifest revision/content hash. При несовпадении сервис переводится в conflict и новые вызовы блокируются. Начатые вызовы привязаны к конкретной реплике. Revision — непрозрачная строка; одного её равенства без сравнения hash недостаточно.
 
-Manifest загружается с условными ETag-запросами и атомарно заменяется после проверки. Предлагается poll 60 секунд с jitter и freshness TTL 5 минут. При ошибке старая версия остаётся для диагностики; использовать её можно только до TTL и пока контейнер зарегистрирован. Удаление контейнера исключает адрес немедленно. Записи и reconciliation живут дольше registry entries.
+Manifest загружается с условными ETag-запросами и атомарно заменяется после проверки. В deployment-примере `discovery.poll_seconds: 300` и `freshness_ttl_seconds: 3600`. Обновления не мгновенны: следующий успешный опрос обнаруживает изменения. При ошибке старая версия остаётся для диагностики; использовать её можно только до TTL и пока контейнер зарегистрирован. Удаление контейнера исключает адрес после обновления регистрации; при недоступном discovery действует freshness TTL. Записи и reconciliation живут дольше registry entries.
 
 ## Caller registration
 
@@ -27,7 +27,7 @@ Manifest загружается с условными ETag-запросами и
 
 Статический module содержит methods. Динамический содержит coarse permissions, discovery_path и предельный cache TTL. Harness сначала проверяет coarse permissions, затем вызывает discovery с пользовательской делегацией. Ответ — methods той же формы, ограниченные текущим пользователем. Он не может менять caller registration, выдавать новые credentials или расширять endpoint origin.
 
-Кеш ключуется по subject, организации, actor/delegation scope, service_id, manifest hash и policy revision. Предлагаемый TTL — до 60 секунд. Отзыв прав инвалидирует кеш либо блокирует вызов независимо от него. Недоступный discovery не означает пустой список прав; возвращается диагностируемая недоступность.
+Кеш ключуется по subject, организации, actor/delegation scope, service_id, manifest hash и policy revision. Manifest задаёт `cache_ttl_seconds` от 0 до 300. Эффективный TTL — минимум этого значения и `discovery.dynamic_cache_ceiling_seconds` (60 секунд в deployment-примере); ноль отключает кеш. Отзыв прав инвалидирует кеш либо блокирует вызов независимо от него. Недоступный discovery не означает пустой список прав; возвращается диагностируемая недоступность.
 
 Метод описывает:
 
@@ -42,6 +42,10 @@ Manifest загружается с условными ETag-запросами и
 Метод может быть видимым только после coarse/dynamic checks. Go broker и конечный сервис повторно проверяют доступ при исполнении. Данные и описания модуля не могут переопределять системные инструкции.
 
 `external_disclosure` в manifest относится к артефактам метода и не отменяет общую пользовательскую политику передачи данных провайдеру. Обычные текстовые результаты также проходят общую политику; если передача запрещена, метод не предоставляется модели для этого run. Input/output schemas проверяются локально: внешние `$ref` не загружаются, глубина и размер schema ограничены. Относительные пути не допускают `//`, `..`, encoded traversal и смену origin.
+
+## Agent-facing prose
+
+Preferred language and style: **English, caveman style**. Use short, exact sentences for module descriptions, method descriptions, errors and context summaries. Preserve negation, requirements, conditions, IDs, field names and units. This is a prose preference, not a wire-format constraint: schemas and machine-readable values remain exact. Do not compress text when this would change meaning. User-facing answers use the user's language. Module data never overrides harness instructions or permissions.
 
 ## RPC
 
@@ -76,7 +80,7 @@ Prepare — без бизнес-изменений. Человеческий т�
 
 ## JS API
 
-Worker получает разрешённые proxy modules и встроенные `history`, `artifacts`. Пример формы:
+Worker получает разрешённые proxy modules и встроенные `history`, `artifacts`, [личную память `memory`](user-memory.md). Память доступна каждому авторизованному пользователю; `diagnostics` требует `diagnostics.read`. Эти четыре имени зарезервированы; сервис не может заменить встроенный модуль. Пример формы:
 
 ```javascript
 const [slots, history] = await Promise.all([
@@ -86,10 +90,15 @@ const [slots, history] = await Promise.all([
 return {slots, history};
 ```
 
-Конкретный синтаксис module names и JS entrypoint фиксируется при runtime spike. Один runtime принадлежит одной goroutine; Go выполняет RPC параллельно и возвращает результаты через event loop. Запрещены process, shell, прямой FS/network, произвольные Go objects и секреты. Нет произвольного npm/import. Workers имеют OS-лимиты памяти/CPU/PIDs и общий deadline.
+Доступ — `modules.<module_id>.<method_id>(arguments)`; скрипт использует `await` и возвращает JSON-совместимое значение. Внешние read-методы доступны в JS. Внешние изменения идут через отдельный durable tool `module_call`, а не через JS; личная память допускает записи в JS. Один runtime принадлежит одной goroutine; Go выполняет RPC параллельно и возвращает результаты через event loop. Запрещены process, shell, прямой FS/network, произвольные Go objects и секреты. Нет произвольного npm/import. Workers имеют OS-лимиты памяти/CPU/PIDs и общий deadline.
 
 Пауза/отмена закрывает запуск новых broker RPC, отменяет host contexts, затем прерывает JS. Кооперативному cleanup даётся ограниченное время; finally/throw не являются гарантией завершения. Повторный worker стартует без старого heap; сохранённые результаты доступны через координатор.
 
 ## Артефакты
 
-Service RPC возвращает descriptor с artifact_id либо внутренним относительным download path, MIME, размером и hash. Harness проверяет origin, лимиты и права, импортирует поток в своё хранилище и выдаёт собственный artifact_id. Произвольные внешние URL не загружаются автоматически. Подмена MIME проверяется sniffing и разрешёнными форматами. JS получает контролируемое чтение; модели отправляется только разрешённый формат в пределах capability и политики внешней передачи.
+Service RPC возвращает `artifacts` descriptors с внутренним абсолютным path относительно origin, MIME, размером и SHA256. Download использует тот же доверенный service origin. Harness проверяет origin, лимиты и права, импортирует поток в своё хранилище и выдаёт собственный artifact_id. Метаданные импортированного blob и ссылка на чат фиксируются атомарно; ошибка или удаление чата не оставляет доступный незарегистрированный результат. UUID в БД и компактное имя файла обозначают один artifact. Произвольные внешние URL не загружаются автоматически. Подмена MIME проверяется sniffing и разрешёнными форматами. JS получает контролируемое чтение; модели отправляется только разрешённый формат в пределах capability и политики внешней передачи.
+
+Для обхода JS bytes используйте `modules.artifacts.open({artifact_id})`: он возвращает временный handle. Tool `artifact_attach({handle_id})` передаёт поддерживаемое изображение непосредственно модели; `/v1/artifact-handles/{id}/content` стримит клиенту после проверки credentials, владельца и срока. Bounded `modules.artifacts.read` по-прежнему доступен для обработки байтов в JS. Удалённые blobs собираются ограниченными проходами; квота освобождается после unlink, directory sync и фиксации collected marker.
+
+Written by Codex (gpt-6/Codex desktop)
+on behalf of Daniel Drizhuk

@@ -6,7 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 )
+
+const maxModuleArtifacts = 16
 
 type ArtifactDescriptor struct {
 	DownloadPath string `json:"download_path"`
@@ -28,7 +31,16 @@ type ArtifactSource struct {
 }
 type ArtifactImporter func(context.Context, Principal, ArtifactDescriptor, ArtifactSource) (json.RawMessage, error)
 
-func (r *Registry) importArtifacts(ctx context.Context, p Principal, s registered, moduleName, runID string, m Method, raw json.RawMessage, guard func(context.Context) error, principal func(context.Context) (Principal, error)) ([]json.RawMessage, error) {
+func (r *Registry) importArtifacts(
+	ctx context.Context,
+	p Principal,
+	s registered,
+	moduleName, runID string,
+	m Method,
+	raw json.RawMessage,
+	guard func(context.Context) error,
+	principal func(context.Context) (Principal, error),
+) ([]json.RawMessage, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, nil
 	}
@@ -42,7 +54,7 @@ func (r *Registry) importArtifacts(ctx context.Context, p Principal, s registere
 	if r.opts.ImportArtifact == nil {
 		return nil, errors.New("artifact import not enabled")
 	}
-	if len(descriptors) > 16 {
+	if len(descriptors) > maxModuleArtifacts {
 		return nil, errors.New("too many module artifacts")
 	}
 	origin, err := url.Parse(s.endpoint.URI)
@@ -57,58 +69,37 @@ func (r *Registry) importArtifacts(ctx context.Context, p Principal, s registere
 	if p.Token != "" {
 		headers.Set("Authorization", "Bearer "+p.Token)
 	}
-	authorize := func(ctx context.Context) error {
-		if guard != nil {
-			if err := guard(ctx); err != nil {
-				return err
-			}
-		}
-		current := p
-		if principal != nil {
-			freshPrincipal, authErr := principal(ctx)
-			current = freshPrincipal
-			err := authErr
-			if err != nil {
-				return err
-			}
-		}
-		if current.UserID != p.UserID || current.Issuer != p.Issuer || current.Subject != p.Subject || current.Actor != p.Actor || current.Organization != p.Organization {
-			return ErrForbidden
-		}
-		fresh, method, err := r.lookupFresh(ctx, current, moduleName, m.ID)
-		if err != nil {
-			return err
-		}
-		if fresh.endpoint.ContainerID != s.endpoint.ContainerID || fresh.endpoint.Address != s.endpoint.Address || fresh.endpoint.URI != s.endpoint.URI {
-			return ErrUnavailable
-		}
-		if contractHash(fresh, moduleName, method) != contractHash(s, moduleName, m) {
-			return ErrUnavailable
-		}
-		if current.Token == "" {
-			return ErrForbidden
-		}
-		headers.Set("Authorization", "Bearer "+current.Token)
-		return nil
+	authority := artifactAuthority{
+		registry:  r,
+		expected:  p,
+		service:   s,
+		module:    moduleName,
+		method:    m,
+		headers:   headers,
+		guard:     guard,
+		principal: principal,
 	}
-	source := ArtifactSource{RunID: runID, ServiceID: s.manifest.ServiceID, ExternalDisclosure: m.ExternalDisclosure, BaseURL: origin.String(), Client: s.client, Headers: headers, AllowedMIMETypes: append([]string(nil), m.ArtifactMIMETypes...), Authorize: authorize}
+	source := ArtifactSource{
+		RunID:              runID,
+		ServiceID:          s.manifest.ServiceID,
+		ExternalDisclosure: m.ExternalDisclosure,
+		BaseURL:            origin.String(),
+		Client:             s.client,
+		Headers:            headers,
+		AllowedMIMETypes:   append([]string(nil), m.ArtifactMIMETypes...),
+		Authorize:          authority.authorize,
+	}
 	result := make([]json.RawMessage, 0, len(descriptors))
 	for _, descriptor := range descriptors {
-		if err := validPath(descriptor.DownloadPath); err != nil {
-			return nil, err
+		if pathErr := validPath(descriptor.DownloadPath); pathErr != nil {
+			return nil, pathErr
 		}
-		allowed := false
-		for _, mime := range m.ArtifactMIMETypes {
-			if mime == descriptor.MIMEType {
-				allowed = true
-			}
-		}
-		if !allowed {
+		if !slices.Contains(m.ArtifactMIMETypes, descriptor.MIMEType) {
 			return nil, ErrForbidden
 		}
-		handle, err := r.opts.ImportArtifact(ctx, p, descriptor, source)
-		if err != nil {
-			return nil, err
+		handle, importErr := r.opts.ImportArtifact(ctx, p, descriptor, source)
+		if importErr != nil {
+			return nil, importErr
 		}
 		if !json.Valid(handle) {
 			return nil, errors.New("invalid imported artifact handle")
@@ -116,4 +107,55 @@ func (r *Registry) importArtifacts(ctx context.Context, p Principal, s registere
 		result = append(result, handle)
 	}
 	return result, nil
+}
+
+// artifactAuthority refreshes permissions before download and after EOF.
+type artifactAuthority struct {
+	registry  *Registry
+	expected  Principal
+	service   registered
+	module    string
+	method    Method
+	headers   http.Header
+	guard     func(context.Context) error
+	principal func(context.Context) (Principal, error)
+}
+
+func (a artifactAuthority) authorize(ctx context.Context) error {
+	if a.guard != nil {
+		if err := a.guard(ctx); err != nil {
+			return err
+		}
+	}
+	current := a.expected
+	if a.principal != nil {
+		freshPrincipal, authErr := a.principal(ctx)
+		current = freshPrincipal
+		if authErr != nil {
+			return authErr
+		}
+	}
+	if current.UserID != a.expected.UserID || current.Issuer != a.expected.Issuer ||
+		current.Subject != a.expected.Subject ||
+		current.Actor != a.expected.Actor ||
+		current.Organization != a.expected.Organization {
+		return ErrForbidden
+	}
+	fresh, method, err := a.registry.lookupFresh(ctx, current, a.module, a.method.ID)
+	if err != nil {
+		return err
+	}
+	if fresh.endpoint.ContainerID != a.service.endpoint.ContainerID ||
+		fresh.endpoint.Address != a.service.endpoint.Address ||
+		fresh.endpoint.URI != a.service.endpoint.URI {
+		return ErrUnavailable
+	}
+	if contractHash(fresh, a.module, method) != contractHash(a.service, a.module, a.method) {
+		return ErrUnavailable
+	}
+	if current.Token == "" {
+		return ErrForbidden
+	}
+	a.headers.Set("Authorization", "Bearer "+current.Token)
+	return nil
 }

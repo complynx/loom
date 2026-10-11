@@ -13,11 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/sandbox"
 	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/sandbox"
 )
 
 func TestScriptParallelReads(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	entered := make(chan struct{}, 2)
@@ -34,7 +36,12 @@ func TestScriptParallelReads(t *testing.T) {
 	result := make(chan json.RawMessage, 1)
 	errs := make(chan error, 1)
 	go func() {
-		out, err := (sandbox.Inline{}).Execute(ctx, `const values=await Promise.all([modules.example.echo({n:1}),modules.example.echo({n:2})]); return values;`, []sandbox.Binding{{Module: "example", Methods: []string{"echo"}}}, broker)
+		out, err := (sandbox.Inline{}).Execute(
+			ctx,
+			`const values=await Promise.all([modules.example.echo({n:1}),modules.example.echo({n:2})]); return values;`,
+			[]sandbox.Binding{{Module: "example", Methods: []string{"echo"}}},
+			broker,
+		)
 		result <- out
 		errs <- err
 	}()
@@ -50,6 +57,7 @@ func TestScriptParallelReads(t *testing.T) {
 	require.JSONEq(t, `[{"n":1},{"n":2}]`, string(<-result))
 }
 func TestScriptCannotAccessHostAndStops(t *testing.T) {
+	t.Parallel()
 	broker := sandbox.BrokerFunc(func(context.Context, string, string, json.RawMessage) (json.RawMessage, error) {
 		return nil, errors.New("unexpected call")
 	})
@@ -63,19 +71,28 @@ func TestScriptCannotAccessHostAndStops(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 func TestScriptRejectsLargeResult(t *testing.T) {
+	t.Parallel()
 	_, err := (sandbox.Inline{}).Execute(context.Background(), "return 'a'.repeat(1048577);", nil, nil)
 	require.ErrorContains(t, err, "result too large")
 }
 func TestScriptCallLimit(t *testing.T) {
+	t.Parallel()
 	broker := sandbox.BrokerFunc(func(context.Context, string, string, json.RawMessage) (json.RawMessage, error) {
 		return json.RawMessage("{}"), nil
 	})
-	_, err := (sandbox.Inline{}).Execute(context.Background(), "for(let i=0;i<129;i++) await modules.example.echo({}); return true;", []sandbox.Binding{{Module: "example", Methods: []string{"echo"}}}, broker)
+	_, err := (sandbox.Inline{}).Execute(
+		context.Background(),
+		"for(let i=0;i<129;i++) await modules.example.echo({}); return true;",
+		[]sandbox.Binding{{Module: "example", Methods: []string{"echo"}}},
+		broker,
+	)
 	require.ErrorContains(t, err, "call limit")
 }
 
 // This test binary also acts as the sandbox child for the real process boundary test.
-func TestWorkerProcess(t *testing.T) {
+//
+//nolint:paralleltest // The test binary uses this entry point as the isolated child process.
+func TestWorkerProcess(_ *testing.T) {
 	if os.Args[len(os.Args)-1] == "sandbox-stuck" {
 		for {
 			time.Sleep(time.Hour)
@@ -92,14 +109,13 @@ func TestWorkerProcess(t *testing.T) {
 	}
 	os.Exit(0)
 }
+
 func TestSupervisorRunsCredentialFreeChildAndCancels(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("target Unix-socket supervisor is verified on Linux")
 	}
 	t.Setenv("CLX_TEST_SECRET", "must-not-reach-child")
-	directory, err := os.MkdirTemp("", "clx-sandbox-")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	directory := t.TempDir()
 	socket := filepath.Join(directory, "worker.sock")
 	listener, err := net.Listen("unix", socket)
 	require.NoError(t, err)
@@ -107,7 +123,11 @@ func TestSupervisorRunsCredentialFreeChildAndCancels(t *testing.T) {
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	supervisor := sandbox.Supervisor{WorkerPath: executable, WorkerArgs: []string{"-test.run=^TestWorkerProcess$", "sandbox-worker"}, MaxWorkers: 1}
+	supervisor := sandbox.Supervisor{
+		WorkerPath: executable,
+		WorkerArgs: []string{"-test.run=^TestWorkerProcess$", "sandbox-worker"},
+		MaxWorkers: 1,
+	}
 	stopped := make(chan error, 1)
 	go func() { stopped <- supervisor.Serve(ctx, listener) }()
 	client := sandbox.Client{Socket: socket, Timeout: time.Second}
@@ -116,7 +136,12 @@ func TestSupervisorRunsCredentialFreeChildAndCancels(t *testing.T) {
 		calls.Add(1)
 		return json.RawMessage(`{"ok":true}`), nil
 	})
-	result, err := client.Execute(context.Background(), "return await modules.example.echo({});", []sandbox.Binding{{Module: "example", Methods: []string{"echo"}}}, broker)
+	result, err := client.Execute(
+		context.Background(),
+		"return await modules.example.echo({});",
+		[]sandbox.Binding{{Module: "example", Methods: []string{"echo"}}},
+		broker,
+	)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"ok":true}`, string(result))
 	require.EqualValues(t, 1, calls.Load())
@@ -128,24 +153,24 @@ func TestSupervisorRunsCredentialFreeChildAndCancels(t *testing.T) {
 	require.Less(t, time.Since(start), 2*time.Second)
 	cancel()
 	select {
-	case err := <-stopped:
-		require.NoError(t, err)
+	case stopErr := <-stopped:
+		require.NoError(t, stopErr)
 	case <-time.After(2 * time.Second):
 		t.Fatal("supervisor did not stop")
 	}
 }
 func TestScriptSizeLimit(t *testing.T) {
+	t.Parallel()
 	_, err := (sandbox.Inline{}).Execute(context.Background(), strings.Repeat(" ", 65537), nil, nil)
 	require.ErrorContains(t, err, "script exceeds")
 }
 
 func TestSupervisorKillsUnresponsiveChild(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Linux deployment process boundary")
 	}
-	directory, err := os.MkdirTemp("", "clx-stuck-")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	directory := t.TempDir()
 	socket := filepath.Join(directory, "worker.sock")
 	listener, err := net.Listen("unix", socket)
 	require.NoError(t, err)
@@ -153,7 +178,10 @@ func TestSupervisorKillsUnresponsiveChild(t *testing.T) {
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	supervisor := sandbox.Supervisor{WorkerPath: executable, WorkerArgs: []string{"-test.run=^TestWorkerProcess$", "sandbox-stuck"}}
+	supervisor := sandbox.Supervisor{
+		WorkerPath: executable,
+		WorkerArgs: []string{"-test.run=^TestWorkerProcess$", "sandbox-stuck"},
+	}
 	stopped := make(chan error, 1)
 	go func() { stopped <- supervisor.Serve(ctx, listener) }()
 	runCtx, runCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -163,10 +191,73 @@ func TestSupervisorKillsUnresponsiveChild(t *testing.T) {
 	start := time.Now()
 	cancel()
 	select {
-	case err := <-stopped:
-		require.NoError(t, err)
+	case stopErr := <-stopped:
+		require.NoError(t, stopErr)
 		require.Less(t, time.Since(start), 2*time.Second)
 	case <-time.After(2 * time.Second):
 		t.Fatal("unresponsive child exceeded stop budget")
 	}
+}
+
+func TestSupervisorHealthStartsNoWorker(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux Unix IPC")
+	}
+	socket := filepath.Join(t.TempDir(), "health.sock")
+	listener, err := net.Listen("unix", socket)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- (sandbox.Supervisor{WorkerPath: "/nonexistent/no-worker", MaxWorkers: 1}).Serve(ctx, listener)
+	}()
+	client := sandbox.Client{Socket: socket, Timeout: time.Second}
+	require.NoError(t, client.Health(ctx))
+	_, err = client.Execute(ctx, "return true;", nil, nil)
+	require.Error(t, err)
+	require.NoError(t, client.Health(ctx))
+	cancel()
+	require.NoError(t, <-stopped)
+}
+
+// A saturated supervisor still reads the request before it sends a response.
+func TestSupervisorHealthAtCapacityWaitsForRequest(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux Unix IPC")
+	}
+	socket := filepath.Join(t.TempDir(), "capacity.sock")
+	listener, err := net.Listen("unix", socket)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- (sandbox.Supervisor{WorkerPath: "/nonexistent/no-worker", MaxWorkers: 1}).Serve(ctx, listener)
+	}()
+	occupied, err := net.Dial("unix", socket)
+	require.NoError(t, err)
+	defer func() { _ = occupied.Close() }()
+	probe, err := net.Dial("unix", socket)
+	require.NoError(t, err)
+	defer func() { _ = probe.Close() }()
+	require.NoError(t, probe.SetReadDeadline(time.Now().Add(20*time.Millisecond)))
+	var buffer [1]byte
+	_, err = probe.Read(buffer[:])
+	var timeout net.Error
+	require.ErrorAs(t, err, &timeout)
+	require.True(t, timeout.Timeout(), "supervisor must wait for the request")
+	require.NoError(t, probe.SetDeadline(time.Now().Add(time.Second)))
+	_, err = probe.Write([]byte("{\"type\":\"ping\"}\n"))
+	require.NoError(t, err)
+	var reply struct {
+		Type string `json:"type"`
+	}
+	require.NoError(t, json.NewDecoder(probe).Decode(&reply))
+	require.Equal(t, "pong", reply.Type)
+	require.NoError(t, (sandbox.Client{Socket: socket}).Health(ctx))
+	cancel()
+	require.NoError(t, <-stopped)
 }

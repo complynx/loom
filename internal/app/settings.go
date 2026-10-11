@@ -2,13 +2,35 @@ package app
 
 import (
 	"errors"
+
 	"github.com/complynx/clx-scripter/internal/config"
 	"github.com/complynx/clx-scripter/internal/domain"
 )
 
 func bootstrapSettings(c config.Config) (domain.Settings, error) {
 	b := c.BootstrapSettings
-	s := domain.Settings{ExternalDisclosure: b.ExternalDisclosureDefault, DefaultModelID: b.DefaultModelID, DefaultEffort: b.DefaultEffort, InitialCredits: b.InitialCredits, MaxRunMicrocredits: b.MaxRunMicrocredits, ActiveRunLimit: b.UserActiveRunLimit, HistoryRecentLimit: b.HistoryRecentLimit, MaxSteps: b.MaxSteps, QuestionTimeoutSeconds: b.InputWaitSeconds, RunActiveTimeSeconds: b.RunActiveTimeSeconds, RunLifetimeSeconds: b.RunLifetimeSeconds, InputWaitSeconds: b.InputWaitSeconds, ApprovalWaitSeconds: b.ApprovalWaitSeconds, PausedWaitSeconds: b.PausedWaitSeconds, RegexPatternMaxChars: b.RegexPatternMaxChars, RegexScanMaxBytes: int(b.RegexScanMaxBytes), RegexDeadlineMS: b.RegexDeadlineMS, HistoryRetention: domain.Retention{Mode: b.HistoryRetention.Mode, Days: b.HistoryRetention.Days}, ArtifactRetention: domain.Retention{Mode: b.ArtifactRetention.Mode, Days: b.ArtifactRetention.Days}, TraceRetention: domain.Retention{Mode: b.TraceRetention.Mode, Days: b.TraceRetention.Days}}
+	s := domain.Settings{
+		ExternalDisclosure:     b.ExternalDisclosureDefault,
+		DefaultModelID:         b.DefaultModelID,
+		DefaultEffort:          b.DefaultEffort,
+		InitialCredits:         b.InitialCredits,
+		MaxRunMicrocredits:     b.MaxRunMicrocredits,
+		ActiveRunLimit:         b.UserActiveRunLimit,
+		HistoryRecentLimit:     b.HistoryRecentLimit,
+		MaxSteps:               b.MaxSteps,
+		QuestionTimeoutSeconds: b.InputWaitSeconds,
+		RunActiveTimeSeconds:   b.RunActiveTimeSeconds,
+		RunLifetimeSeconds:     b.RunLifetimeSeconds,
+		InputWaitSeconds:       b.InputWaitSeconds,
+		ApprovalWaitSeconds:    b.ApprovalWaitSeconds,
+		PausedWaitSeconds:      b.PausedWaitSeconds,
+		RegexPatternMaxChars:   b.RegexPatternMaxChars,
+		RegexScanMaxBytes:      int(b.RegexScanMaxBytes),
+		RegexDeadlineMS:        b.RegexDeadlineMS,
+		HistoryRetention:       domain.Retention{Mode: b.HistoryRetention.Mode, Days: b.HistoryRetention.Days},
+		ArtifactRetention:      domain.Retention{Mode: b.ArtifactRetention.Mode, Days: b.ArtifactRetention.Days},
+		TraceRetention:         domain.Retention{Mode: b.TraceRetention.Mode, Days: b.TraceRetention.Days},
+	}
 	if s.ActiveRunLimit <= 0 {
 		s.ActiveRunLimit = c.Execution.ActiveRunsPerUserCeiling
 	}
@@ -30,6 +52,16 @@ func bootstrapSettings(c config.Config) (domain.Settings, error) {
 		if !m.ParallelTools || !m.Steering || !m.Questions {
 			return s, errors.New("MVP models must support parallel tools, steering and questions")
 		}
+		var longContext *domain.LongContextTariff
+		if band := t.LongContext; band != nil {
+			longContext = &domain.LongContextTariff{
+				ThresholdTokens:                   band.ThresholdTokens,
+				InputMicrocreditsPerMillion:       band.InputCreditsPerMillion,
+				CachedInputMicrocreditsPerMillion: band.CachedInputCreditsPerMillion,
+				CacheWriteMicrocreditsPerMillion:  band.CacheWriteCreditsPerMillion,
+				OutputMicrocreditsPerMillion:      band.OutputCreditsPerMillion,
+			}
+		}
 		maxOutput := m.MaxOutputTokens
 		if b.OutputTokenLimit > 0 && maxOutput > b.OutputTokenLimit {
 			maxOutput = b.OutputTokenLimit
@@ -40,7 +72,27 @@ func bootstrapSettings(c config.Config) (domain.Settings, error) {
 				images = true
 			}
 		}
-		s.Models = append(s.Models, domain.Model{ID: m.ID, Provider: m.Provider, ProviderModel: m.Model, Efforts: m.Efforts, MaxEffort: m.MaxEffort, MaxOutputTokens: maxOutput, InputMicrocreditsPerMillion: t.InputCreditsPerMillion, InputCachedMicrocreditsPerMillion: t.CachedInputCreditsPerMillion, OutputMicrocreditsPerMillion: t.OutputCreditsPerMillion, SupportsImages: images, ContextTokens: int64(m.ContextTokens)})
+		s.Models = append(
+			s.Models,
+			domain.Model{
+				InputTokenLimit:                       m.InputTokenLimit,
+				CompactionThresholdTokens:             m.CompactionThresholdTokens,
+				CompactionTargetTokens:                m.CompactionTargetTokens,
+				LongContext:                           longContext,
+				ID:                                    m.ID,
+				Provider:                              m.Provider,
+				ProviderModel:                         m.Model,
+				Efforts:                               m.Efforts,
+				MaxEffort:                             m.MaxEffort,
+				MaxOutputTokens:                       maxOutput,
+				InputMicrocreditsPerMillion:           t.InputCreditsPerMillion,
+				InputCachedMicrocreditsPerMillion:     t.CachedInputCreditsPerMillion,
+				InputCacheWriteMicrocreditsPerMillion: t.CacheWriteCreditsPerMillion,
+				OutputMicrocreditsPerMillion:          t.OutputCreditsPerMillion,
+				SupportsImages:                        images,
+				ContextTokens:                         int64(m.ContextTokens),
+			},
+		)
 	}
 	return s, nil
 }

@@ -1,0 +1,40 @@
+[
+  {
+    "name": "health readiness and invalid bearer",
+    "status": "PASS"
+  },
+  {
+    "name": "stable default chat and owner/org isolation",
+    "status": "PASS"
+  },
+  {
+    "name": "passive append deduplication and no proactive inference",
+    "status": "PASS"
+  },
+  {
+    "name": "history fulltext literal regex invalid pattern and bounded cursor",
+    "status": "PASS"
+  },
+  {
+    "name": "semantic supplied vectors and isolation",
+    "status": "PASS"
+  },
+  {
+    "error": "HTTP 422 DELETE /v1/users/me/memory/entries/lavender-note {\"error\":{\"code\":\"invalid_memory\",\"message\":\"invalid memory\",\"request_id\":\"fda369d0-9ee8-4dd1-8478-fb1ef963ef41\",\"retryable\":false}}\n",
+    "name": "memory micro index notes sources CRUD CAS limits and isolation",
+    "status": "FAIL"
+  },
+  {
+    "name": "model preferences and admin configuration permission CAS",
+    "status": "PASS"
+  },
+  {
+    "name": "direct sessions create reauthorize conflict and revoke",
+    "status": "PASS"
+  },
+  {
+    "error": "HTTP 404 GET /v1/chats/default {\"error\":{\"code\":\"not_found\",\"message\":\"not found\",\"request_id\":\"c9f33ba9-d242-4bc2-a870-f44c16a9509a\",\"retryable\":false}}\n",
+    "name": "trusted service delegation bootstrap and bare service denied",
+    "status": "FAIL"
+  }
+]

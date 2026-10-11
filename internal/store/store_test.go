@@ -4,18 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/require"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/clx-scripter/internal/store"
 )
 
 func testStore(t *testing.T) *store.Store {
@@ -44,21 +46,68 @@ func testStore(t *testing.T) *store.Store {
 	require.NoError(t, e)
 	t.Cleanup(func() {
 		pool.Close()
-		_, e := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
-		if e != nil {
-			t.Error(e)
+		_, cleanupErr := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		if cleanupErr != nil {
+			t.Error(cleanupErr)
 		}
 		admin.Close()
 	})
 	s := store.New(pool, nil)
-	require.NoError(t, s.Bootstrap(ctx, domain.Settings{Models: []domain.Model{{ID: "test", ProviderModel: "test", Efforts: []string{"low", "high"}, MaxEffort: "high", MaxOutputTokens: 100, InputMicrocreditsPerMillion: 1000000, OutputMicrocreditsPerMillion: 1000000}}, DefaultModelID: "test", DefaultEffort: "low", InitialCredits: 10000, MaxRunMicrocredits: 1000, ActiveRunLimit: 8, HistoryRecentLimit: 50, MaxSteps: 10, QuestionTimeoutSeconds: 60}))
+	require.NoError(
+		t,
+		s.Bootstrap(
+			ctx,
+			domain.Settings{
+				Models: []domain.Model{
+					{
+						ID:                           "test",
+						ProviderModel:                "test",
+						Efforts:                      []string{"low", "high"},
+						MaxEffort:                    "high",
+						MaxOutputTokens:              100,
+						InputMicrocreditsPerMillion:  1000000,
+						OutputMicrocreditsPerMillion: 1000000,
+					},
+				},
+				DefaultModelID:         "test",
+				DefaultEffort:          "low",
+				InitialCredits:         10000,
+				MaxRunMicrocredits:     1000,
+				ActiveRunLimit:         8,
+				HistoryRecentLimit:     50,
+				MaxSteps:               10,
+				QuestionTimeoutSeconds: 60,
+			},
+		),
+	)
 	return s
 }
 func principal(subject string) domain.Principal {
-	return domain.Principal{Issuer: "https://issuer.test", Subject: subject, Actor: subject, OrgID: "org", ExpiresAt: time.Now().Add(time.Hour), Permissions: map[string]bool{"runs.create": true, "runs.control": true, "chat.read": true, "chat.events.append": true, "preferences.self.write": true, "preferences.other.write": true, "users.policy.write": true, "settings.write": true, "billing.adjust": true}}
+	return domain.Principal{
+		Issuer:    "https://issuer.test",
+		Subject:   subject,
+		Actor:     subject,
+		OrgID:     "org",
+		ExpiresAt: time.Now().Add(time.Hour),
+		Permissions: map[string]bool{
+			"runs.create":             true,
+			"runs.control":            true,
+			"chat.read":               true,
+			"chat.events.append":      true,
+			"preferences.self.write":  true,
+			"preferences.other.write": true,
+			"users.policy.write":      true,
+			"settings.write":          true,
+			"billing.adjust":          true,
+		},
+	}
 }
 func request() domain.CreateRun {
-	return domain.CreateRun{Input: domain.Input{Text: "hello"}, Interaction: domain.Interaction{Questions: "choices_and_text", Approvals: true}, Budget: domain.Budget{MaxMicrocredits: 1000}}
+	return domain.CreateRun{
+		Input:       domain.Input{Text: "hello"},
+		Interaction: domain.Interaction{Questions: "choices_and_text", Approvals: true},
+		Budget:      domain.Budget{MaxMicrocredits: 1000},
+	}
 }
 func code(t *testing.T, e error, c string) {
 	t.Helper()
@@ -67,6 +116,8 @@ func code(t *testing.T, e error, c string) {
 	require.Equal(t, c, de.Code)
 }
 func TestChatRunConcurrencyAndDurableReplay(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -103,10 +154,10 @@ func TestChatRunConcurrencyAndDurableReplay(t *testing.T) {
 	for _, key := range []string{"race1", "race2"} {
 		go func(key string) {
 			defer wg.Done()
-			in := request()
-			in.ChatID = c3.ID
-			_, e := s.CreateRun(ctx, p, key, in)
-			results <- e
+			concurrentInput := request()
+			concurrentInput.ChatID = c3.ID
+			_, createErr := s.CreateRun(ctx, p, key, concurrentInput)
+			results <- createErr
 		}(key)
 	}
 	wg.Wait()
@@ -128,6 +179,8 @@ func TestChatRunConcurrencyAndDurableReplay(t *testing.T) {
 	require.Equal(t, 1, busy)
 }
 func TestPassiveHistoryAndRegex(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -155,6 +208,8 @@ func TestPassiveHistoryAndRegex(t *testing.T) {
 	require.Equal(t, domain.Queued, run.State)
 }
 func TestCreditsSettleOnceAndUnknownRecovery(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -190,6 +245,8 @@ func TestCreditsSettleOnceAndUnknownRecovery(t *testing.T) {
 	code(t, e, "lease_lost")
 }
 func TestQuestionsAndControl(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -197,11 +254,32 @@ func TestQuestionsAndControl(t *testing.T) {
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
-	require.NoError(t, s.AskQuestion(ctx, r.ID, "worker", r.Fence, domain.Question{ID: "which", Text: "Choose", Choices: []domain.Choice{{ID: "a", Label: "A"}}, AllowText: false, ExpiresAt: time.Now().Add(time.Minute)}))
+	require.NoError(
+		t,
+		s.AskQuestion(
+			ctx,
+			r.ID,
+			"worker",
+			r.Fence,
+			domain.Question{
+				ID:        "which",
+				Text:      "Choose",
+				Choices:   []domain.Choice{{ID: "a", Label: "A"}},
+				AllowText: false,
+				ExpiresAt: time.Now().Add(time.Minute),
+			},
+		),
+	)
 	r, e = s.GetRun(ctx, p, r.ID)
 	require.NoError(t, e)
 	require.Equal(t, domain.WaitingInput, r.State)
-	_, e = s.AddInput(ctx, p, r.ID, "bad", domain.RunInput{Kind: "answer", QuestionID: "which", ChoiceIDs: []string{"invalid"}})
+	_, e = s.AddInput(
+		ctx,
+		p,
+		r.ID,
+		"bad",
+		domain.RunInput{Kind: "answer", QuestionID: "which", ChoiceIDs: []string{"invalid"}},
+	)
 	code(t, e, "invalid_choice")
 	input := domain.RunInput{Kind: "answer", QuestionID: "which", ChoiceIDs: []string{"a"}}
 	r, e = s.AddInput(ctx, p, r.ID, "answer", input)
@@ -221,6 +299,8 @@ func TestQuestionsAndControl(t *testing.T) {
 	require.NoError(t, e)
 }
 func TestEncryptedSessionBindingAndIdempotentBootstrap(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -238,13 +318,15 @@ func TestEncryptedSessionBindingAndIdempotentBootstrap(t *testing.T) {
 	require.NoError(t, e)
 	require.Equal(t, r.AuthSessionID, replay.AuthSessionID)
 	_, e = s.LoadAuthSession(ctx, principal("bob"), session.ID)
-	require.True(t, errors.Is(e, domain.ErrNotFound))
+	require.ErrorIs(t, e, domain.ErrNotFound)
 	require.NoError(t, s.RevokeAuthSession(ctx, p, session.ID))
 	_, e = s.ReauthorizeAuthSession(ctx, p, session.ID, json.RawMessage(`{}`), time.Now().Add(time.Hour), 1)
 	code(t, e, "session_version_conflict")
 }
 
 func TestPreferencesPolicyAndAuditCredits(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -284,6 +366,8 @@ func TestPreferencesPolicyAndAuditCredits(t *testing.T) {
 	code(t, e, "idempotency_conflict")
 }
 func TestArtifactQuotaAtomic(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -317,18 +401,31 @@ func TestArtifactQuotaAtomic(t *testing.T) {
 	require.Equal(t, 1, rejected)
 }
 func TestSummaryDurabilityAndMonotonicity(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
 	c, e := s.DefaultChat(ctx, p)
 	require.NoError(t, e)
-	_, e = s.AppendEvent(ctx, p, c.ID, domain.AppendEvent{SourceEventID: "constraint", Type: "user.action", Text: "Keep a low budget"})
+	_, e = s.AppendEvent(
+		ctx,
+		p,
+		c.ID,
+		domain.AppendEvent{SourceEventID: "constraint", Type: "user.action", Text: "Keep a low budget"},
+	)
 	require.NoError(t, e)
 	r, e := s.CreateRun(ctx, p, "run", request())
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
-	summary := domain.ContextSummary{ChatID: c.ID, ThroughSeq: 1, Text: "User requires a low budget", SourceHash: strings.Repeat("a", 64), ModelID: "test"}
+	summary := domain.ContextSummary{
+		ChatID:     c.ID,
+		ThroughSeq: 1,
+		Text:       "User requires a low budget",
+		SourceHash: strings.Repeat("a", 64),
+		ModelID:    "test",
+	}
 	require.NoError(t, s.SaveSummary(ctx, r.ID, "worker", r.Fence, summary))
 	got, e := store.New(s.Pool(), nil).ExecutionSummary(ctx, r.ID)
 	require.NoError(t, e)
@@ -345,6 +442,8 @@ func TestSummaryDurabilityAndMonotonicity(t *testing.T) {
 	require.Equal(t, "hello", events[0].Text)
 }
 func TestApprovalDecisionAndWakeAtomic(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -352,7 +451,12 @@ func TestApprovalDecisionAndWakeAtomic(t *testing.T) {
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
-	approval := domain.Approval{ID: "approval", OperationID: uuid.NewString(), Text: "Perform action", ExpiresAt: time.Now().Add(time.Minute)}
+	approval := domain.Approval{
+		ID:          "approval",
+		OperationID: uuid.NewString(),
+		Text:        "Perform action",
+		ExpiresAt:   time.Now().Add(time.Minute),
+	}
 	require.NoError(t, s.AskApproval(ctx, r.ID, "worker", r.Fence, approval))
 	s.SetApprovalHandler(func(context.Context, pgx.Tx, domain.Run, domain.RunInput) error {
 		return errors.New("operation rejection")
@@ -376,24 +480,43 @@ func TestApprovalDecisionAndWakeAtomic(t *testing.T) {
 }
 
 func TestFulltextWithOptionalFilters(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
 	c, e := s.DefaultChat(ctx, p)
 	require.NoError(t, e)
-	_, e = s.AppendEvent(ctx, p, c.ID, domain.AppendEvent{SourceEventID: "menu", Type: "user.action", Text: "Opened massage orders menu"})
+	_, e = s.AppendEvent(
+		ctx,
+		p,
+		c.ID,
+		domain.AppendEvent{SourceEventID: "menu", Type: "user.action", Text: "Opened massage orders menu"},
+	)
 	require.NoError(t, e)
 	for _, types := range [][]string{nil, {"user.action"}} {
-		out, e := s.Search(ctx, p, c.ID, domain.SearchRequest{Mode: "fulltext", Query: "massage", EventTypes: types})
-		require.NoError(t, e)
+		out, searchErr := s.Search(
+			ctx,
+			p,
+			c.ID,
+			domain.SearchRequest{Mode: "fulltext", Query: "massage", EventTypes: types},
+		)
+		require.NoError(t, searchErr)
 		require.Len(t, out.Events, 1)
 	}
-	out, e := s.Search(ctx, p, c.ID, domain.SearchRequest{Mode: "fulltext", Query: "massage", EventTypes: []string{"message.user"}})
+	out, e := s.Search(
+		ctx,
+		p,
+		c.ID,
+		domain.SearchRequest{Mode: "fulltext", Query: "massage", EventTypes: []string{"message.user"}},
+	)
 	require.NoError(t, e)
 	require.Empty(t, out.Events)
 }
 
 func TestSettlementJSONReplayAndFreePendingStep(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -404,7 +527,10 @@ func TestSettlementJSONReplayAndFreePendingStep(t *testing.T) {
 	step, e := s.BeginStep(ctx, r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 100)
 	require.NoError(t, e)
 	usage := domain.Usage{Microcredits: 10}
-	require.NoError(t, s.CompleteStep(ctx, r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{"b":1.00,"a":2}`), usage))
+	require.NoError(
+		t,
+		s.CompleteStep(ctx, r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{"b":1.00,"a":2}`), usage),
+	)
 	require.NoError(t, s.CompleteStep(ctx, r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{"a":2,"b":1}`), usage))
 	b, e := s.Balance(ctx, p)
 	require.NoError(t, e)
@@ -417,6 +543,8 @@ func TestSettlementJSONReplayAndFreePendingStep(t *testing.T) {
 }
 
 func TestCancellationRetainsUncertainReserveAndSafeReconcileResume(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -446,6 +574,8 @@ func TestCancellationRetainsUncertainReserveAndSafeReconcileResume(t *testing.T)
 }
 
 func TestEvidenceReceiptSettlementAndResume(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -461,7 +591,14 @@ func TestEvidenceReceiptSettlementAndResume(t *testing.T) {
 	require.NoError(t, e)
 	require.Len(t, r.UnresolvedSteps, 1)
 	require.Equal(t, step.ID, r.UnresolvedSteps[0].ClientRequestID)
-	receipt := domain.ReconcileStepRequest{Usage: domain.Usage{InputTokens: 2, OutputTokens: 3, Microcredits: 5, RequestID: "provider-receipt"}, Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "provider-receipt", Reason: "verified provider usage"}}
+	receipt := domain.ReconcileStepRequest{
+		Usage: domain.Usage{InputTokens: 2, OutputTokens: 3, Microcredits: 5, RequestID: "provider-receipt"},
+		Evidence: domain.ReconcileEvidence{
+			Kind:      "provider_receipt",
+			Reference: "provider-receipt",
+			Reason:    "verified provider usage",
+		},
+	}
 	wrong := p
 	wrong.OrgID = "foreign"
 	_, e = s.ReconcileStep(ctx, wrong, r.ID, step.ID, "receipt", receipt)
@@ -491,6 +628,8 @@ func TestEvidenceReceiptSettlementAndResume(t *testing.T) {
 	require.Equal(t, domain.Queued, r.State)
 }
 func TestReceiptCannotSettleLiveInferenceAndSemanticRepeat(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -501,7 +640,15 @@ func TestReceiptCannotSettleLiveInferenceAndSemanticRepeat(t *testing.T) {
 	require.NoError(t, e)
 	step, e := s.BeginStep(ctx, r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 10)
 	require.NoError(t, e)
-	receipt := domain.ReconcileStepRequest{Usage: domain.Usage{Microcredits: 0}, Evidence: domain.ReconcileEvidence{Kind: "operator_attestation", Reference: "incident-42", Reason: "provider rejected before billing"}, Result: json.RawMessage(`{"ErrorCode":"not_billed","a":1.00}`)}
+	receipt := domain.ReconcileStepRequest{
+		Usage: domain.Usage{Microcredits: 0},
+		Evidence: domain.ReconcileEvidence{
+			Kind:      "operator_attestation",
+			Reference: "incident-42",
+			Reason:    "provider rejected before billing",
+		},
+		Result: json.RawMessage(`{"ErrorCode":"not_billed","a":1.00}`),
+	}
 	_, e = s.ReconcileStep(ctx, p, r.ID, step.ID, "receipt", receipt)
 	code(t, e, "run_not_reconciling")
 	require.NoError(t, s.MarkStepUnknown(ctx, r.ID, "worker", r.Fence, step.ID))
@@ -513,6 +660,8 @@ func TestReceiptCannotSettleLiveInferenceAndSemanticRepeat(t *testing.T) {
 }
 
 func TestCurrentCatalogIntersectionAndPassiveAction(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -545,7 +694,12 @@ func TestCurrentCatalogIntersectionAndPassiveAction(t *testing.T) {
 	model, e := s.ExecutionModel(ctx, r.ID)
 	require.NoError(t, e)
 	require.False(t, model.SupportsImages)
-	event := domain.AppendEvent{SourceEventID: "action", Type: "user.action", Action: "massage.selected", Text: "selected"}
+	event := domain.AppendEvent{
+		SourceEventID: "action",
+		Type:          "user.action",
+		Action:        "massage.selected",
+		Text:          "selected",
+	}
 	first, e := s.AppendEvent(ctx, p, r.ChatID, event)
 	require.NoError(t, e)
 	require.Equal(t, event.Action, first.Action)
@@ -557,6 +711,8 @@ func TestCurrentCatalogIntersectionAndPassiveAction(t *testing.T) {
 	require.Equal(t, event.Action, history[len(history)-1].Action)
 }
 func TestFinalSteeringCannotBeLost(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -574,6 +730,8 @@ func TestFinalSteeringCannotBeLost(t *testing.T) {
 	require.NoError(t, s.Transition(ctx, r.ID, "worker", r.Fence, domain.Completed, "", "done"))
 }
 func TestCachedReceiptAndRevokedExecution(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -591,13 +749,27 @@ func TestCachedReceiptAndRevokedExecution(t *testing.T) {
 	require.NoError(t, e)
 	require.NoError(t, s.RevokeAuthSession(ctx, p, session.ID))
 	_, e = s.ExecutionAuthSession(ctx, r.ID)
-	require.True(t, errors.Is(e, domain.ErrNotFound))
+	require.ErrorIs(t, e, domain.ErrNotFound)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
 	step, e := s.BeginStep(ctx, r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 100)
 	require.NoError(t, e)
 	require.NoError(t, s.MarkStepUnknown(ctx, r.ID, "worker", r.Fence, step.ID))
-	_, e = s.ReconcileStep(ctx, p, r.ID, step.ID, "receipt", domain.ReconcileStepRequest{Usage: domain.Usage{InputTokens: 10, CachedInputTokens: 8, OutputTokens: 3, Microcredits: 6}, Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "verified", Reason: "cached tokens verified"}})
+	_, e = s.ReconcileStep(
+		ctx,
+		p,
+		r.ID,
+		step.ID,
+		"receipt",
+		domain.ReconcileStepRequest{
+			Usage: domain.Usage{InputTokens: 10, CachedInputTokens: 8, OutputTokens: 3, Microcredits: 6},
+			Evidence: domain.ReconcileEvidence{
+				Kind:      "provider_receipt",
+				Reference: "verified",
+				Reason:    "cached tokens verified",
+			},
+		},
+	)
 	require.NoError(t, e)
 	balance, e := s.Balance(ctx, p)
 	require.NoError(t, e)
@@ -605,8 +777,12 @@ func TestCachedReceiptAndRevokedExecution(t *testing.T) {
 }
 
 func TestRequestedControlWinsFinalTransition(t *testing.T) {
+	t.Parallel()
+
 	for _, command := range []string{"cancel", "pause"} {
 		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+
 			s := testStore(t)
 			ctx := context.Background()
 			p := principal("alice")
@@ -634,6 +810,8 @@ func TestRequestedControlWinsFinalTransition(t *testing.T) {
 	}
 }
 func TestTombstonedArtifactQuotaReleasedOnlyAfterCollection(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -641,7 +819,15 @@ func TestTombstonedArtifactQuotaReleasedOnlyAfterCollection(t *testing.T) {
 	p.Permissions["artifacts.read"] = true
 	uid, e := s.ResolveUser(ctx, p)
 	require.NoError(t, e)
-	a := domain.Artifact{ID: uuid.NewString(), OwnerID: uid, OrgID: p.OrgID, MIME: "text/plain", SHA256: "hash", Size: 60, CreatedAt: time.Now()}
+	a := domain.Artifact{
+		ID:        uuid.NewString(),
+		OwnerID:   uid,
+		OrgID:     p.OrgID,
+		MIME:      "text/plain",
+		SHA256:    "hash",
+		Size:      60,
+		CreatedAt: time.Now(),
+	}
 	require.NoError(t, s.CommitArtifact(ctx, a, 100))
 	require.ErrorIs(t, s.MarkArtifactCollected(ctx, a.ID), domain.ErrNotFound)
 	chat, e := s.CreateChat(ctx, p)
@@ -661,6 +847,8 @@ func TestTombstonedArtifactQuotaReleasedOnlyAfterCollection(t *testing.T) {
 }
 
 func TestDeletedChatDeniesAllRunIdempotencyReplays(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -685,6 +873,8 @@ func TestDeletedChatDeniesAllRunIdempotencyReplays(t *testing.T) {
 }
 
 func TestControlOnlyCallerReceivesNoChatContent(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -692,27 +882,29 @@ func TestControlOnlyCallerReceivesNoChatContent(t *testing.T) {
 	require.NoError(t, e)
 	delete(p.Permissions, "chat.read")
 	input := domain.RunInput{Kind: "steering", Text: "private"}
-	for i := 0; i < 2; i++ {
-		got, e := s.AddInput(ctx, p, r.ID, "input", input)
-		require.NoError(t, e)
+	for range 2 {
+		got, controlErr := s.AddInput(ctx, p, r.ID, "input", input)
+		require.NoError(t, controlErr)
 		require.Equal(t, r.ID, got.ID)
 		require.Empty(t, got.Input.Text)
 		require.Empty(t, got.ChatID)
 		require.Nil(t, got.Question)
 		require.Nil(t, got.Approval)
-		got, e = s.Control(ctx, p, r.ID, "pause", "pause")
-		require.NoError(t, e)
+		got, controlErr = s.Control(ctx, p, r.ID, "pause", "pause")
+		require.NoError(t, controlErr)
 		require.Equal(t, r.ID, got.ID)
 		require.Empty(t, got.Input.Text)
 		require.Empty(t, got.OwnerID)
 	}
 }
 func TestConcurrentFinalizationAndDeletionPreservesSettlement(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
 	p.Permissions["chat.delete"] = true
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		chat, e := s.CreateChat(ctx, p)
 		require.NoError(t, e)
 		in := request()
@@ -723,13 +915,24 @@ func TestConcurrentFinalizationAndDeletionPreservesSettlement(t *testing.T) {
 		require.NoError(t, e)
 		step, e := s.BeginStep(ctx, r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 10)
 		require.NoError(t, e)
-		require.NoError(t, s.CompleteStep(ctx, r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{"text":"done"}`), domain.Usage{Microcredits: 3}))
+		require.NoError(
+			t,
+			s.CompleteStep(
+				ctx,
+				r.ID,
+				"worker",
+				r.Fence,
+				step.ID,
+				json.RawMessage(`{"text":"done"}`),
+				domain.Usage{Microcredits: 3},
+			),
+		)
 		start := make(chan struct{})
 		done := make(chan error, 2)
 		go func() { <-start; done <- s.DeleteChat(ctx, p, chat.ID) }()
 		go func() { <-start; done <- s.Transition(ctx, r.ID, "worker", r.Fence, domain.Completed, "", "done") }()
 		close(start)
-		for j := 0; j < 2; j++ {
+		for range 2 {
 			err := <-done
 			if err != nil {
 				code(t, err, "lease_lost")
@@ -745,6 +948,8 @@ func TestConcurrentFinalizationAndDeletionPreservesSettlement(t *testing.T) {
 }
 
 func TestEditableModelsRequireConfiguredProvider(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -769,52 +974,20 @@ func TestEditableModelsRequireConfiguredProvider(t *testing.T) {
 }
 
 func TestControlWinsInteractionPublication(t *testing.T) {
+	t.Parallel()
+
 	for _, kind := range []string{"question", "approval"} {
 		for _, command := range []string{"cancel", "pause"} {
 			t.Run(kind+"/"+command, func(t *testing.T) {
-				s := testStore(t)
-				ctx := context.Background()
-				p := principal("alice")
-				r, e := s.CreateRun(ctx, p, "run", request())
-				require.NoError(t, e)
-				r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
-				require.NoError(t, e)
-				_, e = s.Control(ctx, p, r.ID, "control", command)
-				require.NoError(t, e)
-				if kind == "question" {
-					e = s.AskQuestion(ctx, r.ID, "worker", r.Fence, domain.Question{ID: "q", Text: "pick", AllowText: true})
-				} else {
-					e = s.AskApproval(ctx, r.ID, "worker", r.Fence, domain.Approval{ID: "a", OperationID: "op", Text: "approve", ExpiresAt: time.Now().Add(time.Hour)})
-				}
-				require.NoError(t, e)
-				got, e := s.GetRun(ctx, p, r.ID)
-				require.NoError(t, e)
-				if command == "cancel" {
-					require.Equal(t, domain.Cancelled, got.State)
-					require.Nil(t, got.Question)
-					require.Nil(t, got.Approval)
-					events, e := s.RunEvents(ctx, p, r.ID, 0, 100)
-					require.NoError(t, e)
-					for _, event := range events {
-						require.NotEqual(t, kind+".created", event.Type)
-					}
-				} else {
-					require.Equal(t, domain.Paused, got.State)
-					got, e = s.Control(ctx, p, r.ID, "resume", "resume")
-					require.NoError(t, e)
-					if kind == "question" {
-						require.Equal(t, domain.WaitingInput, got.State)
-						require.Equal(t, "q", got.Question.ID)
-					} else {
-						require.Equal(t, domain.WaitingApproval, got.State)
-						require.Equal(t, "a", got.Approval.ID)
-					}
-				}
+				t.Parallel()
+				checkControlWinsInteraction(t, kind, command)
 			})
 		}
 	}
 }
 func TestRegexOversizedEventIsActionable(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -825,18 +998,34 @@ func TestRegexOversizedEventIsActionable(t *testing.T) {
 	require.NoError(t, e)
 	chat, e := s.CreateChat(ctx, p)
 	require.NoError(t, e)
-	_, e = s.AppendEvent(ctx, p, chat.ID, domain.AppendEvent{Type: "user.action", SourceEventID: "large", Text: strings.Repeat("a", 21)})
+	_, e = s.AppendEvent(
+		ctx,
+		p,
+		chat.ID,
+		domain.AppendEvent{Type: "user.action", SourceEventID: "large", Text: strings.Repeat("a", 21)},
+	)
 	require.NoError(t, e)
-	_, e = s.AppendEvent(ctx, p, chat.ID, domain.AppendEvent{Type: "user.action", SourceEventID: "small", Text: "needle"})
+	_, e = s.AppendEvent(
+		ctx,
+		p,
+		chat.ID,
+		domain.AppendEvent{Type: "user.action", SourceEventID: "small", Text: "needle"},
+	)
 	require.NoError(t, e)
-	_, e = s.Search(ctx, p, chat.ID, domain.SearchRequest{Mode: "regex", Query: "needle", Limit: 10})
-	code(t, e, "regex_event_too_large")
+	partial, e := s.Search(ctx, p, chat.ID, domain.SearchRequest{Mode: "regex", Query: "needle", Limit: 10})
+	require.NoError(t, e)
+	require.True(t, partial.Partial)
+	require.Equal(t, "oversized_events_skipped", partial.Reason)
+	require.Equal(t, []int64{1}, partial.SkippedSeqs)
+	require.Len(t, partial.Events, 1)
 	result, e := s.Search(ctx, p, chat.ID, domain.SearchRequest{Mode: "regex", Query: "needle", AfterSeq: 1, Limit: 10})
 	require.NoError(t, e)
 	require.Len(t, result.Events, 1)
 }
 
 func TestPausePreservesReceiptReconciliation(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -853,7 +1042,17 @@ func TestPausePreservesReceiptReconciliation(t *testing.T) {
 	got, e := s.Control(ctx, p, r.ID, "uncertain-pause", "pause")
 	require.NoError(t, e)
 	require.Equal(t, domain.Reconciling, got.State)
-	got, e = s.ReconcileStep(ctx, p, r.ID, step.ID, "receipt", domain.ReconcileStepRequest{Usage: domain.Usage{InputTokens: 2, OutputTokens: 1, Microcredits: 3}, Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "receipt", Reason: "verified"}})
+	got, e = s.ReconcileStep(
+		ctx,
+		p,
+		r.ID,
+		step.ID,
+		"receipt",
+		domain.ReconcileStepRequest{
+			Usage:    domain.Usage{InputTokens: 2, OutputTokens: 1, Microcredits: 3},
+			Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "receipt", Reason: "verified"},
+		},
+	)
 	require.NoError(t, e)
 	require.Equal(t, domain.Paused, got.State)
 	got, e = s.Control(ctx, p, r.ID, "resume", "resume")
@@ -866,6 +1065,8 @@ func TestPausePreservesReceiptReconciliation(t *testing.T) {
 }
 
 func TestUnknownInferencePauseRemainsSettleable(t *testing.T) {
+	t.Parallel()
+
 	s := testStore(t)
 	ctx := context.Background()
 	p := principal("alice")
@@ -880,10 +1081,80 @@ func TestUnknownInferencePauseRemainsSettleable(t *testing.T) {
 	got, e := s.Control(ctx, p, r.ID, "pause", "pause")
 	require.NoError(t, e)
 	require.Equal(t, domain.Reconciling, got.State)
-	got, e = s.ReconcileStep(ctx, p, r.ID, step.ID, "receipt", domain.ReconcileStepRequest{Usage: domain.Usage{InputTokens: 1, Microcredits: 1}, Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "receipt", Reason: "verified"}})
+	got, e = s.ReconcileStep(
+		ctx,
+		p,
+		r.ID,
+		step.ID,
+		"receipt",
+		domain.ReconcileStepRequest{
+			Usage:    domain.Usage{InputTokens: 1, Microcredits: 1},
+			Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "receipt", Reason: "verified"},
+		},
+	)
 	require.NoError(t, e)
 	require.Equal(t, domain.Paused, got.State)
 	got, e = s.Control(ctx, p, r.ID, "resume", "resume")
 	require.NoError(t, e)
 	require.Equal(t, domain.Queued, got.State)
+}
+
+func checkControlWinsInteraction(t *testing.T, kind, command string) {
+	t.Helper()
+
+	s := testStore(t)
+	ctx := context.Background()
+	p := principal("alice")
+	r, e := s.CreateRun(ctx, p, "run", request())
+	require.NoError(t, e)
+	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
+	require.NoError(t, e)
+	_, e = s.Control(ctx, p, r.ID, "control", command)
+	require.NoError(t, e)
+	if kind == "question" {
+		e = s.AskQuestion(
+			ctx,
+			r.ID,
+			"worker",
+			r.Fence,
+			domain.Question{ID: "q", Text: "pick", AllowText: true},
+		)
+	} else {
+		e = s.AskApproval(
+			ctx,
+			r.ID,
+			"worker",
+			r.Fence,
+			domain.Approval{
+				ID:          "a",
+				OperationID: "op",
+				Text:        "approve",
+				ExpiresAt:   time.Now().Add(time.Hour),
+			},
+		)
+	}
+	require.NoError(t, e)
+	got, e := s.GetRun(ctx, p, r.ID)
+	require.NoError(t, e)
+	if command == "cancel" {
+		require.Equal(t, domain.Cancelled, got.State)
+		require.Nil(t, got.Question)
+		require.Nil(t, got.Approval)
+		events, eventsErr := s.RunEvents(ctx, p, r.ID, 0, 100)
+		require.NoError(t, eventsErr)
+		for _, event := range events {
+			require.NotEqual(t, kind+".created", event.Type)
+		}
+	} else {
+		require.Equal(t, domain.Paused, got.State)
+		got, e = s.Control(ctx, p, r.ID, "resume", "resume")
+		require.NoError(t, e)
+		if kind == "question" {
+			require.Equal(t, domain.WaitingInput, got.State)
+			require.Equal(t, "q", got.Question.ID)
+		} else {
+			require.Equal(t, domain.WaitingApproval, got.State)
+			require.Equal(t, "a", got.Approval.ID)
+		}
+	}
 }

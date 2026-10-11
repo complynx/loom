@@ -9,9 +9,10 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | HTTP listen, request limit, synchronous wait, disconnect grace | Application HTTP/API options. |
 | HTTP SSE buffer size | Database-backed replay batch size, wired from YAML and bounded to at most 200 events. |
 | Database DSN, connection count, statement/lock deadlines | PostgreSQL pool startup. |
+| Operator client_id / redirect_uri | Separate public PKCE client for `/admin`; both empty disables login, partial configuration is rejected. Redirect is fixed to `/admin`, HTTPS except literal loopback. Deployment settings; no client secret. See [rollout](../../docs/operator-login.md). |
 | Identity issuer, audience, client credentials, JWKS TTL, role permissions | Authenticator: fixed algorithms, signature checks, trusted discovery, online introspection and organization-scoped role mapping. |
 | Identity permission-cache TTL | Online introspection currently runs on each authorization. This is a cache ceiling, not a minimum; current effective cache TTL is zero. |
-| Identity encryption file/key ID | Startup loads AES256 key; envelopes authenticate principal, expiry, purpose, OAuth client and audience. |
+| Identity encryption file/key ID and previous_encryption_keys | Startup loads the active AES256 write key and previous read keys. Envelopes authenticate principal, expiry, purpose, OAuth client and audience. Startup rejects missing keys referenced by stored sessions; rotate-session-keys commits bounded authenticated re-encryption batches. See [rotation runbook](../../docs/session-key-rotation.md). |
 | Identity refreshable exchange | Rejected while the installed Zitadel integration gate remains open. |
 | Identity admin organization | API administrative scope check. |
 | Identity service subjects | Optional seed. Validated caller identities are persisted during successful Registry.Refresh before the trusted snapshot is published. Persistence/discovery failures deny trust. Durable markers keep removed actors classified as services across restarts. |
@@ -30,6 +31,8 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | Sandbox maximum workers | Supervisor CLI owns the process count. Deployment must supply the matching value; broker configuration alone does not set supervisor capacity. |
 | Sandbox cleanup timeout | Supervisor --cleanup-timeout flag, set to 100 ms in Compose to match deployment YAML. Other deployments must keep the flag and YAML value aligned. |
 | Execution lease and total worker ceiling | Fenced run engine and River worker pool; the total active-run admission cap is also enforced by the store. |
+| Execution provider_retry_attempt_limit / provider_retry_window_seconds / provider_retry_short_limit / provider_retry_short_budget_ms | Known output-free provider rejection policy: defaults 6 attempts, 300 seconds, 2 short retries, 3000 ms local budget. Persisted long waits survive workers; Retry-After is a minimum. This budget limits waiting/dispatch, not accepted inference duration. See [hybrid retry](../../docs/hybrid-retry.md). |
+| Execution sponsored_attempt_limit | Deployment setting: default 2 uncertain paid attempts per run, then pause; 0 disables sponsorship. Fresh authorization and fenced checkpoints release user reserves once and preserve unknown platform exposure. Client pause/cancel and uncertain writes are excluded. |
 | Execution heartbeat | Run engine heartbeat option, wired from the deployment setting. |
 | Execution shutdown deadline | Shared graceful-shutdown context, at most five seconds. |
 | Execution shutdown target | Operational latency target; measure it. It does not override the hard deadline. |
@@ -39,13 +42,20 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | Input/approval waits | Question policy and operation approval expiry. |
 | Run active time | The sole River worker disables its static job timeout. The engine enforces the admitted snapshot cumulative active-time budget and absolute lifetime, with durable accounting across restarts and lifecycle sweeps. |
 | Run lifetime, paused waits, history/artifact retention | Durable lifecycle sweeps apply run lifetime and paused deadlines. History events/summaries expire when no live chat run needs them; expired artifacts are tombstoned after live-reference checks. The application runs collection at startup and once per minute in bounded batches. CollectDeleted removes tombstoned files, synchronizes the directory and then records collection; orphan reconciliation follows with a one-hour grace period. Recovery, financial, credential and audit records remain retained. |
+| Provider kind / mailbox / executable / codex_home | Explicit development transport selection. Empty/responses uses HTTP; mock requires an existing private absolute mailbox; codex requires an executable and a dedicated authenticated home. Transport selection preserves the model tariff. See docs/test-providers.md. |
+| OpenAI omitted catalog | Seeds the reviewed three-model catalog and Standard global rates only when the catalog, default ID and tariffs are omitted. Existing database settings remain intact. |
+| Model input_token_limit / compaction threshold / target | Validated per-model context bounds, conservative history assembly and complete-input hard limit. Target is a history budget, not a provider token guarantee. |
+| Cache-write and long-context tariffs | Separate disjoint input categories; threshold selects whole-request rates. Reservation covers worst supported rates. |
 | Global input-token budget | Run engine token-budget option; maximum input bytes is a separate bounded limit. Conservative accounting and model context limits apply. |
 | Global output-token limit | Bootstrap clamps each model output limit to this global ceiling. |
+| Search semantic_enabled | Deployment switch, default false: hides semantic agent tool and omits vector-indexing HTTP route. Enabled queries require externally supplied matching vectors and installed pgvector; no paid embeddings call or automatic index. |
+| Personal user memory | Available to authenticated users without additional role mappings. Fixed bounded layout and CAS versions; micro profile included in every inference. No public YAML memory limit or automatic extraction. See [memory](../../docs/user-memory.md). |
 | Regex pattern/scan/deadline limits | Current database settings control maximum pattern characters, scanned bytes and context deadline for RE2 searches. |
 | External disclosure default | All provider endpoints are treated as external, including loopback and self-hosted endpoints. Both current policy and the admitted run snapshot must allow disclosure before inference, summaries, existing-checkpoint/history forwarding, module discovery or RPC. Denial pauses execution with disclosure_denied; owner/provider/MIME artifact checks also apply. The default is false, so an operator must enable disclosure before agent use. |
 | Trace retention | No separate persisted trace stream is emitted. Only forever/unspecified policy is supported; duration fails validation. Operational Docker log retention is a deployment responsibility; recovery checkpoints are not trace records. |
-| Observability log level | Application parses the configured standard slog level; invalid levels fail startup. |
-| Observability raw payload logging | Not supported. Enabling it fails validation; secrets/prompts/results remain excluded from operational logs. |
+| Observability log level | DEBUG/INFO/WARN/ERROR filter structured JSON logs. Invalid levels fail validation; DEBUG includes authenticated identity diagnostics. |
+| Observability payload logging | Optional debug-only request/model diagnostics, bounded to 4 KiB. JWT signatures and opaque credentials are masked; arbitrary free-text secrets cannot be recognized. Default false; enabling outside debug fails validation. |
+| Observability metrics_listen | Optional separate private Prometheus listener. Cached aggregates refresh every 15 seconds with a two-second database budget; no SQL or JS runs on scrape. Empty disables metrics. No public API metrics route. |
 
 An access token belonging to a never-registered machine cannot be identified as a machine from an invented claim. It cannot delegate another subject: delegation requires a current trusted caller registration. Its own-subject scope is determined by explicit Zitadel role mappings. Assign machine roles no human permissions unless that behavior is intended.
 

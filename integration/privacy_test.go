@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"context"
@@ -7,9 +7,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/complynx/clx-scripter/internal/api"
 	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/stretchr/testify/require"
 )
 
 type controlsAuth struct{ readRevoked atomic.Bool }
@@ -34,9 +35,22 @@ func requireControlReceipt(t *testing.T, raw []byte) {
 	require.Contains(t, body, "status")
 }
 func TestControlOnlyReceiptsDoNotDiscloseChatAfterReadRevocation(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	_, engine := fakeModel(t, f, func(int) any {
-		return map[string]any{"id": "private-question", "status": "completed", "output": []any{map[string]any{"type": "function_call", "call_id": "private-choice", "name": "question", "arguments": `{"text":"PRIVATE choice question","choices":[{"id":"one","label":"PRIVATE option"}],"allow_text":false}`}}, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}}
+		return map[string]any{
+			"id":     "private-question",
+			"status": "completed",
+			"output": []any{
+				map[string]any{
+					"type":      "function_call",
+					"call_id":   "private-choice",
+					"name":      "question",
+					"arguments": `{"text":"PRIVATE choice question","choices":[{"id":"one","label":"PRIVATE option"}],"allow_text":false}`,
+				},
+			},
+			"usage": map[string]int{"input_tokens": 10, "output_tokens": 5},
+		}
 	})
 	run := f.createRun(t, runRequest("", "", "PRIVATE original request"), "private-run")
 	require.NoError(t, engine.Execute(context.Background(), run.ID))
@@ -52,16 +66,31 @@ func TestControlOnlyReceiptsDoNotDiscloseChatAfterReadRevocation(t *testing.T) {
 	code, raw = f.request(t, "alice", "POST", "/v1/runs/"+run.ID+"/pause", "private-pause", nil)
 	require.Equal(t, 200, code, string(raw))
 	requireControlReceipt(t, raw)
-	code, raw = f.request(t, "alice", "POST", "/v1/runs/"+run.ID+"/input", "private-steering", domain.RunInput{Kind: "steering", Text: "PRIVATE new steering"})
+	code, raw = f.request(
+		t,
+		"alice",
+		"POST",
+		"/v1/runs/"+run.ID+"/input",
+		"private-steering",
+		domain.RunInput{Kind: "steering", Text: "PRIVATE new steering"},
+	)
 	require.Equal(t, 200, code, string(raw))
 	requireControlReceipt(t, raw)
-	code, raw = f.request(t, "alice", "POST", "/v1/runs/"+run.ID+"/input", "private-steering", domain.RunInput{Kind: "steering", Text: "PRIVATE new steering"})
+	code, raw = f.request(
+		t,
+		"alice",
+		"POST",
+		"/v1/runs/"+run.ID+"/input",
+		"private-steering",
+		domain.RunInput{Kind: "steering", Text: "PRIVATE new steering"},
+	)
 	require.Equal(t, 200, code, string(raw))
 	requireControlReceipt(t, raw)
 	code, raw = f.request(t, "alice", "GET", "/v1/runs/"+run.ID, "", nil)
 	require.Equal(t, 403, code, string(raw))
 }
 func TestDeletedChatRejectsOriginalIdempotencyKeysWithoutDisclosure(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	request := runRequest(f.session(t, "alice"), "", "PRIVATE deleted content")
 	run := f.createRun(t, request, "deleted-original")

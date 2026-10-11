@@ -3,16 +3,18 @@ package lifecycle_test
 import (
 	"context"
 	"encoding/json"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/require"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/clx-scripter/internal/store"
 )
 
 func fixture(t *testing.T, settings domain.Settings) *store.Store {
@@ -37,14 +39,22 @@ func fixture(t *testing.T, settings domain.Settings) *store.Store {
 	require.NoError(t, e)
 	t.Cleanup(func() {
 		pool.Close()
-		_, e := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
-		if e != nil {
-			t.Error(e)
+		_, cleanupErr := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		if cleanupErr != nil {
+			t.Error(cleanupErr)
 		}
 		admin.Close()
 	})
 	s := store.New(pool, nil)
-	settings.Models = []domain.Model{{ID: "test", ProviderModel: "test", MaxOutputTokens: 100, InputMicrocreditsPerMillion: 1000000, OutputMicrocreditsPerMillion: 1000000}}
+	settings.Models = []domain.Model{
+		{
+			ID:                           "test",
+			ProviderModel:                "test",
+			MaxOutputTokens:              100,
+			InputMicrocreditsPerMillion:  1000000,
+			OutputMicrocreditsPerMillion: 1000000,
+		},
+	}
 	settings.DefaultModelID = "test"
 	settings.InitialCredits = 10000
 	settings.MaxRunMicrocredits = 1000
@@ -56,19 +66,39 @@ func fixture(t *testing.T, settings domain.Settings) *store.Store {
 	return s
 }
 func principal(subject string) domain.Principal {
-	return domain.Principal{Issuer: "https://issuer.test", Subject: subject, Actor: subject, OrgID: "org", ExpiresAt: time.Now().Add(time.Hour), Permissions: map[string]bool{"runs.create": true, "runs.control": true, "chat.read": true, "chat.events.append": true, "chat.delete": true, "settings.write": true}}
+	return domain.Principal{
+		Issuer:    "https://issuer.test",
+		Subject:   subject,
+		Actor:     subject,
+		OrgID:     "org",
+		ExpiresAt: time.Now().Add(time.Hour),
+		Permissions: map[string]bool{
+			"runs.create":        true,
+			"runs.control":       true,
+			"chat.read":          true,
+			"chat.events.append": true,
+			"chat.delete":        true,
+			"settings.write":     true,
+		},
+	}
 }
 func request(cid string) domain.CreateRun {
-	return domain.CreateRun{ChatID: cid, Input: domain.Input{Text: "Remember my constraints"}, Interaction: domain.Interaction{Questions: "choices_and_text", Approvals: true}, Budget: domain.Budget{MaxMicrocredits: 1000}}
+	return domain.CreateRun{
+		ChatID:      cid,
+		Input:       domain.Input{Text: "Remember my constraints"},
+		Interaction: domain.Interaction{Questions: "choices_and_text", Approvals: true},
+		Budget:      domain.Budget{MaxMicrocredits: 1000},
+	}
 }
-func requireCode(t *testing.T, e error, code string) {
+func requireNotFound(t *testing.T, e error) {
 	t.Helper()
 	var de *domain.Error
 	require.ErrorAs(t, e, &de)
-	require.Equal(t, code, de.Code)
+	require.Equal(t, "not_found", de.Code)
 }
 
 func TestDeleteChatBlocksAccessAndKeepsUnknownCredits(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{})
 	ctx := context.Background()
 	p := principal("alice")
@@ -78,17 +108,17 @@ func TestDeleteChatBlocksAccessAndKeepsUnknownCredits(t *testing.T) {
 	require.NoError(t, e)
 	step, e := s.BeginStep(ctx, r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 100)
 	require.NoError(t, e)
-	requireCode(t, s.DeleteChat(ctx, principal("other"), r.ChatID), "not_found")
+	requireNotFound(t, s.DeleteChat(ctx, principal("other"), r.ChatID))
 	require.NoError(t, s.DeleteChat(ctx, p, r.ChatID))
 	require.NoError(t, s.DeleteChat(ctx, p, r.ChatID))
 	_, e = s.History(ctx, p, r.ChatID, 0, 50)
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 	_, e = s.Search(ctx, p, r.ChatID, domain.SearchRequest{Mode: "regex", Query: "Remember", Limit: 5})
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 	_, e = s.GetRun(ctx, p, r.ID)
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 	_, e = s.CreateRun(ctx, p, "deleted", request(r.ChatID))
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 	internal, e := s.ExecutionRun(ctx, r.ID)
 	require.NoError(t, e)
 	require.Equal(t, domain.Cancelled, internal.State)
@@ -108,6 +138,7 @@ func TestDeleteChatBlocksAccessAndKeepsUnknownCredits(t *testing.T) {
 }
 
 func TestPausedDeadlineFreesChatSlotAndKeepsHistory(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{PausedWaitSeconds: 1})
 	ctx := context.Background()
 	p := principal("alice")
@@ -116,7 +147,8 @@ func TestPausedDeadlineFreesChatSlotAndKeepsHistory(t *testing.T) {
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
 	require.NoError(t, s.Transition(ctx, r.ID, "worker", r.Fence, domain.Paused, "requested", ""))
-	_, e = s.Pool().Exec(ctx, "UPDATE runs SET state_entered_at=clock_timestamp()-interval '2 seconds' WHERE id=$1", r.ID)
+	_, e = s.Pool().
+		Exec(ctx, "UPDATE runs SET state_entered_at=clock_timestamp()-interval '2 seconds' WHERE id=$1", r.ID)
 	require.NoError(t, e)
 	swept, e := s.SweepLifecycle(ctx, 100)
 	require.NoError(t, e)
@@ -136,6 +168,7 @@ func TestPausedDeadlineFreesChatSlotAndKeepsHistory(t *testing.T) {
 }
 
 func TestLifetimeExpiryPreservesReservationAndRejectsLateWorker(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{RunLifetimeSeconds: 1})
 	ctx := context.Background()
 	p := principal("alice")
@@ -154,19 +187,28 @@ func TestLifetimeExpiryPreservesReservationAndRejectsLateWorker(t *testing.T) {
 	require.NoError(t, e)
 	require.Equal(t, domain.Failed, got.State)
 	require.Equal(t, "run_expired", got.Reason)
-	require.Error(t, s.CompleteStep(ctx, r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{}`), domain.Usage{Microcredits: 50}))
+	require.Error(
+		t,
+		s.CompleteStep(ctx, r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{}`), domain.Usage{Microcredits: 50}),
+	)
 	balance, e := s.Balance(ctx, p)
 	require.NoError(t, e)
 	require.Equal(t, int64(100), balance.ReservedMicrocredits)
 }
 
 func TestRetentionSnapshotsAndLiveArtifactProtection(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{})
 	ctx := context.Background()
 	p := principal("alice")
 	old, e := s.CreateChat(ctx, p)
 	require.NoError(t, e)
-	_, e = s.AppendEvent(ctx, p, old.ID, domain.AppendEvent{SourceEventID: "old", Type: "user.action", Text: "old forever message"})
+	_, e = s.AppendEvent(
+		ctx,
+		p,
+		old.ID,
+		domain.AppendEvent{SourceEventID: "old", Type: "user.action", Text: "old forever message"},
+	)
 	require.NoError(t, e)
 	settings, e := s.GetSettings(ctx)
 	require.NoError(t, e)
@@ -176,7 +218,15 @@ func TestRetentionSnapshotsAndLiveArtifactProtection(t *testing.T) {
 	require.NoError(t, e)
 	r, e := s.CreateRun(ctx, p, "new", request(""))
 	require.NoError(t, e)
-	a := domain.Artifact{ID: uuid.NewString(), OwnerID: r.OwnerID, OrgID: p.OrgID, MIME: "text/plain", SHA256: strings.Repeat("a", 64), Size: 1, CreatedAt: time.Now().Add(-48 * time.Hour)}
+	a := domain.Artifact{
+		ID:        uuid.NewString(),
+		OwnerID:   r.OwnerID,
+		OrgID:     p.OrgID,
+		MIME:      "text/plain",
+		SHA256:    strings.Repeat("a", 64),
+		Size:      1,
+		CreatedAt: time.Now().Add(-48 * time.Hour),
+	}
 	require.NoError(t, s.CommitArtifact(ctx, a, 100))
 	require.NoError(t, s.AttachChatArtifact(ctx, p, r.ChatID, a.ID))
 	_, e = s.Pool().Exec(ctx, "UPDATE chat_events SET received_at=clock_timestamp()-interval '2 days'")
@@ -194,7 +244,7 @@ func TestRetentionSnapshotsAndLiveArtifactProtection(t *testing.T) {
 	require.Positive(t, sweep.HistoryEvents)
 	require.Equal(t, int64(1), sweep.Artifacts)
 	_, e = s.GetArtifact(ctx, a.ID)
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 	ids, e := s.ListArtifactIDs(ctx)
 	require.NoError(t, e)
 	require.NotContains(t, ids, a.ID)
@@ -204,6 +254,7 @@ func TestRetentionSnapshotsAndLiveArtifactProtection(t *testing.T) {
 }
 
 func TestCumulativeActiveBudgetDoesNotChargePausedTime(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{RunActiveTimeSeconds: 3})
 	ctx := context.Background()
 	p := principal("alice")
@@ -211,7 +262,8 @@ func TestCumulativeActiveBudgetDoesNotChargePausedTime(t *testing.T) {
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
-	_, e = s.Pool().Exec(ctx, "UPDATE runs SET active_started_at=clock_timestamp()-interval '1 second' WHERE id=$1", r.ID)
+	_, e = s.Pool().
+		Exec(ctx, "UPDATE runs SET active_started_at=clock_timestamp()-interval '1 second' WHERE id=$1", r.ID)
 	require.NoError(t, e)
 	require.NoError(t, s.Transition(ctx, r.ID, "worker", r.Fence, domain.Paused, "requested", ""))
 	_, e = s.Pool().Exec(ctx, "UPDATE runs SET state_entered_at=clock_timestamp()-interval '3 hours' WHERE id=$1", r.ID)
@@ -227,7 +279,8 @@ func TestCumulativeActiveBudgetDoesNotChargePausedTime(t *testing.T) {
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "new-worker", time.Minute)
 	require.NoError(t, e)
-	_, e = s.Pool().Exec(ctx, "UPDATE runs SET active_started_at=clock_timestamp()-interval '3 seconds' WHERE id=$1", r.ID)
+	_, e = s.Pool().
+		Exec(ctx, "UPDATE runs SET active_started_at=clock_timestamp()-interval '3 seconds' WHERE id=$1", r.ID)
 	require.NoError(t, e)
 	swept, e = s.SweepLifecycle(ctx, 100)
 	require.NoError(t, e)
@@ -239,6 +292,7 @@ func TestCumulativeActiveBudgetDoesNotChargePausedTime(t *testing.T) {
 }
 
 func TestDeleteChatPreservesSharedArtifacts(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{})
 	ctx := context.Background()
 	p := principal("alice")
@@ -246,7 +300,14 @@ func TestDeleteChatPreservesSharedArtifacts(t *testing.T) {
 	require.NoError(t, e)
 	second, e := s.CreateChat(ctx, p)
 	require.NoError(t, e)
-	shared := domain.Artifact{ID: uuid.NewString(), OwnerID: first.OwnerID, OrgID: p.OrgID, MIME: "text/plain", SHA256: strings.Repeat("b", 64), Size: 1}
+	shared := domain.Artifact{
+		ID:      uuid.NewString(),
+		OwnerID: first.OwnerID,
+		OrgID:   p.OrgID,
+		MIME:    "text/plain",
+		SHA256:  strings.Repeat("b", 64),
+		Size:    1,
+	}
 	private := shared
 	private.ID = uuid.NewString()
 	require.NoError(t, s.CommitArtifact(ctx, shared, 100))
@@ -258,13 +319,14 @@ func TestDeleteChatPreservesSharedArtifacts(t *testing.T) {
 	_, e = s.GetArtifact(ctx, shared.ID)
 	require.NoError(t, e)
 	_, e = s.GetArtifact(ctx, private.ID)
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 	require.NoError(t, s.DeleteChat(ctx, p, second.ID))
 	_, e = s.GetArtifact(ctx, shared.ID)
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 }
 
 func TestQuestionExpiryIsDurableAndDoesNotRunInference(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{})
 	ctx := context.Background()
 	p := principal("alice")
@@ -272,7 +334,21 @@ func TestQuestionExpiryIsDurableAndDoesNotRunInference(t *testing.T) {
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
-	require.NoError(t, s.AskQuestion(ctx, r.ID, "worker", r.Fence, domain.Question{ID: uuid.NewString(), Text: "Which option?", AllowText: true, ExpiresAt: time.Now().Add(-time.Minute)}))
+	require.NoError(
+		t,
+		s.AskQuestion(
+			ctx,
+			r.ID,
+			"worker",
+			r.Fence,
+			domain.Question{
+				ID:        uuid.NewString(),
+				Text:      "Which option?",
+				AllowText: true,
+				ExpiresAt: time.Now().Add(-time.Minute),
+			},
+		),
+	)
 	swept, e := s.SweepLifecycle(ctx, 100)
 	require.NoError(t, e)
 	require.Equal(t, int64(1), swept.ExpiredRuns)
@@ -286,6 +362,7 @@ func TestQuestionExpiryIsDurableAndDoesNotRunInference(t *testing.T) {
 }
 
 func TestDeletedHistoryDoesNotAllowPassiveEventReplay(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{})
 	ctx := context.Background()
 	p := principal("alice")
@@ -308,6 +385,7 @@ func TestDeletedHistoryDoesNotAllowPassiveEventReplay(t *testing.T) {
 }
 
 func TestProtectedArtifactsDoNotStarveRetentionBatch(t *testing.T) {
+	t.Parallel()
 	s := fixture(t, domain.Settings{ArtifactRetention: domain.Retention{Mode: "duration", Days: 1}})
 	ctx := context.Background()
 	p := principal("alice")
@@ -317,15 +395,31 @@ func TestProtectedArtifactsDoNotStarveRetentionBatch(t *testing.T) {
 	chat, e := s.CreateChat(ctx, p)
 	require.NoError(t, e)
 	ids := []string{}
-	for i := 0; i < 2; i++ {
-		a := domain.Artifact{ID: uuid.NewString(), OwnerID: uid, OrgID: p.OrgID, MIME: "text/plain", SHA256: "hash", Size: 1, CreatedAt: time.Now().Add(-72 * time.Hour)}
+	for range 2 {
+		a := domain.Artifact{
+			ID:        uuid.NewString(),
+			OwnerID:   uid,
+			OrgID:     p.OrgID,
+			MIME:      "text/plain",
+			SHA256:    "hash",
+			Size:      1,
+			CreatedAt: time.Now().Add(-72 * time.Hour),
+		}
 		require.NoError(t, s.CommitArtifact(ctx, a, 100))
 		require.NoError(t, s.AttachChatArtifact(ctx, p, chat.ID, a.ID))
 		ids = append(ids, a.ID)
 	}
 	_, e = s.CreateRun(ctx, p, "active", request(chat.ID))
 	require.NoError(t, e)
-	eligible := domain.Artifact{ID: uuid.NewString(), OwnerID: uid, OrgID: p.OrgID, MIME: "text/plain", SHA256: "hash", Size: 1, CreatedAt: time.Now().Add(-48 * time.Hour)}
+	eligible := domain.Artifact{
+		ID:        uuid.NewString(),
+		OwnerID:   uid,
+		OrgID:     p.OrgID,
+		MIME:      "text/plain",
+		SHA256:    "hash",
+		Size:      1,
+		CreatedAt: time.Now().Add(-48 * time.Hour),
+	}
 	require.NoError(t, s.CommitArtifact(ctx, eligible, 100))
 	result, e := s.SweepLifecycle(ctx, 2)
 	require.NoError(t, e)
@@ -335,5 +429,5 @@ func TestProtectedArtifactsDoNotStarveRetentionBatch(t *testing.T) {
 		require.NoError(t, e)
 	}
 	_, e = s.GetArtifact(ctx, eligible.ID)
-	requireCode(t, e, "not_found")
+	requireNotFound(t, e)
 }

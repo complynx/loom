@@ -1,0 +1,28 @@
+id: 2
+event: run.status
+data: {"seq":2,"type":"run.status","data":{"status":"running"},"created_at":"2026-10-11T17:56:41.519229Z"}
+
+id: 3
+event: usage.updated
+data: {"seq":3,"type":"usage.updated","data":{"request_id":"qa-response-3","input_tokens":100,"microcredits":110,"output_tokens":10,"cached_input_tokens":0},"created_at":"2026-10-11T17:56:41.559381Z"}
+
+id: 4
+event: usage.updated
+data: {"seq":4,"type":"usage.updated","data":{"input_tokens":0,"microcredits":0,"output_tokens":0,"cached_input_tokens":0},"created_at":"2026-10-11T17:56:41.707279Z"}
+
+id: 5
+event: usage.updated
+data: {"seq":5,"type":"usage.updated","data":{"request_id":"qa-response-4","input_tokens":100,"microcredits":110,"output_tokens":10,"cached_input_tokens":0},"created_at":"2026-10-11T17:56:41.768222Z"}
+
+id: 6
+event: message.completed
+data: {"seq":6,"type":"message.completed","data":{"text":"dynamic read done"},"created_at":"2026-10-11T17:56:41.796141Z"}
+
+id: 7
+event: run.status
+data: {"seq":7,"type":"run.status","data":{"reason":"","run_id":"cee19aef-4084-43ce-a086-224f1ad65090","status":"completed"},"created_at":"2026-10-11T17:56:41.796141Z"}
+
+id: 8
+event: artifact.ready
+data: {"seq":8,"type":"artifact.ready","data":{"run_id":"cee19aef-4084-43ce-a086-224f1ad65090","handle_id":"de92b82b-3293-41a6-af13-84ecf34d867a","expires_at":"2026-10-11T18:11:41.953464Z","artifact_id":"e2f3fc2bb77a1f1f8fee44d54c91f855","content_path":"/v1/artifact-handles/de92b82b-3293-41a6-af13-84ecf34d867a/content"},"created_at":"2026-10-11T17:56:41.95357Z"}
+

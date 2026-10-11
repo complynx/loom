@@ -21,6 +21,13 @@ import (
 	"github.com/complynx/clx-scripter/internal/domain"
 )
 
+const (
+	artifactRandomBytes = 16
+	artifactFileMode    = 0o600
+	contentSniffBytes   = 512
+	reconcileBatchSize  = 256
+)
+
 var (
 	ErrTooLarge  = errors.New("artifact exceeds upload limit")
 	ErrNotFound  = errors.New("artifact not found")
@@ -47,33 +54,70 @@ type Service struct {
 	root     *os.Root
 	store    MetadataStore
 	limits   Limits
+	scanDir  *os.File
+	pending  os.DirEntry
 }
 
 func New(path string, store MetadataStore, limits Limits) (*Service, error) {
 	if limits.MaxConcurrentUploads == 0 {
 		limits.MaxConcurrentUploads = 4
 	}
-	if limits.MaxConcurrentUploads < 1 || store == nil || limits.MaxUploadBytes <= 0 || limits.MaxUploadBytes == math.MaxInt64 || limits.QuotaBytes <= 0 {
+	if limits.MaxConcurrentUploads < 1 || store == nil || limits.MaxUploadBytes <= 0 ||
+		limits.MaxUploadBytes == math.MaxInt64 ||
+		limits.QuotaBytes <= 0 {
 		return nil, ErrInvalid
 	}
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return nil, fmt.Errorf("create artifact volume: %w", err)
+	if mkdirAllErr := os.MkdirAll(path, 0700); mkdirAllErr != nil {
+		return nil, fmt.Errorf("create artifact volume: %w", mkdirAllErr)
 	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, fmt.Errorf("open artifact volume: %w", err)
 	}
-	return &Service{root: root, store: store, limits: limits, uploads: make(chan struct{}, limits.MaxConcurrentUploads)}, nil
+	return &Service{
+		root:    root,
+		store:   store,
+		limits:  limits,
+		uploads: make(chan struct{}, limits.MaxConcurrentUploads),
+	}, nil
 }
 
-func (s *Service) Close() error { return s.root.Close() }
+func (s *Service) Close() error {
+	s.activity.Lock()
+	defer s.activity.Unlock()
+	return errors.Join(s.closeScan(), s.root.Close())
+}
+
+func (s *Service) closeScan() error {
+	dir := s.scanDir
+	s.scanDir = nil
+	s.pending = nil
+	if dir == nil {
+		return nil
+	}
+	return dir.Close()
+}
 
 // Upload reads at most MaxUploadBytes+1 bytes. Callers must arrange to close a
 // blocking input when its context is canceled (HTTP request bodies support this).
-func (s *Service) Upload(ctx context.Context, p Principal, declaredMIME string, input io.Reader) (domain.Artifact, error) {
-	return s.upload(ctx, p, declaredMIME, input, true, "")
+func (s *Service) Upload(
+	ctx context.Context,
+	p Principal,
+	declaredMIME string,
+	input io.Reader,
+) (domain.Artifact, error) {
+	return s.upload(ctx, p, declaredMIME, input, true, "", s.store.CommitArtifact)
 }
-func (s *Service) upload(ctx context.Context, p Principal, declaredMIME string, input io.Reader, externalDisclosure bool, sourceServiceID string) (domain.Artifact, error) {
+
+func (s *Service) upload(
+	ctx context.Context,
+	p Principal,
+	declaredMIME string,
+	input io.Reader,
+	externalDisclosure bool,
+	sourceServiceID string,
+	commit func(context.Context, domain.Artifact, int64) error,
+) (domain.Artifact, error) {
 	select {
 	case s.uploads <- struct{}{}:
 		defer func() { <-s.uploads }()
@@ -85,100 +129,110 @@ func (s *Service) upload(ctx context.Context, p Principal, declaredMIME string, 
 	if p.OwnerID == "" || input == nil {
 		return domain.Artifact{}, ErrInvalid
 	}
-	if err := ctx.Err(); err != nil {
-		return domain.Artifact{}, err
+	if contextErr := ctx.Err(); contextErr != nil {
+		return domain.Artifact{}, contextErr
 	}
 	if declaredMIME != "" {
-		mediaType, _, err := mime.ParseMediaType(declaredMIME)
-		if err != nil {
+		mediaType, _, parseMediaTypeErr := mime.ParseMediaType(declaredMIME)
+		if parseMediaTypeErr != nil {
 			return domain.Artifact{}, ErrInvalid
 		}
 		declaredMIME = mediaType
 	}
-	random := make([]byte, 16)
-	if _, err := rand.Read(random); err != nil {
-		return domain.Artifact{}, err
+	random := make([]byte, artifactRandomBytes)
+	if _, readErr := rand.Read(random); readErr != nil {
+		return domain.Artifact{}, readErr
 	}
 	id := hex.EncodeToString(random)
 	tmp := id + ".tmp"
-	f, err := s.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	f, err := s.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, artifactFileMode)
 	if err != nil {
 		return domain.Artifact{}, err
 	}
 	defer func() { _ = f.Close(); _ = s.root.Remove(tmp) }()
 	hash := sha256.New()
-	reader := &contextReader{ctx: ctx, reader: io.LimitReader(input, s.limits.MaxUploadBytes+1)}
-	header := make([]byte, 512)
-	n, err := io.ReadFull(reader, header)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return domain.Artifact{}, err
-	}
-	header = header[:n]
-	w := io.MultiWriter(f, hash)
-	if _, err := w.Write(header); err != nil {
-		return domain.Artifact{}, err
-	}
-	rest, err := io.Copy(w, reader)
+	size, header, err := copyUpload(ctx, f, hash, input, s.limits.MaxUploadBytes)
 	if err != nil {
 		return domain.Artifact{}, err
 	}
-	size := int64(n) + rest
 	if size > s.limits.MaxUploadBytes {
 		return domain.Artifact{}, ErrTooLarge
 	}
-	if err := ctx.Err(); err != nil {
-		return domain.Artifact{}, err
+	if contextErr := ctx.Err(); contextErr != nil {
+		return domain.Artifact{}, contextErr
 	}
 	if declaredMIME == "" {
 		declaredMIME = http.DetectContentType(header)
 	}
-	if err := f.Sync(); err != nil {
-		return domain.Artifact{}, err
+	if syncErr := f.Sync(); syncErr != nil {
+		return domain.Artifact{}, syncErr
 	}
-	if err := f.Close(); err != nil {
-		return domain.Artifact{}, err
+	if closeErr := f.Close(); closeErr != nil {
+		return domain.Artifact{}, closeErr
 	}
-	if err := s.root.Rename(tmp, id); err != nil {
-		return domain.Artifact{}, err
+	if renameErr := s.root.Rename(tmp, id); renameErr != nil {
+		return domain.Artifact{}, renameErr
 	}
-	if runtime.GOOS == "linux" {
-		dir, err := s.root.Open(".")
-		if err != nil {
-			return domain.Artifact{}, err
-		}
-		syncErr := dir.Sync()
-		closeErr := dir.Close()
-		if syncErr != nil {
-			return domain.Artifact{}, syncErr
-		}
-		if closeErr != nil {
-			return domain.Artifact{}, closeErr
-		}
+	if directorySyncErr := s.syncDirectory(); directorySyncErr != nil {
+		return domain.Artifact{}, directorySyncErr
 	}
-	a := domain.Artifact{ID: id, OwnerID: p.OwnerID, OrgID: p.OrgID, MIME: declaredMIME, SHA256: hex.EncodeToString(hash.Sum(nil)), Size: size, CreatedAt: time.Now().UTC(), ExternalDisclosureAllowed: externalDisclosure, SourceServiceID: sourceServiceID}
-	if err := s.store.CommitArtifact(ctx, a, s.limits.QuotaBytes); err != nil {
+
+	a := domain.Artifact{
+		ID:                        id,
+		OwnerID:                   p.OwnerID,
+		OrgID:                     p.OrgID,
+		MIME:                      declaredMIME,
+		SHA256:                    hex.EncodeToString(hash.Sum(nil)),
+		Size:                      size,
+		CreatedAt:                 time.Now().UTC(),
+		ExternalDisclosureAllowed: externalDisclosure,
+		SourceServiceID:           sourceServiceID,
+	}
+	return s.commitUpload(ctx, a, commit)
+}
+
+func (s *Service) commitUpload(
+	ctx context.Context,
+	a domain.Artifact,
+	commit func(context.Context, domain.Artifact, int64) error,
+) (domain.Artifact, error) {
+	if commitArtifactErr := commit(ctx, a, s.limits.QuotaBytes); commitArtifactErr != nil {
 		// A failed commit response can mean the transaction actually committed.
 		// Retain content until a successful metadata lookup resolves that ambiguity.
 		resolveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 		defer cancel()
-		existing, lookupErr := s.store.GetArtifact(resolveCtx, id)
-		if lookupErr == nil && existing.ID == id {
+		existing, lookupErr := s.store.GetArtifact(resolveCtx, a.ID)
+		existingID, valid := compactArtifactID(existing.ID)
+		if lookupErr == nil && valid && existingID == a.ID {
+			existing.ID = a.ID
 			return existing, nil
 		}
 		if errors.Is(lookupErr, domain.ErrNotFound) {
-			_ = s.root.Remove(id)
+			_ = s.root.Remove(a.ID)
 		}
-		return domain.Artifact{}, err
+		return domain.Artifact{}, commitArtifactErr
 	}
 	return a, nil
 }
 
 func validID(id string) bool {
-	if len(id) != 32 {
+	if len(id) != artifactRandomBytes*2 {
 		return false
 	}
 	_, err := hex.DecodeString(id)
 	return err == nil && strings.ToLower(id) == id
+}
+
+// PostgreSQL represents artifact UUIDs with separators; filenames use compact IDs.
+func compactArtifactID(id string) (string, bool) {
+	if validID(id) {
+		return id, true
+	}
+	if len(id) != 36 || id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' {
+		return "", false
+	}
+	compact := strings.ReplaceAll(id, "-", "")
+	return compact, validID(compact)
 }
 
 func (s *Service) Metadata(ctx context.Context, p Principal, id string) (domain.Artifact, error) {
@@ -195,6 +249,11 @@ func (s *Service) Metadata(ctx context.Context, p Principal, id string) (domain.
 	if p.OwnerID == "" || a.OwnerID != p.OwnerID || a.OrgID != p.OrgID {
 		return domain.Artifact{}, ErrForbidden
 	}
+	storedID, valid := compactArtifactID(a.ID)
+	if !valid || storedID != id {
+		return domain.Artifact{}, ErrInvalid
+	}
+	a.ID = id
 	return a, nil
 }
 
@@ -214,7 +273,7 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (domain.
 	if err != nil {
 		return domain.Artifact{}, nil, err
 	}
-	return a, &contextReadCloser{contextReader: contextReader{ctx: ctx, reader: f}, closer: f}, nil
+	return a, &contextReadCloser{ctx: ctx, reader: f, closer: f}, nil
 }
 
 // AllowDisclosure grants access only when this destination is explicitly allowed.
@@ -240,69 +299,106 @@ type contextReader struct {
 }
 
 func (r *contextReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
+	if contextErr := r.ctx.Err(); contextErr != nil {
+		return 0, contextErr
 	}
 	return r.reader.Read(p)
 }
 
 type contextReadCloser struct {
 	contextReader
+
 	closer io.Closer
 }
 
 func (r *contextReadCloser) Close() error { return r.closer.Close() }
 
-// Reconcile removes aged, definitively unreferenced content after a crash. Failed
-// database reads leave files intact. Uploads are excluded for the reconciliation
-// pass so a metadata lookup cannot race with an upload's commit.
+// Reconcile removes aged, definitively unreferenced content after a crash. Each
+// pass scans at most 256 entries and keeps its directory position for the next
+// pass. Failed reads retain the current entry for retry. Uploads are excluded
+// during each pass so metadata lookup cannot race with an upload's commit.
 func (s *Service) Reconcile(ctx context.Context, minAge time.Duration) (int, error) {
 	if minAge < time.Hour {
 		return 0, ErrInvalid
 	}
 	s.activity.Lock()
 	defer s.activity.Unlock()
-	dir, err := s.root.Open(".")
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = dir.Close() }()
-	entries, err := dir.ReadDir(-1)
-	if err != nil {
-		return 0, err
-	}
 	removed := 0
-	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
-			return removed, err
+	for range reconcileBatchSize {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return removed, contextErr
 		}
-		name := entry.Name()
-		id := strings.TrimSuffix(name, ".tmp")
-		if !validID(id) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return removed, err
-		}
-		if !info.Mode().IsRegular() || time.Since(info.ModTime()) < minAge {
-			continue
-		}
-		if name == id {
-			_, err = s.store.GetArtifact(ctx, id)
-			if err == nil {
-				continue
-			}
-			if !errors.Is(err, domain.ErrNotFound) {
-				return removed, err
+		if s.pending == nil {
+			if nextErr := s.nextScanEntry(); nextErr != nil {
+				if errors.Is(nextErr, io.EOF) {
+					return removed, nil
+				}
+				return removed, nextErr
 			}
 		}
-		if err := s.root.Remove(name); err != nil {
-			return removed, err
+		didRemove, reconcileErr := s.reconcileEntry(ctx, s.pending, minAge)
+		if reconcileErr != nil {
+			return removed, reconcileErr
 		}
-		removed++
+		s.pending = nil
+		if didRemove {
+			removed++
+		}
 	}
 	return removed, nil
+}
+
+func (s *Service) nextScanEntry() error {
+	if s.scanDir == nil {
+		dir, err := s.root.Open(".")
+		if err != nil {
+			return err
+		}
+		s.scanDir = dir
+	}
+	entries, err := s.scanDir.ReadDir(1)
+	if len(entries) != 0 {
+		s.pending = entries[0]
+		return nil
+	}
+	if err != nil {
+		if closeErr := s.closeScan(); closeErr != nil {
+			return closeErr
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Service) reconcileEntry(ctx context.Context, entry os.DirEntry, minAge time.Duration) (bool, error) {
+	name := entry.Name()
+	id := strings.TrimSuffix(name, ".tmp")
+	if !validID(id) {
+		return false, nil
+	}
+	info, err := entry.Info()
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() || time.Since(info.ModTime()) < minAge {
+		return false, nil
+	}
+	if name == id {
+		_, err = s.store.GetArtifact(ctx, id)
+		if err == nil {
+			return false, nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			return false, err
+		}
+	}
+	if removeErr := s.root.Remove(name); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		return false, removeErr
+	}
+	return true, nil
 }
 
 // ModelArtifact contains verified image bytes for a provider adapter. Binary
@@ -312,13 +408,20 @@ type ModelArtifact struct {
 	Bytes    []byte
 }
 
-func (s *Service) ForModel(ctx context.Context, p Principal, id, provider string, allowedProviders []string, supportsImages bool, maxBytes int64) (ModelArtifact, error) {
+func (s *Service) ForModel(
+	ctx context.Context,
+	p Principal,
+	id, provider string,
+	allowedProviders []string,
+	supportsImages bool,
+	maxBytes int64,
+) (ModelArtifact, error) {
 	a, err := s.Metadata(ctx, p, id)
 	if err != nil {
 		return ModelArtifact{}, err
 	}
-	if err := AllowDisclosure(a, p, provider, allowedProviders); err != nil {
-		return ModelArtifact{}, err
+	if allowDisclosureErr := AllowDisclosure(a, p, provider, allowedProviders); allowDisclosureErr != nil {
+		return ModelArtifact{}, allowDisclosureErr
 	}
 	if !supportsImages || maxBytes <= 0 || maxBytes == math.MaxInt64 {
 		return ModelArtifact{}, ErrForbidden
@@ -353,4 +456,45 @@ func (s *Service) ForModel(ctx context.Context, p Principal, id, provider string
 		return ModelArtifact{}, ErrInvalid
 	}
 	return ModelArtifact{Metadata: a, Bytes: data}, nil
+}
+
+func (s *Service) syncDirectory() error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	directory, err := s.root.Open(".")
+	if err != nil {
+		return err
+	}
+	syncErr := directory.Sync()
+	closeErr := directory.Close()
+	if syncErr != nil {
+		return syncErr
+	}
+	return closeErr
+}
+
+func copyUpload(
+	ctx context.Context,
+	file io.Writer,
+	digest io.Writer,
+	input io.Reader,
+	maxBytes int64,
+) (int64, []byte, error) {
+	reader := &contextReader{ctx: ctx, reader: io.LimitReader(input, maxBytes+1)}
+	header := make([]byte, contentSniffBytes)
+	n, err := io.ReadFull(reader, header)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return 0, nil, err
+	}
+	header = header[:n]
+	writer := io.MultiWriter(file, digest)
+	if _, writeErr := writer.Write(header); writeErr != nil {
+		return 0, nil, writeErr
+	}
+	rest, err := io.Copy(writer, reader)
+	if err != nil {
+		return 0, nil, err
+	}
+	return int64(n) + rest, header, nil
 }

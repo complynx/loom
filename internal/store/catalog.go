@@ -1,6 +1,8 @@
 package store
 
 import (
+	"slices"
+
 	"github.com/complynx/clx-scripter/internal/domain"
 )
 
@@ -10,57 +12,52 @@ func effectiveModels(catalog, entitlements []domain.Model) []domain.Model {
 		return catalog
 	}
 	out := []domain.Model{}
-	for _, m := range catalog {
-		for _, e := range entitlements {
-			if e.ID != m.ID {
+	for _, model := range catalog {
+		for _, grant := range entitlements {
+			if grant.ID != model.ID {
 				continue
 			}
-			if len(m.Efforts) == 0 {
-				if len(e.Efforts) == 0 && e.MaxEffort == "" {
-					out = append(out, m)
-				}
-				break
+			if allowed, ok := entitledModel(model, grant); ok {
+				out = append(out, allowed)
 			}
-			cap := len(m.Efforts) - 1
-			if e.MaxEffort != "" {
-				cap = -1
-				for i, v := range m.Efforts {
-					if v == e.MaxEffort {
-						cap = i
-					}
-				}
-			}
-			if cap < 0 {
-				break
-			}
-			for i, v := range m.Efforts {
-				if v == m.MaxEffort && i < cap {
-					cap = i
-				}
-			}
-			allowed := []string{}
-			for i, v := range m.Efforts {
-				if i > cap {
-					break
-				}
-				include := e.Efforts == nil
-				for _, grant := range e.Efforts {
-					if grant == v {
-						include = true
-					}
-				}
-				if include {
-					allowed = append(allowed, v)
-				}
-			}
-			if len(allowed) == 0 {
-				break
-			}
-			m.Efforts = allowed
-			m.MaxEffort = allowed[len(allowed)-1]
-			out = append(out, m)
 			break
 		}
 	}
 	return out
+}
+
+func entitledModel(model, grant domain.Model) (domain.Model, bool) {
+	if len(model.Efforts) == 0 {
+		return model, len(grant.Efforts) == 0 && grant.MaxEffort == ""
+	}
+	ceiling := len(model.Efforts) - 1
+	if grant.MaxEffort != "" {
+		ceiling = -1
+		// Use the last matching effort, as the original entitlement contract does.
+		for index, effort := range model.Efforts {
+			if effort == grant.MaxEffort {
+				ceiling = index
+			}
+		}
+	}
+	if ceiling < 0 {
+		return model, false
+	}
+	for index, effort := range model.Efforts {
+		if effort == model.MaxEffort && index < ceiling {
+			ceiling = index
+		}
+	}
+	allowed := []string{}
+	for _, effort := range model.Efforts[:ceiling+1] {
+		if grant.Efforts == nil || slices.Contains(grant.Efforts, effort) {
+			allowed = append(allowed, effort)
+		}
+	}
+	if len(allowed) == 0 {
+		return model, false
+	}
+	model.Efforts = allowed
+	model.MaxEffort = allowed[len(allowed)-1]
+	return model, true
 }

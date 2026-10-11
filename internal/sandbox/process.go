@@ -7,10 +7,25 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os/exec"
 	"sync"
 	"time"
+)
+
+const (
+	frameExecute          = "execute"
+	framePing             = "ping"
+	framePong             = "pong"
+	frameReply            = "reply"
+	frameResult           = "result"
+	frameError            = "error"
+	defaultTimeout        = 30 * time.Second
+	maxTimeout            = 5 * time.Minute
+	requestTimeout        = 5 * time.Second
+	cleanupWriteTimeout   = 100 * time.Millisecond
+	defaultCleanupTimeout = 500 * time.Millisecond
 )
 
 type frame struct {
@@ -32,7 +47,7 @@ type wire struct {
 
 func newWire(r io.Reader, w io.Writer) *wire {
 	s := bufio.NewScanner(r)
-	s.Buffer(make([]byte, 4096), MaxFrameBytes)
+	s.Buffer(make([]byte, frameBufferBytes), MaxFrameBytes)
 	return &wire{r: s, w: w}
 }
 func (w *wire) send(f frame) error {
@@ -66,10 +81,43 @@ type Client struct {
 	Timeout time.Duration
 }
 
-func (c Client) Execute(ctx context.Context, source string, bindings []Binding, broker Broker) (json.RawMessage, error) {
+// Health checks supervisor IPC without starting a JavaScript child process.
+func (c Client) Health(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", c.Socket)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	wire := newWire(conn, conn)
+	if sendErr := wire.send(frame{Type: framePing}); sendErr != nil {
+		return sendErr
+	}
+	reply, err := wire.read()
+	if err != nil {
+		return err
+	}
+	if reply.Type == frameError && reply.Error == "sandbox capacity unavailable" {
+		return nil
+	}
+	if reply.Type != framePong {
+		return errors.New("sandbox unavailable or at capacity")
+	}
+	return nil
+}
+
+func (c Client) Execute(
+	ctx context.Context,
+	source string,
+	bindings []Binding,
+	broker Broker,
+) (json.RawMessage, error) {
 	timeout := c.Timeout
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = defaultTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -80,11 +128,13 @@ func (c Client) Execute(ctx context.Context, source string, bindings []Binding, 
 	defer func() { _ = conn.Close() }()
 	w := newWire(conn, conn)
 	go func() { <-ctx.Done(); _ = conn.Close() }()
-	if err = w.send(frame{Type: "execute", Source: source, Bindings: bindings, TimeoutMS: timeout.Milliseconds()}); err != nil {
+	if err = w.send(
+		frame{Type: frameExecute, Source: source, Bindings: bindings, TimeoutMS: timeout.Milliseconds()},
+	); err != nil {
 		return nil, err
 	}
 	calls := 0
-	slots := make(chan struct{}, 8)
+	slots := make(chan struct{}, maxParallelCalls)
 	for {
 		f, e := w.read()
 		if e != nil {
@@ -96,34 +146,19 @@ func (c Client) Execute(ctx context.Context, source string, bindings []Binding, 
 		switch f.Type {
 		case "call":
 			calls++
-			if calls > 128 {
+			if calls > maxCalls {
 				return nil, errors.New("worker call limit exceeded")
 			}
 			select {
 			case slots <- struct{}{}:
 			default:
-				_ = w.send(frame{Type: "reply", ID: f.ID, Error: "parallel call limit exceeded"})
+				_ = w.send(frame{Type: frameReply, ID: f.ID, Error: "parallel call limit exceeded"})
 				continue
 			}
-			go func(f frame) {
-				defer func() { <-slots }()
-				data, e := broker.Call(ctx, f.Module, f.Method, f.Data)
-				if len(data) > MaxValueBytes {
-					data = nil
-					e = errors.New("module result too large")
-				}
-				reply := frame{Type: "reply", ID: f.ID, Data: data}
-				if e != nil {
-					reply.Error = e.Error()
-					reply.Data = nil
-				}
-				if err := w.send(reply); err != nil {
-					_ = w.send(frame{Type: "reply", ID: f.ID, Error: "invalid module response"})
-				}
-			}(f)
-		case "result":
+			go respondToCall(ctx, broker, w, slots, f)
+		case frameResult:
 			return f.Data, nil
-		case "error":
+		case frameError:
 			return nil, errors.New(f.Error)
 		default:
 			return nil, errors.New("invalid worker message")
@@ -138,74 +173,27 @@ func WorkerMain(ctx context.Context, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if request.Type != "execute" {
+	if request.Type != frameExecute {
 		return errors.New("execute required")
 	}
 	timeout := time.Duration(request.TimeoutMS) * time.Millisecond
-	if timeout <= 0 || timeout > 5*time.Minute {
-		timeout = 30 * time.Second
+	if timeout <= 0 || timeout > maxTimeout {
+		timeout = defaultTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	var mu sync.Mutex
-	next := uint64(0)
-	pending := map[uint64]chan frame{}
-	go func() {
-		for {
-			f, e := w.read()
-			if e != nil {
-				cancel()
-				return
-			}
-			if f.Type == "cancel" {
-				cancel()
-				return
-			}
-			if f.Type != "reply" {
-				cancel()
-				return
-			}
-			mu.Lock()
-			ch := pending[f.ID]
-			mu.Unlock()
-			if ch != nil {
-				select {
-				case ch <- f:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-	broker := BrokerFunc(func(ctx context.Context, m, n string, a json.RawMessage) (json.RawMessage, error) {
-		mu.Lock()
-		next++
-		id := next
-		ch := make(chan frame, 1)
-		pending[id] = ch
-		mu.Unlock()
-		defer func() { mu.Lock(); delete(pending, id); mu.Unlock() }()
-		if e := w.send(frame{Type: "call", ID: id, Module: m, Method: n, Data: a}); e != nil {
-			return nil, e
-		}
-		select {
-		case f := <-ch:
-			if f.Error != "" {
-				return nil, errors.New(f.Error)
-			}
-			return f.Data, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	})
+	transport := &workerTransport{wire: w, pending: map[uint64]chan frame{}}
+	go transport.receive(ctx, cancel)
+	broker := BrokerFunc(transport.call)
 	result, err := (Inline{}).Execute(ctx, request.Source, request.Bindings, broker)
 	if err != nil {
-		return w.send(frame{Type: "error", Error: err.Error()})
+		return w.send(frame{Type: frameError, Error: err.Error()})
 	}
-	return w.send(frame{Type: "result", Data: result})
+	return w.send(frame{Type: frameResult, Data: result})
 }
 
 type Supervisor struct {
+	Logger         *slog.Logger
 	WorkerPath     string
 	WorkerArgs     []string
 	MaxWorkers     int
@@ -235,39 +223,54 @@ func (s Supervisor) Serve(ctx context.Context, listener net.Listener) error {
 		}
 		select {
 		case slots <- struct{}{}:
-			workers.Add(1)
-			go func() {
-				defer workers.Done()
+			workers.Go(func() {
 				defer func() { <-slots }()
 				defer func() { _ = conn.Close() }()
 				s.serveOne(ctx, conn)
-			}()
+			})
 		default:
-			_ = newWire(conn, conn).send(frame{Type: "error", Error: "sandbox capacity unavailable"})
+			s.rejectCapacity(ctx, conn)
 			_ = conn.Close()
 		}
 	}
 }
-func (s Supervisor) serveOne(ctx context.Context, conn net.Conn) {
-	closed := make(chan struct{})
-	defer close(closed)
-	go func(parent context.Context) {
-		select {
-		case <-parent.Done():
-			_ = conn.Close()
-		case <-closed:
-		}
-	}(ctx)
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+// Finish the handshake before closing a saturated connection. Otherwise the
+// client can receive a broken pipe while sending a health check.
+func (s Supervisor) rejectCapacity(ctx context.Context, conn net.Conn) {
+	defer closeOnCancel(ctx, conn)()
+	_ = conn.SetDeadline(time.Now().Add(cleanupWriteTimeout))
 	client := newWire(conn, conn)
 	request, err := client.read()
-	if err != nil || request.Type != "execute" {
+	if err != nil {
+		return
+	}
+	if request.Type == framePing {
+		_ = client.send(frame{Type: framePong})
+		return
+	}
+	_ = client.send(frame{Type: frameError, Error: "sandbox capacity unavailable"})
+}
+
+func (s Supervisor) serveOne(ctx context.Context, conn net.Conn) {
+	defer closeOnCancel(ctx, conn)()
+	_ = conn.SetDeadline(time.Now().Add(requestTimeout))
+	client := newWire(conn, conn)
+	request, err := client.read()
+	if err != nil {
+		return
+	}
+	if request.Type == framePing {
+		_ = client.send(frame{Type: framePong})
+		return
+	}
+	if request.Type != frameExecute {
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
 	timeout := time.Duration(request.TimeoutMS) * time.Millisecond
-	if timeout <= 0 || timeout > 5*time.Minute {
-		timeout = 30 * time.Second
+	if timeout <= 0 || timeout > maxTimeout {
+		timeout = defaultTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -276,7 +279,9 @@ func (s Supervisor) serveOne(ctx context.Context, conn net.Conn) {
 		args = []string{"sandbox-worker"}
 	}
 	// #nosec G204 -- Executable and arguments are operator configuration, never script input.
-	cmd := exec.Command(s.WorkerPath, args...)
+	cmd := exec.CommandContext(ctx, s.WorkerPath, args...)
+	// Cancellation is relayed through IPC before the bounded cleanup kills the child.
+	cmd.Cancel = func() error { return nil }
 	cmd.Env = []string{}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -288,71 +293,179 @@ func (s Supervisor) serveOne(ctx context.Context, conn net.Conn) {
 	}
 	cmd.Stderr = io.Discard
 	if err = cmd.Start(); err != nil {
-		_ = client.send(frame{Type: "error", Error: "sandbox worker unavailable"})
+		if s.Logger != nil {
+			s.Logger.ErrorContext(
+				ctx,
+				"sandbox worker unavailable",
+				"event",
+				"sandbox.worker_start_failed",
+				"component",
+				"sandbox",
+			)
+		}
+		_ = client.send(frame{Type: frameError, Error: "sandbox worker unavailable"})
 		return
 	}
 	worker := newWire(stdout, stdin)
 	if err = worker.send(request); err != nil {
+		s.logKilled(ctx, cmd)
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return
 	}
 	exited := make(chan error, 1)
-	go func() {
-		for {
-			f, e := worker.read()
-			if e != nil {
-				exited <- e
-				return
-			}
-			if e = client.send(f); e != nil {
-				exited <- e
-				return
-			}
-			if f.Type == "result" || f.Type == "error" {
-				exited <- nil
-				return
-			}
-		}
-	}()
-	go func() {
-		for {
-			f, e := client.read()
-			if e != nil {
-				cancel()
-				return
-			}
-			if f.Type != "reply" {
-				cancel()
-				return
-			}
-			if e = worker.send(f); e != nil {
-				cancel()
-				return
-			}
-		}
-	}()
+	go relayWorker(worker, client, exited)
+	go relayClient(client, worker, cancel)
 	select {
 	case <-exited:
 	case <-ctx.Done():
 		_ = worker.send(frame{Type: "cancel"})
-		_ = conn.SetWriteDeadline(time.Now().Add(min(s.cleanupTimeout(), 100*time.Millisecond)))
-		_ = client.send(frame{Type: "error", Error: fmt.Sprintf("sandbox stopped: %v", ctx.Err())})
+		_ = conn.SetWriteDeadline(time.Now().Add(min(s.cleanupTimeout(), cleanupWriteTimeout)))
+		_ = client.send(frame{Type: frameError, Error: fmt.Sprintf("sandbox stopped: %v", ctx.Err())})
 	}
+	s.waitForChild(ctx, stdin, cmd)
+}
+
+func (s Supervisor) cleanupTimeout() time.Duration {
+	if s.CleanupTimeout <= 0 {
+		return defaultCleanupTimeout
+	}
+	return s.CleanupTimeout
+}
+
+func respondToCall(ctx context.Context, broker Broker, w *wire, slots chan struct{}, f frame) {
+	defer func() { <-slots }()
+	data, err := broker.Call(ctx, f.Module, f.Method, f.Data)
+	if len(data) > MaxValueBytes {
+		data = nil
+		err = errors.New("module result too large")
+	}
+	reply := frame{Type: frameReply, ID: f.ID, Data: data}
+	if err != nil {
+		reply.Error = err.Error()
+		reply.Data = nil
+	}
+	if sendErr := w.send(reply); sendErr != nil {
+		_ = w.send(frame{Type: frameReply, ID: f.ID, Error: "invalid module response"})
+	}
+}
+
+type workerTransport struct {
+	wire    *wire
+	mu      sync.Mutex
+	next    uint64
+	pending map[uint64]chan frame
+}
+
+func (t *workerTransport) receive(ctx context.Context, cancel context.CancelFunc) {
+	for {
+		f, err := t.wire.read()
+		if err != nil || f.Type != frameReply {
+			cancel()
+			return
+		}
+		t.mu.Lock()
+		ch := t.pending[f.ID]
+		t.mu.Unlock()
+		if ch != nil {
+			select {
+			case ch <- f:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+func (t *workerTransport) call(ctx context.Context, m, n string, a json.RawMessage) (json.RawMessage, error) {
+	t.mu.Lock()
+	t.next++
+	id := t.next
+	ch := make(chan frame, 1)
+	t.pending[id] = ch
+	t.mu.Unlock()
+	defer func() { t.mu.Lock(); delete(t.pending, id); t.mu.Unlock() }()
+	if err := t.wire.send(frame{Type: "call", ID: id, Module: m, Method: n, Data: a}); err != nil {
+		return nil, err
+	}
+	select {
+	case f := <-ch:
+		if f.Error != "" {
+			return nil, errors.New(f.Error)
+		}
+		return f.Data, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func relayWorker(worker, client *wire, exited chan<- error) {
+	for {
+		f, err := worker.read()
+		if err != nil {
+			exited <- err
+			return
+		}
+		if err = client.send(f); err != nil {
+			exited <- err
+			return
+		}
+		if f.Type == frameResult || f.Type == frameError {
+			exited <- nil
+			return
+		}
+	}
+}
+func relayClient(client, worker *wire, cancel context.CancelFunc) {
+	for {
+		f, err := client.read()
+		if err != nil || f.Type != frameReply {
+			cancel()
+			return
+		}
+		if err = worker.send(f); err != nil {
+			cancel()
+			return
+		}
+	}
+}
+
+func (s Supervisor) waitForChild(ctx context.Context, stdin io.Closer, cmd *exec.Cmd) {
 	_ = stdin.Close()
 	waited := make(chan error, 1)
 	go func() { waited <- cmd.Wait() }()
 	select {
 	case <-waited:
 	case <-time.After(s.cleanupTimeout()):
+		s.logKilled(ctx, cmd)
 		_ = cmd.Process.Kill()
 		<-waited
 	}
 }
 
-func (s Supervisor) cleanupTimeout() time.Duration {
-	if s.CleanupTimeout <= 0 {
-		return 500 * time.Millisecond
+func (s Supervisor) logKilled(ctx context.Context, cmd *exec.Cmd) {
+	if s.Logger != nil {
+		s.Logger.WarnContext(
+			ctx,
+			"sandbox worker killed",
+			"event",
+			"sandbox.worker_killed",
+			"component",
+			"sandbox",
+			"pid",
+			cmd.Process.Pid,
+		)
 	}
-	return s.CleanupTimeout
+}
+
+// closeOnCancel stops its watcher when the request finishes.
+func closeOnCancel(ctx context.Context, conn net.Conn) func() {
+	closed := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-closed:
+		}
+	}()
+	return func() { close(closed) }
 }

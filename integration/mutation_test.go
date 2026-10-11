@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"context"
@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/complynx/clx-scripter/internal/app"
 	"github.com/complynx/clx-scripter/internal/domain"
 	"github.com/complynx/clx-scripter/internal/modules"
 	"github.com/complynx/clx-scripter/internal/operations"
 	"github.com/complynx/clx-scripter/internal/provider"
 	"github.com/complynx/clx-scripter/internal/runs"
-	"github.com/stretchr/testify/require"
 )
 
 type bookingService struct {
@@ -44,7 +45,7 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer delegated-user-token" {
-			w.WriteHeader(401)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		var envelope struct {
@@ -54,7 +55,7 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 			Confirmation   map[string]any  `json:"confirmation"`
 		}
 		if json.NewDecoder(r.Body).Decode(&envelope) != nil {
-			w.WriteHeader(400)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		switch r.URL.Path {
@@ -62,10 +63,12 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 			service.mu.Lock()
 			service.prepared = append(service.prepared, envelope.OperationID)
 			service.mu.Unlock()
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "prepared", "operation_id": envelope.OperationID, "confirmation_id": "prepared-slot-confirmation", "arguments": json.RawMessage(`{"slot_id":"slot-15"}`), "expires_at": time.Now().Add(time.Minute), "description": "Book Andrey at 15:00"})
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"status": "prepared", "operation_id": envelope.OperationID, "confirmation_id": "prepared-slot-confirmation", "arguments": json.RawMessage(`{"slot_id":"slot-15"}`), "expires_at": time.Now().Add(time.Minute), "description": "Book Andrey at 15:00"})
 		case "/internal/agent/massage/book-slot":
-			if envelope.OperationID != envelope.IdempotencyKey || envelope.Confirmation["confirmation_id"] != "prepared-slot-confirmation" {
-				w.WriteHeader(422)
+			if envelope.OperationID != envelope.IdempotencyKey ||
+				envelope.Confirmation["confirmation_id"] != "prepared-slot-confirmation" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
 				return
 			}
 			service.mu.Lock()
@@ -78,21 +81,29 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 				}
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": envelope.OperationID, "result": map[string]string{"booking_id": "booking-15"}})
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"status": "succeeded", "operation_id": envelope.OperationID, "result": map[string]string{"booking_id": "booking-15"}})
 		case "/internal/agent/operations/status":
 			service.mu.Lock()
 			service.status = append(service.status, envelope.OperationID)
 			service.mu.Unlock()
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": envelope.OperationID, "result": map[string]string{"booking_id": "booking-15"}})
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"status": "succeeded", "operation_id": envelope.OperationID, "result": map[string]string{"booking_id": "booking-15"}})
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(service.server.Close)
 	parsed, err := url.Parse(service.server.URL)
 	require.NoError(t, err)
 	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
-		return []modules.Endpoint{{ContainerID: "qa-trusted-service", URI: "http://registered-service:" + parsed.Port() + "/manifest", Address: "127.0.0.1"}}, nil
+		return []modules.Endpoint{
+			{
+				ContainerID: "qa-trusted-service",
+				URI:         "http://registered-service:" + parsed.Port() + "/manifest",
+				Address:     "127.0.0.1",
+			},
+		}, nil
 	}), modules.Options{})
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
@@ -102,23 +113,63 @@ func mutationWorker(t *testing.T, f *fixture, registry *modules.Registry) (*mode
 	t.Helper()
 	model, _ := fakeModel(t, f, func(index int) any {
 		if index == 1 {
-			return map[string]any{"id": "provider-write", "status": "completed", "output": []any{map[string]any{"type": "function_call", "call_id": "book-request-stable", "name": "module_call", "arguments": `{"module":"massage","method":"book_slot","arguments":{"slot_id":"slot-15"}}`}}, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}}
+			return map[string]any{
+				"id":     "provider-write",
+				"status": "completed",
+				"output": []any{
+					map[string]any{
+						"type":      "function_call",
+						"call_id":   "book-request-stable",
+						"name":      "module_call",
+						"arguments": `{"module":"massage","method":"book_slot","arguments":{"slot_id":"slot-15"}}`,
+					},
+				},
+				"usage": map[string]int{"input_tokens": 10, "output_tokens": 5},
+			}
 		}
 		return finalResponse("Booked Andrey at 15:00, booking-15")
 	})
 	authorize := func(context.Context, domain.Run) (domain.Principal, string, error) {
-		return domain.Principal{Issuer: "https://test.identity", Subject: "alice", Actor: "alice", OrgID: "test-org", Permissions: map[string]bool{"runs.create": true, "chat.read": true, "zns.massage.access": true, "zns.massage.book": true}}, "delegated-user-token", nil
+		return domain.Principal{
+			Issuer:  "https://test.identity",
+			Subject: "alice",
+			Actor:   "alice",
+			OrgID:   "test-org",
+			Permissions: map[string]bool{
+				"runs.create":        true,
+				"chat.read":          true,
+				"zns.massage.access": true,
+				"zns.massage.book":   true,
+			},
+		}, "delegated-user-token", nil
 	}
 	bridge := app.NewModuleBridge(registry, &operations.Coordinator{Pool: f.pool}, f.repository, authorize)
 	f.repository.SetApprovalHandler(bridge.ApproveTx)
 	client, err := provider.NewResponses(model.server.URL, "test-provider-key", model.server.Client())
 	require.NoError(t, err)
-	engine := runs.New(f.repository, client, runs.Options{Owner: "mutation-worker", Authorize: authorize, ModuleCall: bridge.Call, Tools: func(context.Context, domain.Run, domain.Principal, string) ([]provider.Tool, error) {
-		return []provider.Tool{{Type: "function", Name: "module_call", Description: "Execute approved registered service action", Parameters: json.RawMessage(`{"type":"object"}`)}}, nil
-	}})
+	engine := runs.New(
+		f.repository,
+		client,
+		runs.Options{
+			Owner:      "mutation-worker",
+			Authorize:  authorize,
+			ModuleCall: bridge.Call,
+			Tools: func(context.Context, domain.Run, domain.Principal, string) ([]provider.Tool, error) {
+				return []provider.Tool{
+					{
+						Type:        "function",
+						Name:        "module_call",
+						Description: "Execute approved registered service action",
+						Parameters:  json.RawMessage(`{"type":"object"}`),
+					},
+				}, nil
+			},
+		},
+	)
 	return model, engine
 }
 func TestHTTPMutationRequiresApprovalAndExecutesStableOperationOnce(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	service, registry := newBookingService(t, false)
 	model, engine := mutationWorker(t, f, registry)
@@ -137,11 +188,24 @@ func TestHTTPMutationRequiresApprovalAndExecutesStableOperationOnce(t *testing.T
 	service.mu.Unlock()
 	require.Equal(t, preparedID, waiting.Approval.OperationID)
 	// Passive UI activity that contains approval words never grants consent.
-	event := domain.AppendEvent{SourceEventID: "passive-approve", Type: "user.action", Action: "button.selected", Text: "approve booking-15", OccurredAt: time.Now()}
+	event := domain.AppendEvent{
+		SourceEventID: "passive-approve",
+		Type:          "user.action",
+		Action:        "button.selected",
+		Text:          "approve booking-15",
+		OccurredAt:    time.Now(),
+	}
 	code, raw := f.request(t, "alice", "POST", "/v1/chats/"+run.ChatID+"/events", "", event)
 	require.Equal(t, 201, code, string(raw))
 	require.Equal(t, domain.WaitingApproval, f.run(t, run.ID).State)
-	code, raw = f.request(t, "bob", "POST", "/v1/runs/"+run.ID+"/input", "bad-approval", domain.RunInput{Kind: "approval", ApprovalID: waiting.Approval.ID, Decision: "approve"})
+	code, raw = f.request(
+		t,
+		"bob",
+		"POST",
+		"/v1/runs/"+run.ID+"/input",
+		"bad-approval",
+		domain.RunInput{Kind: "approval", ApprovalID: waiting.Approval.ID, Decision: "approve"},
+	)
 	require.Equal(t, 404, code, string(raw))
 	code, raw = f.request(t, "alice", "GET", "/v1/runs/"+run.ID+"/events", "", nil)
 	require.Equal(t, 200, code, string(raw))
@@ -165,6 +229,7 @@ func TestHTTPMutationRequiresApprovalAndExecutesStableOperationOnce(t *testing.T
 	model.mu.Unlock()
 }
 func TestUnknownMutationRecoversWithStatusAndNeverRepeatsEffect(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	service, registry := newBookingService(t, true)
 	_, engine := mutationWorker(t, f, registry)
@@ -174,7 +239,14 @@ func TestUnknownMutationRecoversWithStatusAndNeverRepeatsEffect(t *testing.T) {
 	require.NoError(t, engine.Execute(context.Background(), run.ID))
 	waiting := f.run(t, run.ID)
 	require.Equal(t, domain.WaitingApproval, waiting.State)
-	code, raw := f.request(t, "alice", "POST", "/v1/runs/"+run.ID+"/input", "approve", domain.RunInput{Kind: "approval", ApprovalID: waiting.Approval.ID, Decision: "approve"})
+	code, raw := f.request(
+		t,
+		"alice",
+		"POST",
+		"/v1/runs/"+run.ID+"/input",
+		"approve",
+		domain.RunInput{Kind: "approval", ApprovalID: waiting.Approval.ID, Decision: "approve"},
+	)
 	require.Equal(t, 200, code, string(raw))
 	require.NoError(t, engine.Execute(context.Background(), run.ID))
 	unknown := f.run(t, run.ID)

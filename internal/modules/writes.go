@@ -14,6 +14,8 @@ import (
 	"github.com/complynx/clx-scripter/internal/sandbox"
 )
 
+const maxPreparationDescriptionBytes = 4000
+
 type Descriptor struct {
 	ServiceID, ContractHash string
 	Method                  Method
@@ -54,14 +56,16 @@ func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (reg
 		}
 		p = fresh
 	}
-	if p.Issuer != op.Binding.Issuer || p.Subject != op.Binding.Subject || p.Organization != op.Binding.OrgID || p.Actor != op.Binding.Actor {
+	if p.Issuer != op.Binding.Issuer || p.Subject != op.Binding.Subject || p.Organization != op.Binding.OrgID ||
+		p.Actor != op.Binding.Actor {
 		return registered{}, Method{}, Principal{}, operations.ErrBinding
 	}
 	s, m, err := b.Registry.lookupFresh(ctx, p, op.Module, op.Method)
 	if err != nil {
 		return registered{}, Method{}, Principal{}, err
 	}
-	if m.Effect == "read" || contractHash(s, op.Module, m) != op.Binding.ContractHash || m.Confirmation.Mode != op.Mode {
+	if m.Effect == effectRead || contractHash(s, op.Module, m) != op.Binding.ContractHash ||
+		m.Confirmation.Mode != op.Mode {
 		return registered{}, Method{}, Principal{}, operations.ErrBinding
 	}
 	input, err := compileSchema(m.InputSchema)
@@ -69,10 +73,10 @@ func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (reg
 		return registered{}, Method{}, Principal{}, err
 	}
 	var doc any
-	if err = json.Unmarshal(op.Arguments, &doc); err != nil {
+	if err = decodeJSONDocument(op.Arguments, &doc); err != nil {
 		return registered{}, Method{}, Principal{}, err
 	}
-	if len(op.Arguments) > 65536 {
+	if len(op.Arguments) > maxArgumentBytes {
 		return registered{}, Method{}, Principal{}, errors.New("module arguments exceed 65536 bytes")
 	}
 	if err = validateDocument(doc); err != nil {
@@ -89,10 +93,25 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 		return operations.Preparation{}, err
 	}
 	if op.Mode == "none" {
-		return operations.Preparation{ExpiresAt: time.Now().UTC().Add(5 * time.Minute)}, nil
+		return operations.Preparation{ExpiresAt: time.Now().UTC().Add(defaultPreparationTTL)}, nil
 	}
-	envelope, _ := json.Marshal(map[string]any{"protocol_version": 1, "operation_id": op.ID, "run_id": op.RunID, "arguments": op.Arguments})
-	raw, err := invoke(ctx, s, principal, m.Confirmation.PreparePath, envelope, min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)), time.Duration(m.TimeoutMS)*time.Millisecond)
+	envelope, _ := json.Marshal(
+		map[string]any{
+			fieldProtocolVersion: 1,
+			fieldOperationID:     op.ID,
+			fieldRunID:           op.RunID,
+			fieldArguments:       op.Arguments,
+		},
+	)
+	raw, err := invoke(
+		ctx,
+		s,
+		principal,
+		m.Confirmation.PreparePath,
+		envelope,
+		min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)),
+		time.Duration(m.TimeoutMS)*time.Millisecond,
+	)
 	if err != nil {
 		return operations.Preparation{}, err
 	}
@@ -108,7 +127,8 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 	if err = json.Unmarshal(raw, &response); err != nil {
 		return operations.Preparation{}, err
 	}
-	if response.Status != "prepared" || response.OperationID != op.ID || !response.ExpiresAt.After(time.Now()) || len(response.Description) > 4000 {
+	if response.Status != "prepared" || response.OperationID != op.ID || !response.ExpiresAt.After(time.Now()) ||
+		len(response.Description) > maxPreparationDescriptionBytes {
 		return operations.Preparation{}, operations.ErrBinding
 	}
 	preparedArgs := response.Arguments
@@ -120,10 +140,10 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 		return operations.Preparation{}, err
 	}
 	var preparedDoc any
-	if err = json.Unmarshal(preparedArgs, &preparedDoc); err != nil {
+	if err = decodeJSONDocument(preparedArgs, &preparedDoc); err != nil {
 		return operations.Preparation{}, err
 	}
-	if len(preparedArgs) > 65536 {
+	if len(preparedArgs) > maxArgumentBytes {
 		return operations.Preparation{}, errors.New("prepared arguments too large")
 	}
 	if err = validateDocument(preparedDoc); err != nil {
@@ -135,10 +155,17 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 	if op.Mode == "service_id" && response.Token == "" {
 		return operations.Preparation{}, operations.ErrBinding
 	}
-	if op.Mode == "exact_parameters" && (len(response.Arguments) == 0 || len(response.Preconditions) == 0 || string(response.Preconditions) == "null") {
+	if op.Mode == "exact_parameters" &&
+		(len(response.Arguments) == 0 || len(response.Preconditions) == 0 || string(response.Preconditions) == "null") {
 		return operations.Preparation{}, operations.ErrBinding
 	}
-	return operations.Preparation{Arguments: preparedArgs, Description: response.Description, Token: response.Token, Preconditions: response.Preconditions, ExpiresAt: response.ExpiresAt}, nil
+	return operations.Preparation{
+		Arguments:     preparedArgs,
+		Description:   response.Description,
+		Token:         response.Token,
+		Preconditions: response.Preconditions,
+		ExpiresAt:     response.ExpiresAt,
+	}, nil
 }
 func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (operations.Result, error) {
 	s, m, principal, err := b.resolve(ctx, op)
@@ -157,10 +184,10 @@ func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (ope
 		return operations.Result{}, err
 	}
 	var argumentDoc any
-	if err = json.Unmarshal(arguments, &argumentDoc); err != nil {
+	if err = decodeJSONDocument(arguments, &argumentDoc); err != nil {
 		return operations.Result{}, err
 	}
-	if len(arguments) > 65536 {
+	if len(arguments) > maxArgumentBytes {
 		return operations.Result{}, errors.New("prepared arguments too large")
 	}
 	if err = validateDocument(argumentDoc); err != nil {
@@ -176,13 +203,30 @@ func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (ope
 	if len(op.Preparation.Preconditions) > 0 {
 		confirmation["preconditions"] = op.Preparation.Preconditions
 	}
-	envelope, _ := json.Marshal(map[string]any{"protocol_version": 1, "operation_id": op.ID, "run_id": op.RunID, "arguments": arguments, "idempotency_key": op.ID, "confirmation": confirmation})
+	envelope, _ := json.Marshal(
+		map[string]any{
+			fieldProtocolVersion: 1,
+			fieldOperationID:     op.ID,
+			fieldRunID:           op.RunID,
+			fieldArguments:       arguments,
+			"idempotency_key":    op.ID,
+			"confirmation":       confirmation,
+		},
+	)
 	if b.Guard != nil {
 		if err = b.Guard(ctx); err != nil {
 			return operations.Result{}, err
 		}
 	}
-	raw, err := invoke(ctx, s, principal, m.Path, envelope, min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)), time.Duration(m.TimeoutMS)*time.Millisecond)
+	raw, err := invoke(
+		ctx,
+		s,
+		principal,
+		m.Path,
+		envelope,
+		min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)),
+		time.Duration(m.TimeoutMS)*time.Millisecond,
+	)
 	if err != nil {
 		return operations.Result{}, err
 	}
@@ -193,14 +237,28 @@ func (b WriteBackend) Status(ctx context.Context, op operations.Operation) (oper
 	if err != nil {
 		return operations.Result{}, err
 	}
-	payload, _ := json.Marshal(map[string]any{"protocol_version": 1, "operation_id": op.ID})
-	raw, err := invoke(ctx, s, principal, m.StatusPath, payload, min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)), time.Duration(m.TimeoutMS)*time.Millisecond)
+	payload, _ := json.Marshal(map[string]any{fieldProtocolVersion: 1, fieldOperationID: op.ID})
+	raw, err := invoke(
+		ctx,
+		s,
+		principal,
+		m.StatusPath,
+		payload,
+		min(m.MaxResultBytes, int64(sandbox.MaxValueBytes)),
+		time.Duration(m.TimeoutMS)*time.Millisecond,
+	)
 	if err != nil {
 		return operations.Result{}, err
 	}
 	return b.finishWriteResult(ctx, op, principal, s, m, raw, true)
 }
-func decodeWriteResult(raw json.RawMessage, id string, outputSchema json.RawMessage, statusLookup bool) (operations.Result, error) {
+
+func decodeWriteResult(
+	raw json.RawMessage,
+	id string,
+	outputSchema json.RawMessage,
+	statusLookup bool,
+) (operations.Result, error) {
 	var response struct {
 		Status      string          `json:"status"`
 		OperationID string          `json:"operation_id"`
@@ -211,44 +269,51 @@ func decodeWriteResult(raw json.RawMessage, id string, outputSchema json.RawMess
 		return operations.Result{}, err
 	}
 	if response.OperationID != id {
-		return operations.Result{State: "unknown"}, operations.ErrBinding
+		return operations.Result{State: stateUnknown}, operations.ErrBinding
 	}
 	switch response.Status {
-	case "succeeded":
+	case stateSucceeded:
 		// Unsupported attachments must not erase knowledge that the write succeeded.
 		schema, err := compileSchema(outputSchema)
 		if err != nil {
-			return operations.Result{State: "unknown"}, err
+			return operations.Result{State: stateUnknown}, err
 		}
 		var doc any
-		if err = json.Unmarshal(response.Result, &doc); err != nil {
-			return operations.Result{State: "unknown"}, err
+		if err = decodeJSONDocument(response.Result, &doc); err != nil {
+			return operations.Result{State: stateUnknown}, err
 		}
 		if err = validateDocument(doc); err != nil {
-			return operations.Result{State: "unknown"}, err
+			return operations.Result{State: stateUnknown}, err
 		}
 		if err = schema.Validate(doc); err != nil {
-			return operations.Result{State: "unknown"}, err
+			return operations.Result{State: stateUnknown}, err
 		}
-		return operations.Result{State: "succeeded", Output: response.Result}, nil
+		return operations.Result{State: stateSucceeded, Output: response.Result}, nil
 	case "accepted", "pending":
 		return operations.Result{State: "pending"}, nil
 	case "rejected":
 		if !statusLookup {
-			return operations.Result{State: "failed"}, nil
+			return operations.Result{State: stateFailed}, nil
 		}
-	case "failed", "cancelled":
+	case stateFailed, "cancelled":
 		if statusLookup {
-			return operations.Result{State: "failed"}, nil
+			return operations.Result{State: stateFailed}, nil
 		}
 	}
 	// not_found cannot prove that a delayed prior execution will never commit.
-	return operations.Result{State: "unknown"}, nil
+	return operations.Result{State: stateUnknown}, nil
 }
 
 // Contract hashes cover user-specific resolved methods as well as the static manifest.
 func contractHash(service registered, module string, method Method) string {
-	raw, _ := json.Marshal(map[string]any{"service_id": service.manifest.ServiceID, "module": module, "manifest_hash": service.hash, "method": method})
+	raw, _ := json.Marshal(
+		map[string]any{
+			"service_id":    service.manifest.ServiceID,
+			"module":        module,
+			"manifest_hash": service.hash,
+			"method":        method,
+		},
+	)
 	var document any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
@@ -258,21 +323,45 @@ func contractHash(service registered, module string, method Method) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (b WriteBackend) finishWriteResult(ctx context.Context, op operations.Operation, p Principal, s registered, m Method, raw json.RawMessage, status bool) (operations.Result, error) {
+func (b WriteBackend) finishWriteResult(
+	ctx context.Context,
+	op operations.Operation,
+	p Principal,
+	s registered,
+	m Method,
+	raw json.RawMessage,
+	status bool,
+) (operations.Result, error) {
 	result, err := decodeWriteResult(raw, op.ID, m.OutputSchema, status)
-	if err != nil || result.State != "succeeded" {
+	if err != nil || result.State != stateSucceeded {
 		return result, err
 	}
 	var response struct {
 		Artifacts json.RawMessage `json:"artifacts"`
 	}
 	_ = json.Unmarshal(raw, &response) // decodeWriteResult already checked this JSON.
-	imported, importErr := b.Registry.importArtifacts(ctx, p, s, op.Module, op.RunID, m, response.Artifacts, b.Guard, b.RefreshPrincipal)
+	imported, importErr := b.Registry.importArtifacts(
+		ctx,
+		p,
+		s,
+		op.Module,
+		op.RunID,
+		m,
+		response.Artifacts,
+		b.Guard,
+		b.RefreshPrincipal,
+	)
 	if importErr != nil {
 		// An unavailable attachment must never turn a known successful mutation into a retry.
-		result.Output, _ = json.Marshal(map[string]any{"result": result.Output, "artifacts": []any{}, "artifact_import_error": "artifact_unavailable"})
+		result.Output, _ = json.Marshal(
+			map[string]any{
+				fieldResult:             result.Output,
+				fieldArtifacts:          []any{},
+				"artifact_import_error": "artifact_unavailable",
+			},
+		)
 	} else if len(imported) > 0 {
-		result.Output, _ = json.Marshal(map[string]any{"result": result.Output, "artifacts": imported})
+		result.Output, _ = json.Marshal(map[string]any{fieldResult: result.Output, fieldArtifacts: imported})
 	}
 	return result, nil
 }

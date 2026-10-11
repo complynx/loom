@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"bytes"
@@ -15,13 +15,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/require"
+
 	"github.com/complynx/clx-scripter/internal/api"
 	"github.com/complynx/clx-scripter/internal/domain"
 	"github.com/complynx/clx-scripter/internal/identity"
 	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/require"
 )
 
 type testAuth struct{}
@@ -31,7 +32,21 @@ func (testAuth) Authenticate(_ context.Context, r *http.Request) (domain.Princip
 	if token != "alice" && token != "bob" {
 		return domain.Principal{}, identity.ErrUnauthorized
 	}
-	return domain.Principal{Issuer: "https://test.identity", Subject: token, Actor: token, OrgID: "test-org", ExpiresAt: time.Now().Add(time.Hour), Permissions: map[string]bool{"chat.read": true, "runs.create": true, "runs.control": true, "chat.events.append": true, "preferences.self.write": true, "chat.delete": true}}, nil
+	return domain.Principal{
+		Issuer:    "https://test.identity",
+		Subject:   token,
+		Actor:     token,
+		OrgID:     "test-org",
+		ExpiresAt: time.Now().Add(time.Hour),
+		Permissions: map[string]bool{
+			"chat.read":              true,
+			"runs.create":            true,
+			"runs.control":           true,
+			"chat.events.append":     true,
+			"preferences.self.write": true,
+			"chat.delete":            true,
+		},
+	}, nil
 }
 
 type fixture struct {
@@ -53,9 +68,9 @@ func newFixture(t *testing.T) *fixture {
 	_, err = admin.Exec(ctx, "CREATE SCHEMA "+schema)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, err := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
-		if err != nil {
-			t.Errorf("remove isolated test schema: %v", err)
+		_, cleanupErr := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		if cleanupErr != nil {
+			t.Errorf("remove isolated test schema: %v", cleanupErr)
 		}
 		admin.Close()
 	})
@@ -69,10 +84,47 @@ func newFixture(t *testing.T) *fixture {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 	repository := store.New(pool, nil)
-	require.NoError(t, repository.Bootstrap(ctx, domain.Settings{Models: []domain.Model{{ID: "test-model", ProviderModel: "test-model", Efforts: []string{"low", "high"}, MaxEffort: "high", MaxOutputTokens: 256, InputMicrocreditsPerMillion: 1000000, OutputMicrocreditsPerMillion: 1000000}}, DefaultModelID: "test-model", DefaultEffort: "low", InitialCredits: 100000, MaxRunMicrocredits: 10000, ActiveRunLimit: 8, HistoryRecentLimit: 50, MaxSteps: 10, QuestionTimeoutSeconds: 60}))
-	server := httptest.NewServer(api.New(repository, testAuth{}, api.Options{Ready: pool.Ping, StreamPoll: 10 * time.Millisecond, StreamDuration: 200 * time.Millisecond, SealCredential: func(context.Context, *http.Request, domain.Principal) (json.RawMessage, error) {
-		return json.RawMessage(`{"test_credential":"boundary-only"}`), nil
-	}}))
+	require.NoError(
+		t,
+		repository.Bootstrap(
+			ctx,
+			domain.Settings{
+				Models: []domain.Model{
+					{
+						ID:                           "test-model",
+						ProviderModel:                "test-model",
+						Efforts:                      []string{"low", "high"},
+						MaxEffort:                    "high",
+						MaxOutputTokens:              256,
+						InputMicrocreditsPerMillion:  1000000,
+						OutputMicrocreditsPerMillion: 1000000,
+					},
+				},
+				DefaultModelID:         "test-model",
+				DefaultEffort:          "low",
+				InitialCredits:         100000,
+				MaxRunMicrocredits:     10000,
+				ActiveRunLimit:         8,
+				HistoryRecentLimit:     50,
+				MaxSteps:               10,
+				QuestionTimeoutSeconds: 60,
+			},
+		),
+	)
+	server := httptest.NewServer(
+		api.New(
+			repository,
+			testAuth{},
+			api.Options{
+				Ready:          pool.Ping,
+				StreamPoll:     10 * time.Millisecond,
+				StreamDuration: 200 * time.Millisecond,
+				SealCredential: func(context.Context, *http.Request, domain.Principal) (json.RawMessage, error) {
+					return json.RawMessage(`{"test_credential":"boundary-only"}`), nil
+				},
+			},
+		),
+	)
 	t.Cleanup(server.Close)
 	return &fixture{server, repository, pool}
 }
@@ -80,25 +132,7 @@ func (f *fixture) request(t *testing.T, user, method, path, key string, body any
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
-		if input, ok := body.(domain.RunInput); ok {
-			fields := map[string]any{"kind": input.Kind}
-			if input.Text != "" {
-				fields["text"] = input.Text
-			}
-			if input.QuestionID != "" {
-				fields["question_id"] = input.QuestionID
-			}
-			if len(input.ChoiceIDs) > 0 {
-				fields["choice_ids"] = input.ChoiceIDs
-			}
-			if input.ApprovalID != "" {
-				fields["approval_id"] = input.ApprovalID
-			}
-			if input.Decision != "" {
-				fields["decision"] = input.Decision
-			}
-			body = fields
-		}
+		body = requestBody(body)
 		raw, err := json.Marshal(body)
 		require.NoError(t, err)
 		reader = bytes.NewReader(raw)
@@ -132,10 +166,17 @@ func (f *fixture) session(t *testing.T, user string) string {
 	return decode[map[string]any](t, raw)["auth_session_id"].(string)
 }
 func runRequest(session, chat, text string) domain.CreateRun {
-	return domain.CreateRun{AuthSessionID: session, ChatID: chat, Input: domain.Input{Text: text}, Interaction: domain.Interaction{Questions: "choices"}, Budget: domain.Budget{MaxMicrocredits: 10000}}
+	return domain.CreateRun{
+		AuthSessionID: session,
+		ChatID:        chat,
+		Input:         domain.Input{Text: text},
+		Interaction:   domain.Interaction{Questions: "choices"},
+		Budget:        domain.Budget{MaxMicrocredits: 10000},
+	}
 }
 
 func TestDefaultChatAndDurableRunContract(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	code, raw := f.request(t, "alice", "GET", "/v1/chats/default", "", nil)
 	require.Equal(t, 200, code, string(raw))
@@ -175,6 +216,7 @@ func TestDefaultChatAndDurableRunContract(t *testing.T) {
 	require.NotContains(t, string(raw), "event: run.status")
 }
 func TestConcurrentSameChatAndIndependentChats(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	session := f.session(t, "alice")
 	request := runRequest(session, "", "Start")
@@ -185,7 +227,7 @@ func TestConcurrentSameChatAndIndependentChats(t *testing.T) {
 		go func(i int) {
 			defer wait.Done()
 			raw, _ := json.Marshal(request)
-			req, _ := http.NewRequest("POST", f.server.URL+"/v1/runs", bytes.NewReader(raw))
+			req, _ := http.NewRequest(http.MethodPost, f.server.URL+"/v1/runs", bytes.NewReader(raw))
 			req.Header.Set("Authorization", "Bearer alice")
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Idempotency-Key", fmt.Sprintf("concurrent-%d", i))
@@ -211,10 +253,18 @@ func TestConcurrentSameChatAndIndependentChats(t *testing.T) {
 	chat := decode[domain.Chat](t, raw)
 	code, raw = f.request(t, "alice", "POST", "/v1/runs", "other-chat", runRequest(session, chat.ID, "Another chat"))
 	require.Equal(t, 202, code, string(raw))
-	code, raw = f.request(t, "bob", "POST", "/v1/runs", "wrong-owner", runRequest(f.session(t, "bob"), chat.ID, "Cannot access"))
+	code, raw = f.request(
+		t,
+		"bob",
+		"POST",
+		"/v1/runs",
+		"wrong-owner",
+		runRequest(f.session(t, "bob"), chat.ID, "Cannot access"),
+	)
 	require.Equal(t, 404, code, string(raw))
 }
 func TestImplicitSessionRetryIsIdempotent(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	request := runRequest("", "", "Help")
 	code, raw := f.request(t, "alice", "POST", "/v1/runs", "implicit-session", request)
@@ -226,11 +276,18 @@ func TestImplicitSessionRetryIsIdempotent(t *testing.T) {
 }
 
 func TestPassiveActionIsSearchableWithoutStartingRun(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	code, raw := f.request(t, "alice", "GET", "/v1/chats/default", "", nil)
 	require.Equal(t, 200, code, string(raw))
 	chat := decode[domain.Chat](t, raw)
-	action := domain.AppendEvent{SourceEventID: "menu-1", Type: "user.action", Action: "menu.open", Text: "Opened massage menu and selected Andrey", OccurredAt: time.Now().UTC().Truncate(time.Second)}
+	action := domain.AppendEvent{
+		SourceEventID: "menu-1",
+		Type:          "user.action",
+		Action:        "menu.open",
+		Text:          "Opened massage menu and selected Andrey",
+		OccurredAt:    time.Now().UTC().Truncate(time.Second),
+	}
 	code, raw = f.request(t, "alice", "POST", "/v1/chats/"+chat.ID+"/events", "", action)
 	require.Equal(t, 201, code, string(raw))
 	first := decode[domain.ChatEvent](t, raw)
@@ -238,7 +295,14 @@ func TestPassiveActionIsSearchableWithoutStartingRun(t *testing.T) {
 	code, raw = f.request(t, "alice", "POST", "/v1/chats/"+chat.ID+"/events", "", action)
 	require.Equal(t, 201, code, string(raw))
 	require.Equal(t, first.Seq, decode[domain.ChatEvent](t, raw).Seq)
-	code, raw = f.request(t, "alice", "POST", "/v1/chats/"+chat.ID+"/history/search", "", domain.SearchRequest{Mode: "regex", Query: "(?i)andrey", Limit: 10})
+	code, raw = f.request(
+		t,
+		"alice",
+		"POST",
+		"/v1/chats/"+chat.ID+"/history/search",
+		"",
+		domain.SearchRequest{Mode: "regex", Query: "(?i)andrey", Limit: 10},
+	)
 	require.Equal(t, 200, code, string(raw))
 	result := decode[domain.SearchResult](t, raw)
 	require.Len(t, result.Events, 1)
@@ -253,6 +317,7 @@ func TestPassiveActionIsSearchableWithoutStartingRun(t *testing.T) {
 	require.Len(t, history.Events, 1)
 }
 func TestPreferenceRevisionProtectsConcurrentUpdate(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	code, raw := f.request(t, "alice", "GET", "/v1/users/me/preferences", "", nil)
 	require.Equal(t, 200, code, string(raw))
@@ -272,6 +337,7 @@ func TestPreferenceRevisionProtectsConcurrentUpdate(t *testing.T) {
 }
 
 func TestDeleteDefaultChatTombstonesHistoryAndReplacesDefault(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	run := f.createRun(t, runRequest("", "", "Request in chat to delete"), "delete-chat-run")
 	code, raw := f.request(t, "bob", "DELETE", "/v1/chats/"+run.ChatID, "", nil)
@@ -286,7 +352,14 @@ func TestDeleteDefaultChatTombstonesHistoryAndReplacesDefault(t *testing.T) {
 	require.Equal(t, 404, code, string(raw))
 	code, raw = f.request(t, "alice", "GET", "/v1/runs/"+run.ID, "", nil)
 	require.Equal(t, 404, code, string(raw))
-	code, raw = f.request(t, "alice", "POST", "/v1/runs", "deleted-chat-reuse", runRequest("", run.ChatID, "Cannot use deleted chat"))
+	code, raw = f.request(
+		t,
+		"alice",
+		"POST",
+		"/v1/runs",
+		"deleted-chat-reuse",
+		runRequest("", run.ChatID, "Cannot use deleted chat"),
+	)
 	require.Equal(t, 404, code, string(raw))
 	code, raw = f.request(t, "alice", "GET", "/v1/chats/default", "", nil)
 	require.Equal(t, 200, code, string(raw))
@@ -294,4 +367,28 @@ func TestDeleteDefaultChatTombstonesHistoryAndReplacesDefault(t *testing.T) {
 	require.NotEqual(t, run.ChatID, replacement.ID)
 	next := f.createRun(t, runRequest("", "", "New request after deletion"), "replacement-run")
 	require.Equal(t, replacement.ID, next.ChatID)
+}
+
+func requestBody(body any) any {
+	input, ok := body.(domain.RunInput)
+	if !ok {
+		return body
+	}
+	fields := map[string]any{"kind": input.Kind}
+	if input.Text != "" {
+		fields["text"] = input.Text
+	}
+	if input.QuestionID != "" {
+		fields["question_id"] = input.QuestionID
+	}
+	if len(input.ChoiceIDs) > 0 {
+		fields["choice_ids"] = input.ChoiceIDs
+	}
+	if input.ApprovalID != "" {
+		fields["approval_id"] = input.ApprovalID
+	}
+	if input.Decision != "" {
+		fields["decision"] = input.Decision
+	}
+	return fields
 }

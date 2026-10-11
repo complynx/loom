@@ -6,11 +6,11 @@
 
 - Прямой запрос: `Authorization: Bearer <user-access-token>`.
 - Сервисный запрос: `Authorization: Bearer <service-access-token>` и, при bootstrap делегации, `X-Subject-Token: <user-access-token>`.
-- После bootstrap сервис указывает `auth_session_id`; сессия привязана к пользователю, actor, организации и разрешённым аудиториям. ID не является bearer credential.
+- После bootstrap сервис указывает `X-Auth-Session-ID` (либо `auth_session_id` в run-create body); сессия привязана к пользователю, actor, организации и разрешённым аудиториям. ID не является bearer credential.
 - Один запрос не может одновременно использовать `X-Subject-Token` и `auth_session_id`.
 - MVP принимает проверенные access tokens. Входящие непрозрачные сервисные секреты и автоматический token exchange/refresh не реализованы; deployment binding остаётся требованием для будущего секретного режима.
 
-Все запросы выполняются по TLS на внешней границе. Заголовки с токенами исключаются из логов. Запросы без refreshable сессии допустимы, но могут перейти в `waiting_auth`.
+Все запросы выполняются по TLS на внешней границе. По умолчанию credentials не логируются; явный debug payload mode может сохранять claims и JWT с замаскированной подписью. См. [logging policy](observability.md). Запросы без refreshable сессии допустимы, но могут перейти в `waiting_auth`.
 
 ## Поверхность API
 
@@ -23,7 +23,7 @@
 | GET | `/chats/default` | Получить или создать дефолтный чат |
 | GET | `/chats/{id}/history` | Страничная история по durable cursor |
 | POST | `/chats/{id}/events` | Добавить пассивное пользовательское действие |
-| POST | `/chats/{id}/history/search` | Полнотекстовый или regex-поиск |
+| POST | `/chats/{id}/history/search` | Literal/fulltext/regex и опциональный vector-поиск |
 | DELETE | `/chats/{id}` | Начать контролируемое удаление чата и производных данных |
 | POST | `/runs` | Создать поручение; необязательный `chat_id` |
 | GET | `/runs/{id}` | Статус, вопросы, подтверждения, итог и незавершённые операции |
@@ -43,7 +43,15 @@
 | GET | `/artifacts/{id}` | Метаданные |
 | GET | `/artifacts/{id}/content` | Авторизованное потоковое чтение |
 
-`/healthz` проверяет процесс; `/readyz` — способность безопасно принимать durable запросы. Metrics доступны только во внутренней сети.
+`/healthz` проверяет процесс; `/readyz` — способность безопасно принимать durable запросы. Metrics доступны только через отдельный private listener. Полный актуальный wire contract отдаёт `/openapi.json`; таблица выше — основные routes. [Личная память](user-memory.md) и [diagnostics/panel](diagnostics.md) описывают дополнительные endpoints.
+
+| Метод | Путь относительно `/v1` | Назначение |
+| --- | --- | --- |
+| GET | `/users/me/credits` | Баланс и резерв |
+| POST | `/chats/{id}/history/read` | Bounded страницы событий или текста одного события |
+| POST | `/chats/{id}/history/embeddings` | Внешний вектор для события; route только при enabled, нужны `chat.embeddings.write` и `chat.read` |
+| POST | `/runs/{id}/artifacts/handles` | Временный handle из `{artifact_id}` |
+| GET | `/artifact-handles/{id}/content` | Авторизованный stream по handle, ID сам не является credential; TTL 15 минут |
 
 ## Создание run
 
@@ -52,6 +60,7 @@
 ```json
 {
   "chat_id": null,
+  "previous_run_id": null,
   "auth_session_id": "opaque-id",
   "input": {"text": "Помоги выбрать массаж", "artifact_ids": []},
   "interaction": {"questions": "choices_and_text", "approvals": true},
@@ -61,6 +70,8 @@
   "billing_account_id": null
 }
 ```
+
+`previous_run_id` — необязательная ссылка на terminal run того же чата/владельца/org, а не команда возобновить его. Active previous run даёт `409 previous_run_active`. Совместимый completed run может дать сохранённый history prefix с TTL 15 минут; при несовместимости строится обычный контекст. Prefix не копирует tool effects и не гарантирует provider cache discount.
 
 В v1 модель выбирается по пользовательским настройкам. Произвольного обхода через поле model в запросе нет. Бюджет запроса может только уменьшать разрешённый лимит. Плательщик проверяется отдельно; default — пользовательский аккаунт.
 
@@ -80,7 +91,7 @@
 
 Другие варианты: `kind=answer` с `question_id`, `choice_ids` и/или `text`; `kind=approval` с `approval_id` и `decision=approve|reject`. Проверяются схема вопроса, срок и принадлежность. Первый ответ закрывает вопрос; конфликтующий повтор — `409 input_conflict`. Варианты имеют стабильные ID; текст надписи не является ID.
 
-Steering сохраняется сразу и применяется между шагами. Оно не отменяет уже выполненное действие. Для прерывания используется pause/cancel. Событие `input.applied` содержит ID входа и номер границы шага.
+Steering сохраняется сразу и применяется между шагами. Оно не отменяет уже выполненное действие. Для прерывания используется pause/cancel. Событие `input.applied` содержит `input_id`; граница исполнения определяется порядком durable шагов, отдельный номер шага в этом payload не заявляется.
 
 Resume применяется к `paused` и к `reconciling` для status-only сверки внешней операции. Неопределённая оплата inference блокирует resume до settlement. Pause не выводит неопределённый run из reconciliation. Остальные состояния ожидания разрешаются соответствующим вводом или авторизацией. Все управляющие команды идемпотентны и принимают `Idempotency-Key`.
 
@@ -105,17 +116,27 @@ Actor и subject определяются авторизацией. Уникал
 
 ## История и поиск
 
-Поиск: `mode=fulltext|regex`, `query`, необязательные `before_seq`, `after_seq`, `source_service_id`, `event_types`, `limit`. Все ограничения доступа применяются до выдачи фрагментов. Regex использует RE2-совместимый синтаксис без lookaround/backreferences; ошибки шаблона — `422 invalid_pattern`.
+Поиск: `mode=literal|fulltext|regex|semantic`; пустой mode означает literal. Для текстового поиска нужен непустой `query`. Фильтры: `before_seq`, `after_seq`, `source_service_id`, `event_types`, `limit`; `case_sensitive` управляет literal/regex. Fulltext использует PostgreSQL `simple`. Regex использует Go RE2 без lookaround/backreferences; неверный шаблон — `422 invalid_pattern`.
 
-Предлагаемые defaults: 256 символов шаблона, до 50 результатов, 1 MiB просматриваемого текста, 500 ms на запрос. При исчерпании сканирования ответ содержит `partial=true` и `next_cursor`. Если отдельное событие больше всего допустимого scan budget, MVP возвращает `422 regex_event_too_large`; оператор может увеличить разрешённый лимит или клиент сузить диапазон cursor. Продолжение не застревает с прежним cursor и не пропускает запись молча. Ограничивается также считывание строк из БД; regex не запускается над всей таблицей PostgreSQL без предела. В v1 ищем по отображаемому тексту и разрешённым строковым полям события, а не по секретам или сырым binary данным.
+Deployment-пример: query до 256 Unicode characters, до 50 результатов, scan до 1 MiB и deadline 500 ms. `max_bytes` ограничивает выдачу; по умолчанию 64 KiB, `snippet_chars` — 500. Ответ содержит `events`, `partial`, `reason`, `next_cursor`, `truncated_seqs` и `skipped_seqs`. Продолжайте event pagination через `after_seq=next_cursor`. Слишком большое для scan событие явно отмечается в `skipped_seqs`, а cursor продвигается; это не доказательство отсутствия совпадения. Для полного текста используйте read. Partial result не равен полному отсутствию данных.
+
+`POST /chats/{id}/history/read` принимает `{after_seq,before_seq,limit,max_bytes,snippet_chars}` для event pages. `{event_seq,offset_chars,max_bytes,snippet_chars}` читает текст одного события; `text_partial` и `next_text_offset` задают продолжение Unicode-текста. Оригинальные события сохраняются.
+
+При `search.semantic_enabled: true` тот же search endpoint принимает `mode: "semantic"`, `embedding_model`, `embedding`, `offset`, `limit` и фильтры. Следуйте `next_offset`; векторы должны иметь ту же модель и размерность, что индекс. Indexing endpoint принимает `{seq,model,vector}`. pgvector требуется в database harness. Это exact cosine ranking с авторизационными фильтрами, без embeddings provider и ANN index. Disabled режим скрывает semantic tool и indexing route, запрос semantic возвращает отказ.
+
+## Сессии и версии
+
+`POST /auth/sessions` принимает JSON `{}` и возвращает 201 с session receipt. `POST /auth/sessions/{id}/reauthorize` принимает `{version}` и свежую авторизацию того же subject/actor/org; receipt 200. Это explicit reauthorization, а не OAuth refresh. Изменение settings, policy или preferences передаёт текущую `version` в body; settings принимает полный типизированный объект, а не JSON Merge Patch. `If-Match` не заменяет body version.
+
+Billing adjustment принимает `{amount_microcredits,reason}` и `Idempotency-Key`; произвольная запись баланса через API не предусмотрена.
 
 ## SSE
 
-Durable события имеют монотонный `seq` внутри run; `id` SSE равен этому номеру. Клиент использует `Last-Event-ID` или `after`, но не оба. Типы: `run.status`, `input.applied`, `question.created`, `approval.created`, `tool.status`, `artifact.created`, `message.completed`, `usage.updated`, `run.resumable`.
+Durable события имеют монотонный `seq` внутри run; `id` SSE равен этому номеру. Клиент использует `Last-Event-ID` или `after`, но не оба. Основные типы: `run.status`, `input.applied`, `question.created`, `approval.created`, `artifact.ready`, `message.completed`, `usage.updated`, `run.resumable`; provider recovery/retry добавляет свои durable события. Клиент должен сохранять cursor и терпимо обрабатывать неизвестный тип.
 
-Текстовые дельты модели могут быть transient и помечаются как preview с `generation_id`; они не получают durable SSE ID. После обрыва итоговое сообщение восстанавливает результат; незавершённый preview сбрасывается событием статуса. Клиент не считает preview подтверждением выполненной операции.
+MVP доставляет сохранённые run events, а не поток token deltas провайдера. SSE читает bounded database batches. Запись в медленное соединение ограничена deadline; клиент после обрыва дочитывает durable события. Доставка как минимум один раз; дедупликация по seq.
 
-Durable события доставляются как минимум один раз; клиент дедуплицирует по seq. Медленный клиент отключается после заполнения ограниченного буфера и дочитывает события. Отсутствие подписчиков не отменяет run при `continue`. Политика `pause` действует после разрыва последнего stream и disconnect grace; одноразовый HTTP async запрос не считается stream-разрывом.
+Отсутствие подписчиков не отменяет run при `continue`. Политика `pause` действует после разрыва последнего stream и disconnect grace. Reconnect согласован с финальной проверкой pause; одноразовый HTTP async запрос не считается stream-разрывом.
 
 ## Ошибки
 
@@ -126,3 +147,6 @@ Durable события доставляются как минимум один �
 `401` — нет действительных credentials; `403` — нет права; `404` — ресурс не существует или недоступен; `409` — занятый чат/конфликт состояния или версии; `422` — неверный контракт; `429` — квота с `Retry-After`; `503` — зависимость не позволяет принять запрос; `504` — ограниченное ожидание dependency. Ответы не включают токены, upstream bodies и stack traces.
 
 Ошибка HTTP после commit может скрыть успешную операцию. Клиент повторяет только с исходным idempotency key, а не создаёт новое поручение.
+
+Written by Codex (gpt-6/Codex desktop)
+on behalf of Daniel Drizhuk

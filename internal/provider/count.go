@@ -40,7 +40,7 @@ func (p *Responses) CountInputTokens(ctx context.Context, in Request) (int64, er
 	if res.StatusCode != http.StatusOK {
 		return 0, errors.New("token count unavailable")
 	}
-	data, err := io.ReadAll(io.LimitReader(res.Body, 4097))
+	data, err := io.ReadAll(io.LimitReader(res.Body, countResponseLimit+1))
 	if err != nil || len(data) > 4096 {
 		return 0, errors.New("invalid token count response")
 	}
@@ -48,8 +48,11 @@ func (p *Responses) CountInputTokens(ctx context.Context, in Request) (int64, er
 		Object string `json:"object"`
 		Count  *int64 `json:"input_tokens"`
 	}
-	if json.Unmarshal(data, &out) != nil || out.Object != "response.input_tokens" || out.Count == nil || *out.Count < 0 {
+	if json.Unmarshal(data, &out) != nil || out.Object != "response.input_tokens" || out.Count == nil ||
+		*out.Count < 0 {
 		return 0, errors.New("invalid token count response")
 	}
 	return *out.Count, nil
 }
+
+const countResponseLimit = 4096

@@ -1,0 +1,64 @@
+$ErrorActionPreference='Stop'
+$base='http://127.0.0.1:58180'
+$evidence='docs/validation/2026-10-11-full-runtime-qa'
+function Request($method,$path,$body=$null,$key='',$token='qa-runtime-write') {
+ $headers=@{Authorization="Bearer $token"}; if($key){$headers['Idempotency-Key']=$key}; $params=@{Method=$method; Uri="$base$path"; Headers=$headers; SkipHttpErrorCheck=$true}; if($null -ne $body){$params.Body=($body|ConvertTo-Json -Depth 50 -Compress);$params.ContentType='application/json'}
+ $r=Invoke-WebRequest @params; if($r.StatusCode -ge 400){throw "HTTP $($r.StatusCode) $path $($r.Content)"}; if($r.Content){return ($r.Content|ConvertFrom-Json)}
+}
+function NewRun($marker,$key) { $chat=Request POST /v1/chats @{}; Request POST /v1/runs @{chat_id=$chat.id;input=@{text=$marker};interaction=@{questions='text';approvals=$true};delivery=@{mode='async'};budget=@{max_microcredits=10000}} $key }
+function AwaitState($id,$states) { for($i=0;$i -lt 150;$i++){ $r=Request GET "/v1/runs/$id"; if($r.status -in $states){return $r}; if($r.status -in @('failed','cancelled','paused')){throw ($r|ConvertTo-Json -Depth 20)}; Start-Sleep -Milliseconds 200 };throw "timeout $id" }
+$r=NewRun QA_DYNAMIC qa-runtime-dynamic-v2
+$r=AwaitState $r.run_id @('completed')
+$r|ConvertTo-Json -Depth 50|Set-Content "$evidence/dynamic-run.json"
+Write-Output ('PASS dynamic run '+$r.run_id)
+
+
+$providerFiles=Get-ChildItem management.local/full-runtime-qa/provider-evidence/provider-*.json
+$matching=$providerFiles|Where-Object{(Get-Content $_ -Raw).Contains('Fixture read: runtime dynamic read')}|Select-Object -Last 1
+$body=Get-Content $matching -Raw|ConvertFrom-Json
+$tool=($body.input|Where-Object type -eq 'function_call_output'|Select-Object -Last 1).output|ConvertFrom-Json
+$aid=$tool.artifacts[0].artifact_id
+$h=Request POST "/v1/runs/$($r.run_id)/artifacts/handles" @{artifact_id=$aid}
+$h|ConvertTo-Json -Depth 10|Set-Content "$evidence/artifact-handle.json"
+$download=Invoke-WebRequest "$base$($h.content_path)" -Headers @{Authorization='Bearer qa-runtime-write'}
+if([string]$download.Content -ne "Acceptance blob. Original bytes bypass JavaScript.`n"){throw 'blob bytes mismatch'}
+[IO.File]::WriteAllBytes((Join-Path (Get-Location) "$evidence/download.txt"),[System.Text.Encoding]::UTF8.GetBytes([string]$download.Content))
+Write-Output 'PASS temporary artifact handle HTTP original bytes download'
+$w=NewRun QA_WRITE qa-runtime-write-v1
+$w=AwaitState $w.run_id @('waiting_approval')
+$w|ConvertTo-Json -Depth 50|Set-Content "$evidence/write-waiting-approval.json"
+Invoke-WebRequest http://127.0.0.1:58190/qa/faults -Method POST -Headers @{Authorization='Bearer qa-runtime-write'} -ContentType application/json -Body '{"drop_next_write_reply":true}'|Out-Null
+$answer=@{kind='approval';approval_id=$w.approval.approval_id;decision='approve'}
+Request POST "/v1/runs/$($w.run_id)/input" $answer qa-runtime-approve|Out-Null
+Request POST "/v1/runs/$($w.run_id)/input" $answer qa-runtime-approve|Out-Null
+$w=AwaitState $w.run_id @('reconciling','completed')
+$w|ConvertTo-Json -Depth 50|Set-Content "$evidence/write-after-lost-reply.json"
+if($w.status -ne 'reconciling'){throw 'expected reconciling state'}
+docker compose -f management.local/full-runtime-qa/compose.yaml restart acceptance-service
+Request POST "/v1/runs/$($w.run_id)/resume" @{} qa-runtime-resume|Out-Null
+$w=AwaitState $w.run_id @('completed')
+$w|ConvertTo-Json -Depth 50|Set-Content "$evidence/write-completed.json"
+Write-Output 'PASS explicit approval duplicate replay lost reply retained-volume Docker restart status reconciliation'
+$q=NewRun QA_QUESTION qa-runtime-question-v1
+$q=AwaitState $q.run_id @('waiting_input')
+$q|ConvertTo-Json -Depth 50|Set-Content "$evidence/question-waiting.json"
+Request POST "/v1/runs/$($q.run_id)/input" @{kind='answer';question_id=$q.question.question_id;text='QA human answer'} qa-runtime-answer|Out-Null
+$q=AwaitState $q.run_id @('completed')
+$q|ConvertTo-Json -Depth 50|Set-Content "$evidence/question-completed.json"
+Write-Output 'PASS question suspended and HTTP answer resumed via River'
+$c=NewRun QA_CANCEL qa-runtime-cancel-v1
+$c=AwaitState $c.run_id @('running')
+Start-Sleep -Milliseconds 500
+Request POST "/v1/runs/$($c.run_id)/cancel" @{} qa-runtime-cancel-command|Out-Null
+$c=AwaitState $c.run_id @('cancelled')
+$c|ConvertTo-Json -Depth 50|Set-Content "$evidence/cancelled.json"
+Write-Output 'PASS cancellation during deterministic provider dispatch'
+$s=NewRun QA_STEER qa-runtime-steer-v1
+$s=AwaitState $s.run_id @('running')
+Start-Sleep -Milliseconds 500
+Request POST "/v1/runs/$($s.run_id)/input" @{kind='steering';text='QA_STEERING_APPLIED'} qa-runtime-steering|Out-Null
+$s=AwaitState $s.run_id @('completed')
+$s|ConvertTo-Json -Depth 50|Set-Content "$evidence/steering-completed.json"
+Write-Output 'PASS steering while provider in flight completed'
+
+

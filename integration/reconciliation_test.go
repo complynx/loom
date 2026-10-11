@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"context"
@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/complynx/clx-scripter/internal/api"
 	"github.com/complynx/clx-scripter/internal/domain"
 	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/stretchr/testify/require"
 )
 
 type operatorAuth struct{}
@@ -24,13 +25,25 @@ func (operatorAuth) Authenticate(ctx context.Context, r *http.Request) (domain.P
 		if token == "foreign-operator" {
 			org = "foreign-org"
 		}
-		return domain.Principal{Issuer: "https://test.identity", Subject: token, Actor: token, OrgID: org, ExpiresAt: time.Now().Add(time.Hour), Permissions: map[string]bool{"operations.reconcile": true}}, nil
+		return domain.Principal{
+			Issuer:      "https://test.identity",
+			Subject:     token,
+			Actor:       token,
+			OrgID:       org,
+			ExpiresAt:   time.Now().Add(time.Hour),
+			Permissions: map[string]bool{"operations.reconcile": true},
+		}, nil
 	}
 	return testAuth{}.Authenticate(ctx, r)
 }
 func TestProviderReceiptHTTPSettlesExactlyOnceAndResumesWithoutInference(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
-	model, engine := fakeModel(t, f, func(int) any { return map[string]any{"id": "unreadable-provider-output", "status": "completed"} })
+	model, engine := fakeModel(
+		t,
+		f,
+		func(int) any { return map[string]any{"id": "unreadable-provider-output", "status": "completed"} },
+	)
 	run := f.createRun(t, runRequest("", "", "PRIVATE user request"), "receipt-run")
 	require.NoError(t, engine.Execute(context.Background(), run.ID))
 	uncertain := f.run(t, run.ID)
@@ -38,10 +51,27 @@ func TestProviderReceiptHTTPSettlesExactlyOnceAndResumesWithoutInference(t *test
 	require.Len(t, uncertain.UnresolvedSteps, 1)
 	require.Positive(t, uncertain.ReservedMicrocredits)
 	endpoint := "/v1/admin/runs/" + run.ID + "/steps/" + uncertain.UnresolvedSteps[0].ID + "/reconcile"
-	final := provider.Response{ID: "verified-provider-receipt", Text: "PRIVATE recovered answer", Output: []provider.Item{provider.Message("assistant", "PRIVATE recovered answer")}}
+	final := provider.Response{
+		ID:     "verified-provider-receipt",
+		Text:   "PRIVATE recovered answer",
+		Output: []provider.Item{provider.Message("assistant", "PRIVATE recovered answer")},
+	}
 	result, err := json.Marshal(final)
 	require.NoError(t, err)
-	receipt := domain.ReconcileStepRequest{Usage: domain.Usage{InputTokens: 10, OutputTokens: 5, Microcredits: 15, RequestID: "verified-provider-receipt"}, Evidence: domain.ReconcileEvidence{Kind: "provider_receipt", Reference: "verified-provider-receipt", Reason: "verified provider usage and output"}, Result: result}
+	receipt := domain.ReconcileStepRequest{
+		Usage: domain.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+			Microcredits: 15,
+			RequestID:    "verified-provider-receipt",
+		},
+		Evidence: domain.ReconcileEvidence{
+			Kind:      "provider_receipt",
+			Reference: "verified-provider-receipt",
+			Reason:    "verified provider usage and output",
+		},
+		Result: result,
+	}
 	code, raw := f.request(t, "alice", "POST", endpoint, "receipt", receipt)
 	require.Equal(t, 403, code, string(raw))
 	f.server.Close()

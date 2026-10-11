@@ -1,0 +1,72 @@
+[
+  {
+    "scenario": "baseline-upload",
+    "passed": true,
+    "detail": {
+      "status": 201,
+      "body": "{\"external_disclosure_allowed\":true,\"artifact_id\":\"b0aeec39757bb149942b234bb4b11ef6\",\"owner_id\":\"558a97f0-6110-4a2c-bef2-d60b920fd6f0\",\"org_id\":\"qa-org\",\"mime\":\"application/octet-stream\",\"sha256\":\"cb984e84a31fccfbc1b665cc6aaeabb601aa4c960270753855ea90277a05b56e\",\"size\":26,\"created_at\":\"2026-10-11T17:56:25.262764444Z\"}\n"
+    }
+  },
+  {
+    "scenario": "artifact-enospc-cleanup",
+    "passed": true,
+    "detail": {
+      "response": 500,
+      "metadata_after": "1",
+      "files": [
+        "/proc/1/root/data/artifacts/b0aeec39757bb149942b234bb4b11ef6"
+      ],
+      "metadata_before": "1"
+    }
+  },
+  {
+    "scenario": "artifact-recovers-without-restart",
+    "passed": true,
+    "detail": {
+      "status": 201,
+      "body": "{\"external_disclosure_allowed\":true,\"artifact_id\":\"8ef64ea239f93f0645fc569b1a4da3fe\",\"owner_id\":\"558a97f0-6110-4a2c-bef2-d60b920fd6f0\",\"org_id\":\"qa-org\",\"mime\":\"application/octet-stream\",\"sha256\":\"2e1552f9d074f6e4ff02eb613a87c33e3d171be1b36b2c273005db934401d1b4\",\"size\":12,\"created_at\":\"2026-10-11T17:56:28.540713819Z\"}\n"
+    }
+  },
+  {
+    "scenario": "pg-fixture-genuine-enospc",
+    "passed": true,
+    "detail": {
+      "dd_exit": 1,
+      "disk": [
+        "Filesystem           1K-blocks      Used Available Use% Mounted on",
+        "tmpfs                   262144    262144         0 100% /var/lib/postgresql/data"
+      ]
+    }
+  },
+  {
+    "scenario": "pg-full-no-false-success",
+    "passed": true,
+    "detail": {
+      "response": {
+        "status": 500,
+        "body": "{\"error\":{\"code\":\"internal_error\",\"message\":\"Request could not be completed\",\"request_id\":\"69b13d8c-847f-4c9a-b692-6e745d498de7\",\"retryable\":false}}\n"
+      },
+      "readiness": {
+        "status": 200,
+        "body": "{\"status\":\"ready\"}\n"
+      },
+      "database_write_exit": 1
+    }
+  },
+  {
+    "scenario": "pg-recovery-preserves-state",
+    "passed": true,
+    "detail": {
+      "pg_state_unchanged": true,
+      "new_chat_status": 201
+    }
+  },
+  {
+    "scenario": "pg-full-shutdown-bounded",
+    "passed": true,
+    "detail": {
+      "elapsed_ms": 437.4349,
+      "exit": "0"
+    }
+  }
+]

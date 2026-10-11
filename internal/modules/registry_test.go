@@ -14,8 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/modules"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/complynx/clx-scripter/internal/modules"
 )
 
 func example(t *testing.T) modules.Manifest {
@@ -30,12 +32,22 @@ func endpoint(t *testing.T, address, id string) modules.Endpoint {
 	t.Helper()
 	u, err := url.Parse(address)
 	require.NoError(t, err)
-	return modules.Endpoint{ContainerID: id, URI: "http://registered-service:" + u.Port() + "/manifest", Address: "127.0.0.1"}
+	return modules.Endpoint{
+		ContainerID: id,
+		URI:         "http://registered-service:" + u.Port() + "/manifest",
+		Address:     "127.0.0.1",
+	}
 }
 func principal() modules.Principal {
-	return modules.Principal{Issuer: "https://id.example", Subject: "user", Token: "delegated-token", Permissions: []string{"zns.massage.access", "zns.massage.read", "zns.massage.book", "zns.orders.access"}}
+	return modules.Principal{
+		Issuer:      "https://id.example",
+		Subject:     "user",
+		Token:       "delegated-token",
+		Permissions: []string{"zns.massage.access", "zns.massage.read", "zns.massage.book", "zns.orders.access"},
+	}
 }
 func TestReadBrokerFiltersAndValidates(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	var calls atomic.Int32
@@ -44,15 +56,18 @@ func TestReadBrokerFiltersAndValidates(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(manifest)
 			return
 		}
-		require.Equal(t, "Bearer delegated-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "Bearer delegated-token", r.Header.Get("Authorization"))
 		var request struct {
 			OperationID string         `json:"operation_id"`
 			Arguments   map[string]any `json:"arguments"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		require.Equal(t, "andrey", request.Arguments["specialist_id"])
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		assert.Equal(t, "andrey", request.Arguments["specialist_id"])
 		calls.Add(1)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": request.OperationID, "result": map[string]any{"slots": []any{}}})
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "succeeded", "operation_id": request.OperationID, "result": map[string]any{"slots": []any{}}})
 	}))
 	defer server.Close()
 	source := modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
@@ -67,7 +82,12 @@ func TestReadBrokerFiltersAndValidates(t *testing.T) {
 	require.Equal(t, "list_slots", tools[0].Method)
 	var guards atomic.Int32
 	broker := registry.Broker(principal(), "run-one", func(context.Context) error { guards.Add(1); return nil })
-	result, err := broker.Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
+	result, err := broker.Call(
+		context.Background(),
+		"massage",
+		"list_slots",
+		json.RawMessage(`{"specialist_id":"andrey"}`),
+	)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"slots":[]}`, string(result))
 	require.EqualValues(t, 2, guards.Load())
@@ -85,6 +105,7 @@ func TestReadBrokerFiltersAndValidates(t *testing.T) {
 	require.Len(t, registry.CallerBindings(), 1)
 }
 func TestDynamicDiscoveryCacheIsPerUserAndPolicy(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	method := manifest.Modules[0].Methods[0]
 	method.ID = "list"
@@ -100,7 +121,7 @@ func TestDynamicDiscoveryCacheIsPerUserAndPolicy(t *testing.T) {
 			return
 		}
 		discoveries.Add(1)
-		require.NotEmpty(t, r.Header.Get("Authorization"))
+		assert.NotEmpty(t, r.Header.Get("Authorization"))
 		_ = json.NewEncoder(w).Encode(map[string]any{"methods": []modules.Method{method}})
 	}))
 	defer server.Close()
@@ -111,8 +132,8 @@ func TestDynamicDiscoveryCacheIsPerUserAndPolicy(t *testing.T) {
 	require.NoError(t, registry.Refresh(context.Background()))
 	p := principal()
 	for range 2 {
-		tools, err := registry.List(context.Background(), p)
-		require.NoError(t, err)
+		tools, listErr := registry.List(context.Background(), p)
+		require.NoError(t, listErr)
 		require.Len(t, tools, 1)
 	}
 	require.EqualValues(t, 1, discoveries.Load())
@@ -131,16 +152,24 @@ func TestDynamicDiscoveryCacheIsPerUserAndPolicy(t *testing.T) {
 	require.EqualValues(t, 3, discoveries.Load())
 }
 func TestRegistryRejectsReplicaConflictAndRemoval(t *testing.T) {
+	t.Parallel()
 	first := example(t)
 	first.Modules = first.Modules[:1]
 	second := first
 	second.Revision = "different"
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(first) }))
+	server1 := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(first) }),
+	)
 	defer server1.Close()
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(second) }))
+	server2 := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(second) }),
+	)
 	defer server2.Close()
 	endpoints := []modules.Endpoint{endpoint(t, server1.URL, "one")}
-	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) { return endpoints, nil }), modules.Options{})
+	registry, err := modules.NewRegistry(
+		modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) { return endpoints, nil }),
+		modules.Options{},
+	)
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
 	endpoints = append(endpoints, endpoint(t, server2.URL, "two"))
@@ -153,13 +182,16 @@ func TestRegistryRejectsReplicaConflictAndRemoval(t *testing.T) {
 	require.ErrorIs(t, registry.CheckCaller(first.ServiceID), modules.ErrUnavailable)
 }
 func TestRegistryBlocksRemoteSchemasTraversalAndStaleCaller(t *testing.T) {
+	t.Parallel()
 	for _, mutation := range []func(*modules.Manifest){func(m *modules.Manifest) { m.Modules[0].Methods[0].Path = "/%2e%2e/private" }, func(m *modules.Manifest) {
 		m.Modules[0].Methods[0].InputSchema = json.RawMessage(`{"$ref":"https://external.invalid/schema"}`)
 	}} {
 		manifest := example(t)
 		manifest.Modules = manifest.Modules[:1]
 		mutation(&manifest)
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }))
+		server := httptest.NewServer(
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }),
+		)
 		registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
 			return []modules.Endpoint{endpoint(t, server.URL, "one")}, nil
 		}), modules.Options{})
@@ -172,7 +204,9 @@ func TestRegistryBlocksRemoteSchemasTraversalAndStaleCaller(t *testing.T) {
 	}
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }),
+	)
 	defer server.Close()
 	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
 		return []modules.Endpoint{endpoint(t, server.URL, "one")}, nil
@@ -183,12 +217,15 @@ func TestRegistryBlocksRemoteSchemasTraversalAndStaleCaller(t *testing.T) {
 	require.Empty(t, registry.CallerBindings())
 }
 func TestDockerSourceTrustsOnlyNetworkBoundAlias(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/containers/json":
-			_ = json.NewEncoder(w).Encode([]any{map[string]any{"Id": "trusted", "Labels": map[string]string{modules.ServiceLabel: "http://orders:8080/manifest"}}, map[string]any{"Id": "external", "Labels": map[string]string{modules.ServiceLabel: "http://evil.example:8080/manifest"}}})
+			_ = json.NewEncoder(w).
+				Encode([]any{map[string]any{"Id": "trusted", "Labels": map[string]string{modules.ServiceLabel: "http://orders:8080/manifest"}}, map[string]any{"Id": "external", "Labels": map[string]string{modules.ServiceLabel: "http://evil.example:8080/manifest"}}})
 		default:
-			_ = json.NewEncoder(w).Encode(map[string]any{"Name": "/container", "State": map[string]bool{"Running": true}, "NetworkSettings": map[string]any{"Networks": map[string]any{"trusted-net": map[string]any{"IPAddress": "172.20.0.9", "Aliases": []string{"orders"}}}}})
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"Name": "/container", "State": map[string]bool{"Running": true}, "NetworkSettings": map[string]any{"Networks": map[string]any{"trusted-net": map[string]any{"IPAddress": "172.20.0.9", "Aliases": []string{"orders"}}}}})
 		}
 	}))
 	defer server.Close()
@@ -205,14 +242,24 @@ func TestDockerSourceTrustsOnlyNetworkBoundAlias(t *testing.T) {
 }
 
 func TestChangedDestinationCannotUseStaleCapability(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
-	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }))
+	good := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }),
+	)
 	defer good.Close()
-	failed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) }))
+	failed := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) }),
+	)
 	defer failed.Close()
 	current := endpoint(t, good.URL, "one")
-	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) { return []modules.Endpoint{current}, nil }), modules.Options{})
+	registry, err := modules.NewRegistry(
+		modules.SourceFunc(
+			func(context.Context) ([]modules.Endpoint, error) { return []modules.Endpoint{current}, nil },
+		),
+		modules.Options{},
+	)
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
 	tools, err := registry.List(context.Background(), principal())
@@ -227,6 +274,7 @@ func TestChangedDestinationCannotUseStaleCapability(t *testing.T) {
 }
 
 func TestLiveBrokerRevocationPreventsDispatch(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	var reads atomic.Int32
@@ -239,9 +287,12 @@ func TestLiveBrokerRevocationPreventsDispatch(t *testing.T) {
 		var request struct {
 			ID string `json:"operation_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		require.Equal(t, "Bearer refreshed-token", r.Header.Get("Authorization"))
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}})
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		assert.Equal(t, "Bearer refreshed-token", r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}})
 	}))
 	defer server.Close()
 	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
@@ -262,6 +313,7 @@ func TestLiveBrokerRevocationPreventsDispatch(t *testing.T) {
 }
 
 func TestTrustReadinessDistinguishesEmptyFromUnknown(t *testing.T) {
+	t.Parallel()
 	failed := false
 	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
 		if failed {
@@ -283,12 +335,13 @@ func TestTrustReadinessDistinguishesEmptyFromUnknown(t *testing.T) {
 	require.ErrorIs(t, registry.TrustReady(), modules.ErrUnavailable)
 }
 func TestConfiguredManifestTimeout(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
 		case <-time.After(time.Second):
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
@@ -302,6 +355,7 @@ func TestConfiguredManifestTimeout(t *testing.T) {
 	require.ErrorIs(t, registry.TrustReady(), modules.ErrUnavailable)
 }
 func TestReadArtifactUsesTrustedImportBoundary(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	manifest.Modules[0].Methods[0].ArtifactMIMETypes = []string{"image/png"}
@@ -313,8 +367,11 @@ func TestReadArtifactUsesTrustedImportBoundary(t *testing.T) {
 		var request struct {
 			ID string `json:"operation_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}, "artifacts": []modules.ArtifactDescriptor{{DownloadPath: "/blobs/image", MIMEType: "image/png", SizeBytes: 50, SHA256: "digest"}}})
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}, "artifacts": []modules.ArtifactDescriptor{{DownloadPath: "/blobs/image", MIMEType: "image/png", SizeBytes: 50, SHA256: "digest"}}})
 	}))
 	defer server.Close()
 	importer := func(ctx context.Context, p modules.Principal, d modules.ArtifactDescriptor, source modules.ArtifactSource) (json.RawMessage, error) {
@@ -332,12 +389,14 @@ func TestReadArtifactUsesTrustedImportBoundary(t *testing.T) {
 	}), modules.Options{ImportArtifact: importer})
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
-	result, err := registry.Broker(principal(), "run-artifact", nil).Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
+	result, err := registry.Broker(principal(), "run-artifact", nil).
+		Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
 	require.NoError(t, err)
 	require.JSONEq(t, `{"result":{"slots":[]},"artifacts":[{"artifact_id":"owned-handle"}]}`, string(result))
 }
 
 func TestConfiguredDynamicCacheCeiling(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	method := manifest.Modules[0].Methods[0]
 	manifest.Modules = manifest.Modules[1:]
@@ -371,79 +430,16 @@ func TestConfiguredDynamicCacheCeiling(t *testing.T) {
 }
 
 func TestArtifactRejectsRetiredDestinationBeforeGET(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"container", "address"} {
 		t.Run(change, func(t *testing.T) {
-			manifest := example(t)
-			manifest.Modules = manifest.Modules[:1]
-			manifest.Modules[0].Methods[0].ArtifactMIMETypes = []string{"image/png"}
-			var blobGets atomic.Int32
-			var leakedCredentials atomic.Int32
-			original := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/manifest" {
-					_ = json.NewEncoder(w).Encode(manifest)
-					return
-				}
-				if r.URL.Path == "/blobs/image" {
-					blobGets.Add(1)
-					if r.Header.Get("Authorization") != "" {
-						leakedCredentials.Add(1)
-					}
-					_, _ = w.Write([]byte("blob"))
-					return
-				}
-				var request struct {
-					ID string `json:"operation_id"`
-				}
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-				_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}, "artifacts": []modules.ArtifactDescriptor{{DownloadPath: "/blobs/image", MIMEType: "image/png", SizeBytes: 4, SHA256: "digest"}}})
-			}))
-			defer original.Close()
-			current := endpoint(t, original.URL, "original")
-			replacement := current
-			replacement.ContainerID = "replacement"
-			if change == "address" {
-				parsed, err := url.Parse(original.URL)
-				require.NoError(t, err)
-				listener, err := net.Listen("tcp", "127.0.0.2:"+parsed.Port())
-				require.NoError(t, err)
-				newServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) }))
-				newServer.Listener = listener
-				newServer.Start()
-				defer newServer.Close()
-				replacement.ContainerID = current.ContainerID
-				replacement.Address = "127.0.0.2"
-			}
-			var registry *modules.Registry
-			importer := func(ctx context.Context, _ modules.Principal, _ modules.ArtifactDescriptor, source modules.ArtifactSource) (json.RawMessage, error) {
-				current = replacement
-				require.NoError(t, registry.Refresh(ctx))
-				if err := source.Authorize(ctx); err != nil {
-					return nil, err
-				}
-				request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.BaseURL+"/blobs/image", nil)
-				if err != nil {
-					return nil, err
-				}
-				request.Header = source.Headers.Clone()
-				response, err := source.Client.Do(request)
-				if err != nil {
-					return nil, err
-				}
-				defer func() { _ = response.Body.Close() }()
-				return json.RawMessage(`{"artifact_id":"unexpected"}`), nil
-			}
-			var err error
-			registry, err = modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) { return []modules.Endpoint{current}, nil }), modules.Options{ImportArtifact: importer})
-			require.NoError(t, err)
-			require.NoError(t, registry.Refresh(context.Background()))
-			_, err = registry.Broker(principal(), "run", nil).Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
-			require.ErrorIs(t, err, modules.ErrUnavailable)
-			require.Zero(t, blobGets.Load())
-			require.Zero(t, leakedCredentials.Load())
+			t.Parallel()
+			checkRetiredArtifactDestination(t, change)
 		})
 	}
 }
 func TestArtifactRefreshesCredentialsBeforeGETAndClonesRequestHeaders(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	manifest.Modules[0].Methods[0].ArtifactMIMETypes = []string{"image/png"}
@@ -455,15 +451,18 @@ func TestArtifactRefreshesCredentialsBeforeGETAndClonesRequestHeaders(t *testing
 		}
 		if r.URL.Path == "/blobs/image" {
 			gets.Add(1)
-			require.Equal(t, "Bearer rotated-one", r.Header.Get("Authorization"))
+			assert.Equal(t, "Bearer rotated-one", r.Header.Get("Authorization"))
 			_, _ = w.Write([]byte("blob"))
 			return
 		}
 		var request struct {
 			ID string `json:"operation_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}, "artifacts": []modules.ArtifactDescriptor{{DownloadPath: "/blobs/image", MIMEType: "image/png", SizeBytes: 4, SHA256: "digest"}}})
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}, "artifacts": []modules.ArtifactDescriptor{{DownloadPath: "/blobs/image", MIMEType: "image/png", SizeBytes: 4, SHA256: "digest"}}})
 	}))
 	defer server.Close()
 	current := principal()
@@ -489,13 +488,15 @@ func TestArtifactRefreshesCredentialsBeforeGETAndClonesRequestHeaders(t *testing
 	}), modules.Options{ImportArtifact: importer})
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
-	result, err := registry.BrokerLive(func(context.Context) (modules.Principal, error) { return current, nil }, "run", nil).Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
+	result, err := registry.BrokerLive(func(context.Context) (modules.Principal, error) { return current, nil }, "run", nil).
+		Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
 	require.NoError(t, err)
 	require.JSONEq(t, `{"result":{"slots":[]},"artifacts":[{"artifact_id":"owned"}]}`, string(result))
 	require.EqualValues(t, 1, gets.Load())
 }
 
 func TestCallerIdentitiesPersistBeforePublicationAndFailureClosesTrust(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -549,6 +550,7 @@ func TestCallerIdentitiesPersistBeforePublicationAndFailureClosesTrust(t *testin
 }
 
 func TestManifestIdentityReplacementRetiresOldCallerAndCatalog(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	oldID := manifest.ServiceID
@@ -586,8 +588,10 @@ func TestManifestIdentityReplacementRetiresOldCallerAndCatalog(t *testing.T) {
 }
 
 func TestIdentityReplacementKeepsAnotherRegisteredReplica(t *testing.T) {
+	t.Parallel()
 	for _, replacementFirst := range []bool{true, false} {
 		t.Run(map[bool]string{true: "replacement-first", false: "replica-first"}[replacementFirst], func(t *testing.T) {
+			t.Parallel()
 			original := example(t)
 			original.Modules = original.Modules[:1]
 			replacement := original
@@ -605,7 +609,10 @@ func TestIdentityReplacementKeepsAnotherRegisteredReplica(t *testing.T) {
 			}))
 			defer second.Close()
 			registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
-				endpoints := []modules.Endpoint{endpoint(t, second.URL, "replica"), endpoint(t, first.URL, "replacement")}
+				endpoints := []modules.Endpoint{
+					endpoint(t, second.URL, "replica"),
+					endpoint(t, first.URL, "replacement"),
+				}
 				if replacementFirst {
 					endpoints[0], endpoints[1] = endpoints[1], endpoints[0]
 				}
@@ -624,6 +631,7 @@ func TestIdentityReplacementKeepsAnotherRegisteredReplica(t *testing.T) {
 }
 
 func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
+	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
 	manifest.Modules[0].Methods = manifest.Modules[0].Methods[:1]
@@ -637,7 +645,9 @@ func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
 		var request struct {
 			OperationID string `json:"operation_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
 		select {
 		case <-r.Context().Done():
 			cancelled.Add(1)
@@ -657,7 +667,12 @@ func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
 	broker := registry.Broker(principal(), "run-one", nil)
-	result, err := broker.Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
+	result, err := broker.Call(
+		context.Background(),
+		"massage",
+		"list_slots",
+		json.RawMessage(`{"specialist_id":"andrey"}`),
+	)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"slots":[]}`, string(result))
 
@@ -666,4 +681,88 @@ func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
 	_, err = broker.Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Eventually(t, func() bool { return cancelled.Load() == 1 }, time.Second, time.Millisecond)
+}
+
+func checkRetiredArtifactDestination(t *testing.T, change string) {
+	t.Helper()
+	manifest := example(t)
+	manifest.Modules = manifest.Modules[:1]
+	manifest.Modules[0].Methods[0].ArtifactMIMETypes = []string{"image/png"}
+	var blobGets atomic.Int32
+	var leakedCredentials atomic.Int32
+	original := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest" {
+			_ = json.NewEncoder(w).Encode(manifest)
+			return
+		}
+		if r.URL.Path == "/blobs/image" {
+			blobGets.Add(1)
+			if r.Header.Get("Authorization") != "" {
+				leakedCredentials.Add(1)
+			}
+			_, _ = w.Write([]byte("blob"))
+			return
+		}
+		var request struct {
+			ID string `json:"operation_id"`
+		}
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"status": "succeeded", "operation_id": request.ID, "result": map[string]any{"slots": []any{}}, "artifacts": []modules.ArtifactDescriptor{{DownloadPath: "/blobs/image", MIMEType: "image/png", SizeBytes: 4, SHA256: "digest"}}})
+	}))
+	defer original.Close()
+	current := endpoint(t, original.URL, "original")
+	replacement := current
+	replacement.ContainerID = "replacement"
+	if change == "address" {
+		parsed, err := url.Parse(original.URL)
+		require.NoError(t, err)
+		listener, err := net.Listen("tcp", "127.0.0.2:"+parsed.Port())
+		require.NoError(t, err)
+		newServer := httptest.NewUnstartedServer(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(manifest) },
+			),
+		)
+		newServer.Listener = listener
+		newServer.Start()
+		defer newServer.Close()
+		replacement.ContainerID = current.ContainerID
+		replacement.Address = "127.0.0.2"
+	}
+	var registry *modules.Registry
+	importer := func(ctx context.Context, _ modules.Principal, _ modules.ArtifactDescriptor, source modules.ArtifactSource) (json.RawMessage, error) {
+		current = replacement
+		require.NoError(t, registry.Refresh(ctx))
+		if err := source.Authorize(ctx); err != nil {
+			return nil, err
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.BaseURL+"/blobs/image", nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header = source.Headers.Clone()
+		response, err := source.Client.Do(request)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = response.Body.Close() }()
+		return json.RawMessage(`{"artifact_id":"unexpected"}`), nil
+	}
+	var err error
+	registry, err = modules.NewRegistry(
+		modules.SourceFunc(
+			func(context.Context) ([]modules.Endpoint, error) { return []modules.Endpoint{current}, nil },
+		),
+		modules.Options{ImportArtifact: importer},
+	)
+	require.NoError(t, err)
+	require.NoError(t, registry.Refresh(context.Background()))
+	_, err = registry.Broker(principal(), "run", nil).
+		Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
+	require.ErrorIs(t, err, modules.ErrUnavailable)
+	require.Zero(t, blobGets.Load())
+	require.Zero(t, leakedCredentials.Load())
 }

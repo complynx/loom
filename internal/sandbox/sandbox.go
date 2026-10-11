@@ -11,7 +11,13 @@ import (
 )
 
 const MaxFrameBytes = 1 << 20
-const MaxValueBytes = MaxFrameBytes - 4096
+const (
+	MaxValueBytes    = MaxFrameBytes - frameBufferBytes
+	maxScriptBytes   = 65536
+	maxCalls         = 128
+	maxParallelCalls = 8
+	frameBufferBytes = 4096
+)
 
 type Binding struct {
 	Module  string   `json:"module"`
@@ -33,13 +39,13 @@ func (f BrokerFunc) Call(ctx context.Context, m, n string, a json.RawMessage) (j
 type Inline struct{}
 
 func (Inline) Execute(ctx context.Context, source string, bindings []Binding, broker Broker) (json.RawMessage, error) {
-	if len(source) > 65536 {
+	if len(source) > maxScriptBytes {
 		return nil, errors.New("script exceeds 65536 bytes")
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	vm := goja.New()
-	tasks := make(chan func(), 128)
+	tasks := make(chan func(), maxCalls)
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
@@ -62,66 +68,10 @@ func (Inline) Execute(ctx context.Context, source string, bindings []Binding, br
 		finished = true
 		return goja.Undefined()
 	})
-	modules := vm.NewObject()
-	calls := 0
-	parallel := make(chan struct{}, 8)
-	for _, binding := range bindings {
-		obj := vm.NewObject()
-		for _, method := range binding.Methods {
-			moduleName, methodName := binding.Module, method
-			_ = obj.Set(methodName, func(call goja.FunctionCall) goja.Value {
-				promise, resolve, reject := vm.NewPromise()
-				calls++
-				if calls > 128 {
-					_ = reject("script call limit exceeded")
-					return vm.ToValue(promise)
-				}
-				argument := call.Argument(0).Export()
-				if goja.IsUndefined(call.Argument(0)) {
-					argument = map[string]any{}
-				}
-				arg, err := json.Marshal(argument)
-				if err != nil {
-					_ = reject("arguments must be JSON")
-					return vm.ToValue(promise)
-				}
-				select {
-				case parallel <- struct{}{}:
-				default:
-					_ = reject("parallel call limit exceeded")
-					return vm.ToValue(promise)
-				}
-				go func() {
-					defer func() { <-parallel }()
-					value, callErr := broker.Call(ctx, moduleName, methodName, arg)
-					task := func() {
-						if callErr != nil {
-							_ = reject(callErr.Error())
-							return
-						}
-						if len(value) > MaxValueBytes {
-							_ = reject("module result too large")
-							return
-						}
-						var decoded any
-						if err := json.Unmarshal(value, &decoded); err != nil {
-							_ = reject("module returned invalid JSON")
-							return
-						}
-						_ = resolve(decoded)
-					}
-					select {
-					case tasks <- task:
-					case <-ctx.Done():
-					}
-				}()
-				return vm.ToValue(promise)
-			})
-		}
-		_ = modules.Set(binding.Module, obj)
-	}
-	_ = vm.Set("modules", modules)
-	_, err := vm.RunString("(async function(){\n" + source + "\n})().then(v=>__finish(JSON.stringify(v===undefined?null:v)),e=>__fail(String(e)));")
+	installBindings(ctx, vm, bindings, broker, tasks)
+	_, err := vm.RunString(
+		"(async function(){\n" + source + "\n})().then(v=>__finish(JSON.stringify(v===undefined?null:v)),e=>__fail(String(e)));",
+	)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -143,4 +93,80 @@ func (Inline) Execute(ctx context.Context, source string, bindings []Binding, br
 		return nil, errors.New("script result too large")
 	}
 	return result, nil
+}
+
+func installBindings(ctx context.Context, vm *goja.Runtime, bindings []Binding, broker Broker, tasks chan<- func()) {
+	modules := vm.NewObject()
+	calls := 0
+	parallel := make(chan struct{}, maxParallelCalls)
+	for _, binding := range bindings {
+		obj := vm.NewObject()
+		for _, method := range binding.Methods {
+			moduleName, methodName := binding.Module, method
+			_ = obj.Set(methodName, boundMethod(ctx, vm, broker, tasks, parallel, &calls, moduleName, methodName))
+		}
+		_ = modules.Set(binding.Module, obj)
+	}
+	_ = vm.Set("modules", modules)
+}
+
+func boundMethod(
+	ctx context.Context,
+	vm *goja.Runtime,
+	broker Broker,
+	tasks chan<- func(),
+	parallel chan struct{},
+	calls *int,
+	moduleName, methodName string,
+) func(goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		promise, resolve, reject := vm.NewPromise()
+		(*calls)++
+		if *calls > maxCalls {
+			_ = reject("script call limit exceeded")
+			return vm.ToValue(promise)
+		}
+		argument := call.Argument(0).Export()
+		if goja.IsUndefined(call.Argument(0)) {
+			argument = map[string]any{}
+		}
+		arg, err := json.Marshal(argument)
+		if err != nil {
+			_ = reject("arguments must be JSON")
+			return vm.ToValue(promise)
+		}
+		select {
+		case parallel <- struct{}{}:
+		default:
+			_ = reject("parallel call limit exceeded")
+			return vm.ToValue(promise)
+		}
+		go func() {
+			defer func() { <-parallel }()
+			value, callErr := broker.Call(ctx, moduleName, methodName, arg)
+			task := func() { settlePromise(value, callErr, resolve, reject) }
+			select {
+			case tasks <- task:
+			case <-ctx.Done():
+			}
+		}()
+		return vm.ToValue(promise)
+	}
+}
+
+func settlePromise(value json.RawMessage, callErr error, resolve, reject func(any) error) {
+	if callErr != nil {
+		_ = reject(callErr.Error())
+		return
+	}
+	if len(value) > MaxValueBytes {
+		_ = reject("module result too large")
+		return
+	}
+	var decoded any
+	if err := json.Unmarshal(value, &decoded); err != nil {
+		_ = reject("module returned invalid JSON")
+		return
+	}
+	_ = resolve(decoded)
 }

@@ -3,10 +3,13 @@ package lifecycle
 
 import (
 	"context"
-	"github.com/complynx/clx-scripter/internal/store"
 	"log/slog"
 	"time"
+
+	"github.com/complynx/clx-scripter/internal/store"
 )
+
+const defaultBatch = 100
 
 type Service struct {
 	Store    *store.Store
@@ -19,7 +22,7 @@ func New(s *store.Store, interval time.Duration) *Service {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	return &Service{Store: s, Interval: interval, Batch: 100, Logger: slog.Default()}
+	return &Service{Store: s, Interval: interval, Batch: defaultBatch, Logger: slog.Default()}
 }
 
 // Run performs one initial sweep and repeats until shutdown. Errors are logged
@@ -29,7 +32,14 @@ func (s *Service) Run(ctx context.Context) {
 	defer timer.Stop()
 	for {
 		if _, e := s.Store.SweepLifecycle(ctx, s.Batch); e != nil && ctx.Err() == nil {
-			s.Logger.Error("lifecycle sweep failed", "error_code", "dependency_unavailable")
+			s.Logger.ErrorContext(
+				ctx,
+				"lifecycle sweep failed",
+				"component",
+				"lifecycle",
+				"error_code",
+				"dependency_unavailable",
+			)
 		}
 		select {
 		case <-ctx.Done():

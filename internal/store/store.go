@@ -7,20 +7,23 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/store/dbgen"
-	"github.com/complynx/clx-scripter/migrations"
+	"net/http"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // Register the database/sql driver used by migrations.
 	"github.com/pressly/goose/v3"
-	"time"
+
+	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/clx-scripter/internal/store/dbgen"
+	"github.com/complynx/clx-scripter/migrations"
 )
 
 type Enqueue func(context.Context, pgx.Tx, string) error
 type Store struct {
+	semanticEnabled           bool
 	allowedProviders          map[string]bool
 	userCeiling, totalCeiling int
 	pool                      *pgxpool.Pool
@@ -65,7 +68,7 @@ func mapError(err error) error {
 	}
 	var pe *pgconn.PgError
 	if errors.As(err, &pe) && pe.Code == "22P02" {
-		return domain.NewError(422, "invalid_id")
+		return domain.NewError(http.StatusUnprocessableEntity, "invalid_id")
 	}
 	if errors.As(err, &pe) && pe.Code == "23505" {
 		if pe.ConstraintName == "passive_event_receipts_pkey" {
@@ -81,17 +84,22 @@ func mapError(err error) error {
 
 // tx retries confirmed database aborts only. Callbacks must perform database work only.
 func (s *Store) tx(ctx context.Context, fn func(pgx.Tx) error) error {
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range transactionAttempts {
 		err := s.txOnce(ctx, fn)
 		var postgres *pgconn.PgError
 		if !errors.As(err, &postgres) || (postgres.Code != "40P01" && postgres.Code != "55P03") {
 			return err
 		}
-		if attempt == 2 {
-			return &domain.Error{Status: 503, Code: "database_busy", Message: "database_busy", Retryable: true}
+		if attempt == transactionAttempts-1 {
+			return &domain.Error{
+				Status:    http.StatusServiceUnavailable,
+				Code:      "database_busy",
+				Message:   "database_busy",
+				Retryable: true,
+			}
 		}
-		if err := ctx.Err(); err != nil {
-			return err
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			return cancelErr
 		}
 	}
 	return domain.Conflict("transaction_conflict")
@@ -102,7 +110,7 @@ func (s *Store) txOnce(ctx context.Context, fn func(pgx.Tx) error) (err error) {
 		return err
 	}
 	defer func() {
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 500*time.Millisecond)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), transactionCleanupTimeout)
 		defer cancel()
 		rollbackErr := tx.Rollback(cleanup)
 		if rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) && err == nil {
@@ -116,6 +124,9 @@ func (s *Store) txOnce(ctx context.Context, fn func(pgx.Tx) error) (err error) {
 }
 func (s *Store) Bootstrap(ctx context.Context, settings domain.Settings) error {
 	settings = normalizeSettings(settings)
+	if err := validateSettingsModels(settings); err != nil {
+		return err
+	}
 	if e := s.validateProviders(settings); e != nil {
 		return e
 	}
@@ -123,7 +134,11 @@ func (s *Store) Bootstrap(ctx context.Context, settings domain.Settings) error {
 		return e
 	}
 	settings.Version = 1
-	_, err := s.pool.Exec(ctx, "INSERT INTO settings(singleton,doc,version) VALUES(true,$1,1) ON CONFLICT DO NOTHING", document(settings))
+	_, err := s.pool.Exec(
+		ctx,
+		"INSERT INTO settings(singleton,doc,version) VALUES(true,$1,1) ON CONFLICT DO NOTHING",
+		document(settings),
+	)
 	return err
 }
 func (s *Store) GetSettings(ctx context.Context) (domain.Settings, error) {
@@ -138,14 +153,20 @@ func (s *Store) GetSettings(ctx context.Context) (domain.Settings, error) {
 }
 func (s *Store) ensureUser(ctx context.Context, tx pgx.Tx, p domain.Principal) (string, error) {
 	if p.Issuer == "" || p.Subject == "" || p.OrgID == "" {
-		return "", domain.NewError(401, "invalid_identity")
+		return "", domain.NewError(http.StatusUnauthorized, "invalid_identity")
 	}
 	uid := id()
-	err := tx.QueryRow(ctx, "INSERT INTO users(id,issuer,subject) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING id::text", uid, p.Issuer, p.Subject).Scan(&uid)
+	err := tx.QueryRow(ctx, "INSERT INTO users(id,issuer,subject) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING id::text", uid, p.Issuer, p.Subject).
+		Scan(&uid)
 	if err != nil {
 		return "", err
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO memberships(owner_id,org_id) VALUES($1,$2) ON CONFLICT DO NOTHING", uid, p.OrgID); err != nil {
+	if _, err = tx.Exec(
+		ctx,
+		"INSERT INTO memberships(owner_id,org_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+		uid,
+		p.OrgID,
+	); err != nil {
 		return "", err
 	}
 	var raw []byte
@@ -156,16 +177,33 @@ func (s *Store) ensureUser(ctx context.Context, tx pgx.Tx, p domain.Principal) (
 	if err = json.Unmarshal(raw, &settings); err != nil {
 		return "", err
 	}
-	_, err = tx.Exec(ctx, "INSERT INTO user_preferences(owner_id,doc) VALUES($1,$2) ON CONFLICT DO NOTHING", uid, document(domain.Preferences{ModelID: settings.DefaultModelID, Effort: settings.DefaultEffort, Version: 1}))
+	_, err = tx.Exec(
+		ctx,
+		"INSERT INTO user_preferences(owner_id,doc) VALUES($1,$2) ON CONFLICT DO NOTHING",
+		uid,
+		document(domain.Preferences{ModelID: settings.DefaultModelID, Effort: settings.DefaultEffort, Version: 1}),
+	)
 	if err != nil {
 		return "", err
 	}
-	tag, err := tx.Exec(ctx, "INSERT INTO billing_accounts(owner_id,balance) VALUES($1,$2) ON CONFLICT DO NOTHING", uid, settings.InitialCredits)
+	tag, err := tx.Exec(
+		ctx,
+		"INSERT INTO billing_accounts(owner_id,balance) VALUES($1,$2) ON CONFLICT DO NOTHING",
+		uid,
+		settings.InitialCredits,
+	)
 	if err != nil {
 		return uid, err
 	}
 	if tag.RowsAffected() == 1 {
-		_, err = tx.Exec(ctx, "INSERT INTO credit_ledger(id,owner_id,settlement_key,amount,kind,reason) VALUES($1,$2,$3,$4,'initial','bootstrap credit policy')", id(), uid, "initial:"+uid, settings.InitialCredits)
+		_, err = tx.Exec(
+			ctx,
+			"INSERT INTO credit_ledger(id,owner_id,settlement_key,amount,kind,reason) VALUES($1,$2,$3,$4,'initial','bootstrap credit policy')",
+			id(),
+			uid,
+			"initial:"+uid,
+			settings.InitialCredits,
+		)
 	}
 	return uid, err
 }
@@ -176,7 +214,8 @@ func (s *Store) ResolveUser(ctx context.Context, p domain.Principal) (string, er
 }
 func (s *Store) defaultChat(ctx context.Context, tx pgx.Tx, uid, org string) (domain.Chat, error) {
 	var c domain.Chat
-	err := tx.QueryRow(ctx, "INSERT INTO chats(id,owner_id,org_id,is_default) VALUES($1,$2,$3,true) ON CONFLICT(owner_id) WHERE is_default DO UPDATE SET owner_id=EXCLUDED.owner_id RETURNING id::text,owner_id::text,org_id,is_default,created_at", id(), uid, org).Scan(&c.ID, &c.OwnerID, &c.OrgID, &c.IsDefault, &c.CreatedAt)
+	err := tx.QueryRow(ctx, "INSERT INTO chats(id,owner_id,org_id,is_default) VALUES($1,$2,$3,true) ON CONFLICT(owner_id) WHERE is_default DO UPDATE SET owner_id=EXCLUDED.owner_id RETURNING id::text,owner_id::text,org_id,is_default,created_at", id(), uid, org).
+		Scan(&c.ID, &c.OwnerID, &c.OrgID, &c.IsDefault, &c.CreatedAt)
 	if err == nil && c.OrgID != org {
 		return c, domain.Forbidden()
 	}
@@ -201,13 +240,15 @@ func (s *Store) CreateChat(ctx context.Context, p domain.Principal) (domain.Chat
 		if e != nil {
 			return e
 		}
-		return tx.QueryRow(ctx, "INSERT INTO chats(id,owner_id,org_id) VALUES($1,$2,$3) RETURNING id::text,owner_id::text,org_id,is_default,created_at", id(), uid, p.OrgID).Scan(&c.ID, &c.OwnerID, &c.OrgID, &c.IsDefault, &c.CreatedAt)
+		return tx.QueryRow(ctx, "INSERT INTO chats(id,owner_id,org_id) VALUES($1,$2,$3) RETURNING id::text,owner_id::text,org_id,is_default,created_at", id(), uid, p.OrgID).
+			Scan(&c.ID, &c.OwnerID, &c.OrgID, &c.IsDefault, &c.CreatedAt)
 	})
 	return c, err
 }
 func checkChat(ctx context.Context, tx pgx.Tx, uid, org, cid string) error {
 	var ok bool
-	err := tx.QueryRow(ctx, "SELECT true FROM chats WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL FOR SHARE", cid, uid, org).Scan(&ok)
+	err := tx.QueryRow(ctx, "SELECT true FROM chats WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL FOR SHARE", cid, uid, org).
+		Scan(&ok)
 	return mapError(err)
 }
 
@@ -216,7 +257,22 @@ const runColumns = "doc,state,reason,version,fence,lease_owner,lease_until,pause
 func scanRun(row pgx.Row) (domain.Run, error) {
 	var r domain.Run
 	var b []byte
-	err := row.Scan(&b, &r.State, &r.Reason, &r.Version, &r.Fence, &r.LeaseOwner, &r.LeaseUntil, &r.PauseRequested, &r.CancelRequested, &r.SpentMicrocredits, &r.ReservedMicrocredits, &r.CreatedAt, &r.UpdatedAt, &r.ActiveMilliseconds)
+	err := row.Scan(
+		&b,
+		&r.State,
+		&r.Reason,
+		&r.Version,
+		&r.Fence,
+		&r.LeaseOwner,
+		&r.LeaseUntil,
+		&r.PauseRequested,
+		&r.CancelRequested,
+		&r.SpentMicrocredits,
+		&r.ReservedMicrocredits,
+		&r.CreatedAt,
+		&r.UpdatedAt,
+		&r.ActiveMilliseconds,
+	)
 	if err != nil {
 		return r, mapError(err)
 	}
@@ -241,11 +297,19 @@ func scanRun(row pgx.Row) (domain.Run, error) {
 }
 func runEvent(ctx context.Context, tx pgx.Tx, rid, kind string, payload any) error {
 	var seq int64
-	err := tx.QueryRow(ctx, "UPDATE runs SET next_seq=next_seq+1,version=version+1,updated_at=now() WHERE id=$1 RETURNING next_seq-1", rid).Scan(&seq)
+	err := tx.QueryRow(ctx, "UPDATE runs SET next_seq=next_seq+1,version=version+1,updated_at=now() WHERE id=$1 RETURNING next_seq-1", rid).
+		Scan(&seq)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, "INSERT INTO run_events(run_id,seq,type,data) VALUES($1,$2,$3,$4)", rid, seq, kind, document(payload))
+	_, err = tx.Exec(
+		ctx,
+		"INSERT INTO run_events(run_id,seq,type,data) VALUES($1,$2,$3,$4)",
+		rid,
+		seq,
+		kind,
+		document(payload),
+	)
 	return err
 }
 func chatEvent(ctx context.Context, tx pgx.Tx, cid, rid, kind, text, actor string, data any) (domain.ChatEvent, error) {
@@ -259,13 +323,15 @@ func chatEvent(ctx context.Context, tx pgx.Tx, cid, rid, kind, text, actor strin
 	if err != nil {
 		return e, err
 	}
-	err = tx.QueryRow(ctx, "INSERT INTO chat_events(chat_id,seq,kind,text,doc,run_id,source_actor) VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::uuid,$7) RETURNING occurred_at,received_at", cid, e.Seq, kind, text, e.Data, rid, actor).Scan(&e.OccurredAt, &e.ReceivedAt)
+	err = tx.QueryRow(ctx, "INSERT INTO chat_events(chat_id,seq,kind,text,doc,run_id,source_actor) VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::uuid,$7) RETURNING occurred_at,received_at", cid, e.Seq, kind, text, e.Data, rid, actor).
+		Scan(&e.OccurredAt, &e.ReceivedAt)
 	return e, err
 }
 func idem(ctx context.Context, tx pgx.Tx, sc, key string, request any) (string, error) {
 	var rid string
 	var same bool
-	err := tx.QueryRow(ctx, "SELECT resource_id::text,COALESCE(request_doc=$3::jsonb,request_hash=$4) FROM idempotency_records WHERE scope=$1 AND key=$2", sc, key, document(request), hash(request)).Scan(&rid, &same)
+	err := tx.QueryRow(ctx, "SELECT resource_id::text,COALESCE(request_doc=$3::jsonb,request_hash=$4) FROM idempotency_records WHERE scope=$1 AND key=$2", sc, key, document(request), hash(request)).
+		Scan(&rid, &same)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
@@ -278,13 +344,27 @@ func idem(ctx context.Context, tx pgx.Tx, sc, key string, request any) (string, 
 	return rid, nil
 }
 func saveIdem(ctx context.Context, tx pgx.Tx, sc, key, rid string, request any) error {
-	_, err := tx.Exec(ctx, "INSERT INTO idempotency_records(scope,key,request_hash,resource_id,request_doc) VALUES($1,$2,$3,$4,$5)", sc, key, hash(request), rid, document(request))
+	_, err := tx.Exec(
+		ctx,
+		"INSERT INTO idempotency_records(scope,key,request_hash,resource_id,request_doc) VALUES($1,$2,$3,$4,$5)",
+		sc,
+		key,
+		hash(request),
+		rid,
+		document(request),
+	)
 	return err
 }
-func (s *Store) CreateRun(ctx context.Context, p domain.Principal, key string, in domain.CreateRun) (domain.Run, error) {
+
+func (s *Store) CreateRun(
+	ctx context.Context,
+	p domain.Principal,
+	key string,
+	in domain.CreateRun,
+) (domain.Run, error) {
 	var r domain.Run
 	if key == "" {
-		return r, domain.NewError(422, "idempotency_key_required")
+		return r, domain.NewError(http.StatusUnprocessableEntity, "idempotency_key_required")
 	}
 	if !p.Has("runs.create") || !p.Has("chat.read") {
 		return r, domain.Forbidden()
@@ -303,157 +383,23 @@ func (s *Store) CreateRun(ctx context.Context, p domain.Principal, key string, i
 			return e
 		}
 		if rid != "" {
-			r, e = scanRun(tx.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND chat_id IN(SELECT id FROM chats WHERE deleted_at IS NULL)", rid, uid, p.OrgID))
+			r, e = scanRun(
+				tx.QueryRow(
+					ctx,
+					"SELECT "+runColumns+" FROM runs WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND chat_id IN(SELECT id FROM chats WHERE deleted_at IS NULL)",
+					rid,
+					uid,
+					p.OrgID,
+				),
+			)
 			return e
 		}
-		cid := in.ChatID
-		if cid == "" {
-			c, e := s.defaultChat(ctx, tx, uid, p.OrgID)
-			if e != nil {
-				return e
-			}
-			cid = c.ID
-		}
-		if e = checkChat(ctx, tx, uid, p.OrgID, cid); e != nil {
-			return e
-		}
-		if len(in.Input.ArtifactIDs) > 0 {
-			if !p.Has("artifacts.read") {
-				return domain.Forbidden()
-			}
-			seen := map[string]bool{}
-			for _, aid := range in.Input.ArtifactIDs {
-				if seen[aid] {
-					continue
-				}
-				seen[aid] = true
-				var found string
-				if e = tx.QueryRow(ctx, "SELECT id::text FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL FOR SHARE", aid, uid, p.OrgID).Scan(&found); e != nil {
-					return domain.NotFound()
-				}
-				if _, e = tx.Exec(ctx, "INSERT INTO chat_artifacts(chat_id,artifact_id) VALUES($1,$2) ON CONFLICT DO NOTHING", cid, aid); e != nil {
-					return e
-				}
-			}
-		}
-		var busy bool
-		if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM runs WHERE chat_id=$1 AND state NOT IN('completed','cancelled','failed'))", cid).Scan(&busy); e != nil {
-			return e
-		}
-		if busy {
-			return domain.Conflict("chat_busy")
-		}
-
-		if in.AuthSessionID != "" {
-			var ok bool
-			e = tx.QueryRow(ctx, "SELECT true FROM auth_sessions WHERE id=$1 AND issuer=$2 AND subject=$3 AND actor=$4 AND org_id=$5 AND revoked_at IS NULL AND expires_at>now()", in.AuthSessionID, p.Issuer, p.Subject, actor(p), p.OrgID).Scan(&ok)
-			if e != nil {
-				return domain.NewError(401, "invalid_auth_session")
-			}
-		}
-		var settings domain.Settings
-		var raw []byte
-		if e = tx.QueryRow(ctx, "SELECT doc FROM settings WHERE singleton").Scan(&raw); e != nil {
-			return e
-		}
-		if e = json.Unmarshal(raw, &settings); e != nil {
-			return e
-		}
-		var prefs domain.Preferences
-		if e = tx.QueryRow(ctx, "SELECT doc FROM user_preferences WHERE owner_id=$1", uid).Scan(&raw); e != nil {
-			return e
-		}
-		if e = json.Unmarshal(raw, &prefs); e != nil {
-			return e
-		}
-		limit := settings.ActiveRunLimit
-		var policy domain.UserPolicy
-		e = tx.QueryRow(ctx, "SELECT doc FROM user_policies WHERE owner_id=$1 AND org_id=$2", uid, p.OrgID).Scan(&raw)
-		if e == nil {
-			if e = json.Unmarshal(raw, &policy); e != nil {
-				return e
-			}
-			limit = policy.ActiveRunLimit
-			if limit > settings.ActiveRunLimit {
-				limit = settings.ActiveRunLimit
-			}
-		} else if !errors.Is(e, pgx.ErrNoRows) {
-			return e
-		}
-		if s.userCeiling > 0 && limit > s.userCeiling {
-			limit = s.userCeiling
-		}
-		if s.totalCeiling > 0 {
-			if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1129076785)"); e != nil {
-				return e
-			}
-			var total int
-			if e = tx.QueryRow(ctx, "SELECT count(*) FROM runs WHERE state NOT IN('completed','cancelled','failed')").Scan(&total); e != nil {
-				return e
-			}
-			if total >= s.totalCeiling {
-				return domain.NewError(429, "total_run_limit")
-			}
-		}
-		if _, e = tx.Exec(ctx, "SELECT id FROM users WHERE id=$1 FOR UPDATE", uid); e != nil {
-			return e
-		}
-		var active int
-		if e = tx.QueryRow(ctx, "SELECT count(*) FROM runs WHERE owner_id=$1 AND state NOT IN('completed','cancelled','failed')", uid).Scan(&active); e != nil {
-			return e
-		}
-		if limit > 0 && active >= limit {
-			return domain.NewError(429, "active_run_limit")
-		}
-		models := settings.Models
-		if policy.Models != nil {
-			models = effectiveModels(settings.Models, policy.Models)
-		}
-		found := false
-		var selected domain.Model
-		for _, m := range models {
-			if m.ID == prefs.ModelID && allowedEffort(m, prefs.Effort) {
-				found = true
-				selected = m
-			}
-		}
-		if !found {
-			return domain.Forbidden()
-		}
-		budget := settings.MaxRunMicrocredits
-		if in.Budget.MaxMicrocredits > 0 && in.Budget.MaxMicrocredits < budget {
-			budget = in.Budget.MaxMicrocredits
-		}
-		if budget <= 0 {
-			return domain.NewError(422, "invalid_budget")
-		}
-		if in.DisconnectPolicy == "" {
-			in.DisconnectPolicy = "continue"
-		}
-		if in.DisconnectPolicy != "continue" && in.DisconnectPolicy != "pause" {
-			return domain.NewError(422, "invalid_disconnect_policy")
-		}
-		if in.BillingAccountID != "" && in.BillingAccountID != uid {
-			return domain.Forbidden()
-		}
-		r = domain.Run{DisconnectPolicy: in.DisconnectPolicy, Model: selected, SettingsSnapshot: settings, ID: id(), ChatID: cid, OwnerID: uid, ActorID: actor(p), OrgID: p.OrgID, State: domain.Queued, Input: in.Input, ModelID: prefs.ModelID, Effort: prefs.Effort, Interaction: in.Interaction, AuthSessionID: in.AuthSessionID, MaxMicrocredits: budget}
-		_, e = tx.Exec(ctx, "INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,max_microcredits) VALUES($1,$2,$3,$4,$5,'queued',$6,$7)", r.ID, cid, uid, r.ActorID, p.OrgID, document(r), budget)
+		r, e = s.admitRun(ctx, tx, p, uid, in)
 		if e != nil {
 			return e
 		}
-		if _, e = chatEvent(ctx, tx, cid, r.ID, "message.user", in.Input.Text, r.ActorID, in.Input); e != nil {
+		if e = s.persistRun(ctx, tx, p, key, canonical, r); e != nil {
 			return e
-		}
-		if e = runEvent(ctx, tx, r.ID, "run.status", map[string]any{"status": domain.Queued}); e != nil {
-			return e
-		}
-		if e = saveIdem(ctx, tx, scope(p, "runs"), key, r.ID, canonical); e != nil {
-			return e
-		}
-		if s.enqueue != nil {
-			if e = s.enqueue(ctx, tx, r.ID); e != nil {
-				return e
-			}
 		}
 		r, e = scanRun(tx.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1", r.ID))
 		return e
@@ -464,7 +410,16 @@ func (s *Store) GetRun(ctx context.Context, p domain.Principal, rid string) (dom
 	if !p.Has("chat.read") {
 		return domain.Run{}, domain.Forbidden()
 	}
-	r, e := scanRun(s.pool.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1 AND owner_id=(SELECT id FROM users WHERE issuer=$2 AND subject=$3) AND org_id=$4 AND chat_id IN(SELECT id FROM chats WHERE deleted_at IS NULL)", rid, p.Issuer, p.Subject, p.OrgID))
+	r, e := scanRun(
+		s.pool.QueryRow(
+			ctx,
+			"SELECT "+runColumns+" FROM runs WHERE id=$1 AND owner_id=(SELECT id FROM users WHERE issuer=$2 AND subject=$3) AND org_id=$4 AND chat_id IN(SELECT id FROM chats WHERE deleted_at IS NULL)",
+			rid,
+			p.Issuer,
+			p.Subject,
+			p.OrgID,
+		),
+	)
 	if e != nil {
 		return r, e
 	}
@@ -474,14 +429,27 @@ func (s *Store) GetRun(ctx context.Context, p domain.Principal, rid string) (dom
 func (s *Store) ExecutionRun(ctx context.Context, rid string) (domain.Run, error) {
 	return scanRun(s.pool.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1", rid))
 }
-func (s *Store) RunEvents(ctx context.Context, p domain.Principal, rid string, after int64, limit int) ([]domain.Event, error) {
+
+func (s *Store) RunEvents(
+	ctx context.Context,
+	p domain.Principal,
+	rid string,
+	after int64,
+	limit int,
+) ([]domain.Event, error) {
 	if _, err := s.GetRun(ctx, p, rid); err != nil {
 		return nil, err
 	}
 	if limit <= 0 || limit > 200 {
 		limit = 200
 	}
-	rows, err := s.pool.Query(ctx, "SELECT seq,type,data,created_at FROM run_events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT $3", rid, after, limit)
+	rows, err := s.pool.Query(
+		ctx,
+		"SELECT seq,type,data,created_at FROM run_events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT $3",
+		rid,
+		after,
+		limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -497,21 +465,30 @@ func (s *Store) RunEvents(ctx context.Context, p domain.Principal, rid string, a
 	return out, rows.Err()
 }
 func allowedEffort(m domain.Model, effort string) bool {
-	max := len(m.Efforts) - 1
+	maximum := len(m.Efforts) - 1
 	for i, e := range m.Efforts {
 		if e == m.MaxEffort {
-			max = i
+			maximum = i
 		}
 	}
 	for i, e := range m.Efforts {
-		if e == effort && i <= max {
+		if e == effort && i <= maximum {
 			return true
 		}
 	}
 	return effort == "" && len(m.Efforts) == 0
 }
 func audit(ctx context.Context, tx pgx.Tx, p domain.Principal, action, target string, data any) error {
-	_, err := tx.Exec(ctx, "INSERT INTO audit_events(id,actor,org_id,action,target,doc) VALUES($1,$2,$3,$4,$5,$6)", id(), actor(p), p.OrgID, action, target, document(data))
+	_, err := tx.Exec(
+		ctx,
+		"INSERT INTO audit_events(id,actor,org_id,action,target,doc) VALUES($1,$2,$3,$4,$5,$6)",
+		id(),
+		actor(p),
+		p.OrgID,
+		action,
+		target,
+		document(data),
+	)
 	return err
 }
 
@@ -537,8 +514,285 @@ func (s *Store) validateProviders(v domain.Settings) error {
 	}
 	for _, m := range v.Models {
 		if !s.allowedProviders[m.Provider] {
-			return domain.NewError(422, "unknown_provider")
+			return domain.NewError(http.StatusUnprocessableEntity, "unknown_provider")
 		}
 	}
 	return nil
 }
+
+func attachRunArtifacts(
+	ctx context.Context,
+	tx pgx.Tx,
+	p domain.Principal,
+	uid, cid string,
+	artifactIDs []string,
+) error {
+	var e error
+	if len(artifactIDs) > 0 {
+		if !p.Has("artifacts.read") {
+			return domain.Forbidden()
+		}
+		seen := map[string]bool{}
+		for _, aid := range artifactIDs {
+			if seen[aid] {
+				continue
+			}
+			seen[aid] = true
+			var found string
+			if e = tx.QueryRow(ctx, "SELECT id::text FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL FOR SHARE", aid, uid, p.OrgID).
+				Scan(&found); e != nil {
+				return domain.NotFound()
+			}
+			if _, e = tx.Exec(
+				ctx,
+				"INSERT INTO chat_artifacts(chat_id,artifact_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+				cid,
+				aid,
+			); e != nil {
+				return e
+			}
+		}
+	}
+
+	return nil
+}
+
+func readRunSettings(
+	ctx context.Context,
+	tx pgx.Tx,
+	uid, orgID string,
+) (domain.Settings, domain.Preferences, domain.UserPolicy, int, error) {
+	var e error
+	var settings domain.Settings
+	var raw []byte
+	if e = tx.QueryRow(ctx, "SELECT doc FROM settings WHERE singleton").Scan(&raw); e != nil {
+		return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, 0, e
+	}
+	if e = json.Unmarshal(raw, &settings); e != nil {
+		return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, 0, e
+	}
+	var prefs domain.Preferences
+	if e = tx.QueryRow(ctx, "SELECT doc FROM user_preferences WHERE owner_id=$1", uid).Scan(&raw); e != nil {
+		return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, 0, e
+	}
+	if e = json.Unmarshal(raw, &prefs); e != nil {
+		return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, 0, e
+	}
+	limit := settings.ActiveRunLimit
+	var policy domain.UserPolicy
+	e = tx.QueryRow(ctx, "SELECT doc FROM user_policies WHERE owner_id=$1 AND org_id=$2", uid, orgID).Scan(&raw)
+	if e == nil {
+		if e = json.Unmarshal(raw, &policy); e != nil {
+			return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, 0, e
+		}
+		limit = policy.ActiveRunLimit
+		limit = min(limit, settings.ActiveRunLimit)
+	} else if !errors.Is(e, pgx.ErrNoRows) {
+		return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, 0, e
+	}
+
+	return settings, prefs, policy, limit, nil
+}
+
+func (s *Store) checkRunCapacity(ctx context.Context, tx pgx.Tx, uid string, limit int) error {
+	var e error
+	if s.userCeiling > 0 && limit > s.userCeiling {
+		limit = s.userCeiling
+	}
+	if s.totalCeiling > 0 {
+		if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1129076785)"); e != nil {
+			return e
+		}
+		var total int
+		if e = tx.QueryRow(ctx, "SELECT count(*) FROM runs WHERE state NOT IN('completed','cancelled','failed')").
+			Scan(&total); e != nil {
+			return e
+		}
+		if total >= s.totalCeiling {
+			return domain.NewError(http.StatusTooManyRequests, "total_run_limit")
+		}
+	}
+	if _, e = tx.Exec(ctx, "SELECT id FROM users WHERE id=$1 FOR UPDATE", uid); e != nil {
+		return e
+	}
+	var active int
+	if e = tx.QueryRow(ctx, "SELECT count(*) FROM runs WHERE owner_id=$1 AND state NOT IN('completed','cancelled','failed')", uid).
+		Scan(&active); e != nil {
+		return e
+	}
+	if limit > 0 && active >= limit {
+		return domain.NewError(http.StatusTooManyRequests, "active_run_limit")
+	}
+
+	return nil
+}
+
+func buildRun(
+	p domain.Principal,
+	uid, cid string,
+	in domain.CreateRun,
+	settings domain.Settings,
+	prefs domain.Preferences,
+	policy domain.UserPolicy,
+) (domain.Run, error) {
+	models := settings.Models
+	if policy.Models != nil {
+		models = effectiveModels(settings.Models, policy.Models)
+	}
+	found := false
+	var selected domain.Model
+	for _, m := range models {
+		if m.ID == prefs.ModelID && allowedEffort(m, prefs.Effort) {
+			found = true
+			selected = m
+		}
+	}
+	if !found {
+		return domain.Run{}, domain.Forbidden()
+	}
+	budget := settings.MaxRunMicrocredits
+	if in.Budget.MaxMicrocredits > 0 && in.Budget.MaxMicrocredits < budget {
+		budget = in.Budget.MaxMicrocredits
+	}
+	if budget <= 0 {
+		return domain.Run{}, domain.NewError(http.StatusUnprocessableEntity, "invalid_budget")
+	}
+	if in.DisconnectPolicy == "" {
+		in.DisconnectPolicy = "continue"
+	}
+	if in.DisconnectPolicy != "continue" && in.DisconnectPolicy != "pause" {
+		return domain.Run{}, domain.NewError(http.StatusUnprocessableEntity, "invalid_disconnect_policy")
+	}
+	if in.BillingAccountID != "" && in.BillingAccountID != uid {
+		return domain.Run{}, domain.Forbidden()
+	}
+	r := domain.Run{
+		PreviousRunID:    in.PreviousRunID,
+		DisconnectPolicy: in.DisconnectPolicy,
+		Model:            selected,
+		SettingsSnapshot: settings,
+		ID:               id(),
+		ChatID:           cid,
+		OwnerID:          uid,
+		ActorID:          actor(p),
+		OrgID:            p.OrgID,
+		State:            domain.Queued,
+		Input:            in.Input,
+		ModelID:          prefs.ModelID,
+		Effort:           prefs.Effort,
+		Interaction:      in.Interaction,
+		AuthSessionID:    in.AuthSessionID,
+		MaxMicrocredits:  budget,
+	}
+
+	return r, nil
+}
+
+func (s *Store) admitRun(
+	ctx context.Context,
+	tx pgx.Tx,
+	p domain.Principal,
+	uid string,
+	in domain.CreateRun,
+) (domain.Run, error) {
+	var e error
+	cid := in.ChatID
+	if cid == "" {
+		c, chatErr := s.defaultChat(ctx, tx, uid, p.OrgID)
+		if chatErr != nil {
+			return domain.Run{}, chatErr
+		}
+		cid = c.ID
+	}
+	if e = checkChat(ctx, tx, uid, p.OrgID, cid); e != nil {
+		return domain.Run{}, e
+	}
+	if in.PreviousRunID != "" {
+		if _, parseErr := uuid.Parse(in.PreviousRunID); parseErr != nil {
+			return domain.Run{}, domain.NewError(http.StatusUnprocessableEntity, "invalid_previous_run_id")
+		}
+		var previousState string
+		e = tx.QueryRow(ctx, "SELECT state FROM runs WHERE id=$1 AND chat_id=$2 AND owner_id=$3 AND org_id=$4", in.PreviousRunID, cid, uid, p.OrgID).
+			Scan(&previousState)
+		if e != nil {
+			return domain.Run{}, mapError(e)
+		}
+		if previousState != string(domain.Completed) && previousState != string(domain.Cancelled) &&
+			previousState != string(domain.Failed) {
+			return domain.Run{}, domain.Conflict("previous_run_active")
+		}
+	}
+	if e = attachRunArtifacts(ctx, tx, p, uid, cid, in.Input.ArtifactIDs); e != nil {
+		return domain.Run{}, e
+	}
+	var busy bool
+	if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM runs WHERE chat_id=$1 AND state NOT IN('completed','cancelled','failed'))", cid).
+		Scan(&busy); e != nil {
+		return domain.Run{}, e
+	}
+	if busy {
+		return domain.Run{}, domain.Conflict("chat_busy")
+	}
+
+	if in.AuthSessionID != "" {
+		var ok bool
+		e = tx.QueryRow(ctx, "SELECT true FROM auth_sessions WHERE id=$1 AND issuer=$2 AND subject=$3 AND actor=$4 AND org_id=$5 AND revoked_at IS NULL AND expires_at>now()", in.AuthSessionID, p.Issuer, p.Subject, actor(p), p.OrgID).
+			Scan(&ok)
+		if e != nil {
+			return domain.Run{}, domain.NewError(http.StatusUnauthorized, "invalid_auth_session")
+		}
+	}
+	settings, prefs, policy, limit, e := readRunSettings(ctx, tx, uid, p.OrgID)
+	if e != nil {
+		return domain.Run{}, e
+	}
+	if e = s.checkRunCapacity(ctx, tx, uid, limit); e != nil {
+		return domain.Run{}, e
+	}
+	return buildRun(p, uid, cid, in, settings, prefs, policy)
+}
+
+func (s *Store) persistRun(
+	ctx context.Context,
+	tx pgx.Tx,
+	p domain.Principal,
+	key string,
+	canonical domain.CreateRun,
+	r domain.Run,
+) error {
+	var e error
+	in := canonical
+	_, e = tx.Exec(
+		ctx,
+		"INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,max_microcredits) VALUES($1,$2,$3,$4,$5,'queued',$6,$7)",
+		r.ID,
+		r.ChatID,
+		r.OwnerID,
+		r.ActorID,
+		p.OrgID,
+		document(r),
+		r.MaxMicrocredits,
+	)
+	if e != nil {
+		return e
+	}
+	if _, e = chatEvent(ctx, tx, r.ChatID, r.ID, "message.user", in.Input.Text, r.ActorID, in.Input); e != nil {
+		return e
+	}
+	if e = runEvent(ctx, tx, r.ID, "run.status", map[string]any{eventStatusKey: domain.Queued}); e != nil {
+		return e
+	}
+	if e = saveIdem(ctx, tx, scope(p, "runs"), key, r.ID, canonical); e != nil {
+		return e
+	}
+	if s.enqueue != nil {
+		if e = s.enqueue(ctx, tx, r.ID); e != nil {
+			return e
+		}
+	}
+
+	return nil
+}
+
+func (s *Store) SetSemanticSearchEnabled(enabled bool) { s.semanticEnabled = enabled }
+func (s *Store) SemanticSearchEnabled() bool           { return s != nil && s.semanticEnabled }

@@ -1,0 +1,12 @@
+{
+  "RunID": "8d7a9f3c-e8e2-4733-accc-81397842864a",
+  "Status": "paused",
+  "Reason": "disclosure_denied",
+  "Model": "gpt-6-luna",
+  "Effort": "medium",
+  "SpentMicrocredits": 0,
+  "ReservedMicrocredits": 0,
+  "PersistedModelSteps": 0,
+  "ProviderDispatches": 0,
+  "DispatchEvidence": "Authorization rejected before inference and model-step reservation; no model-step rows"
+}

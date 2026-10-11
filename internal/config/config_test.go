@@ -1,12 +1,15 @@
-package config
+package config_test
 
 import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/complynx/clx-scripter/internal/config"
 )
 
 func TestLoadDeploymentConfiguration(t *testing.T) {
+	t.Parallel()
 	b, e := os.ReadFile("../../examples/config.yaml")
 	if e != nil {
 		t.Fatal(e)
@@ -17,7 +20,7 @@ func TestLoadDeploymentConfiguration(t *testing.T) {
 		}
 		return "configured", true
 	}
-	cfg, e := Parse(b, lookup)
+	cfg, e := config.Parse(b, lookup)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -30,7 +33,8 @@ func TestLoadDeploymentConfiguration(t *testing.T) {
 		lookup func(string) (string, bool)
 	}{{"missing env", b, func(string) (string, bool) { return "", false }}, {"unknown field", append(append([]byte{}, b...), []byte("\nunknown_setting: true\n")...), lookup}, {"multiple documents", append(append([]byte{}, b...), []byte("\n---\nhttp: {}\n")...), lookup}} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, e := Parse(tc.body, tc.lookup); e == nil {
+			t.Parallel()
+			if _, parseErr := config.Parse(tc.body, tc.lookup); parseErr == nil {
 				t.Fatal("invalid configuration accepted")
 			}
 		})
@@ -44,8 +48,12 @@ func TestLoadDeploymentConfiguration(t *testing.T) {
 	if cfg.Validate() == nil {
 		t.Fatal("unsupported raw payload logging accepted")
 	}
+	cfg.Observability.LogLevel = "debug"
+	if validationErr := cfg.Validate(); validationErr != nil {
+		t.Fatal(validationErr)
+	}
 	cfg.Observability.LogPayloads = false
-	injected, e := Parse(b, func(k string) (string, bool) {
+	injected, e := config.Parse(b, func(k string) (string, bool) {
 		if k == "CLX_DATABASE_DSN" {
 			return "operator-value" + string(rune(10)) + "http:" + string(rune(10)) + "  listen: malicious", true
 		}
@@ -57,13 +65,18 @@ func TestLoadDeploymentConfiguration(t *testing.T) {
 	if injected.HTTP.Listen != ":8080" {
 		t.Fatal("environment value changed YAML structure")
 	}
-	cfg.BootstrapSettings.TraceRetention = Retention{Mode: "duration", Days: 30}
+	cfg.BootstrapSettings.TraceRetention = config.Retention{Mode: "duration", Days: 30}
 	if cfg.Validate() == nil {
 		t.Fatal("unsupported trace expiry accepted")
 	}
-	cfg.BootstrapSettings.TraceRetention = Retention{Mode: "forever"}
-	unsupported := strings.Replace(string(b), "  lease_seconds:", "  recovery_retry_window_seconds: 86400"+string(rune(10))+"  lease_seconds:", 1)
-	if _, e := Parse([]byte(unsupported), lookup); e == nil {
+	cfg.BootstrapSettings.TraceRetention = config.Retention{Mode: "forever"}
+	unsupported := strings.Replace(
+		string(b),
+		"  lease_seconds:",
+		"  recovery_retry_window_seconds: 86400"+string(rune(10))+"  lease_seconds:",
+		1,
+	)
+	if _, parseErr := config.Parse([]byte(unsupported), lookup); parseErr == nil {
 		t.Fatal("unsupported recovery window accepted")
 	}
 	cfg.Identity.RefreshableExchangeEnabled = true
@@ -72,11 +85,12 @@ func TestLoadDeploymentConfiguration(t *testing.T) {
 	}
 }
 func TestEveryModelNeedsExplicitTariff(t *testing.T) {
+	t.Parallel()
 	b, e := os.ReadFile("../../examples/config.yaml")
 	if e != nil {
 		t.Fatal(e)
 	}
-	cfg, e := Parse(b, func(k string) (string, bool) {
+	cfg, e := config.Parse(b, func(k string) (string, bool) {
 		if strings.Contains(k, "ENDPOINT") {
 			return "https://models.example", true
 		}
@@ -85,13 +99,43 @@ func TestEveryModelNeedsExplicitTariff(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	cfg.BootstrapSettings.ModelCatalog = []Model{{ID: "m", Provider: "primary", Model: "model", ContextTokens: 1000, MaxOutputTokens: 100}}
+	cfg.BootstrapSettings.ModelCatalog = []config.Model{
+		{ID: "m", Provider: "openai", Model: "model", ContextTokens: 1000, MaxOutputTokens: 100},
+	}
 	cfg.BootstrapSettings.DefaultModelID = "m"
+	cfg.BootstrapSettings.DefaultEffort = ""
 	if cfg.Validate() == nil {
 		t.Fatal("missing tariff accepted")
 	}
-	cfg.BootstrapSettings.Tariffs = []Tariff{{ModelID: "m"}}
-	if e := cfg.Validate(); e != nil {
-		t.Fatal(e)
+	cfg.BootstrapSettings.Tariffs = []config.Tariff{{ModelID: "m"}}
+	if validationErr := cfg.Validate(); validationErr != nil {
+		t.Fatal(validationErr)
+	}
+}
+
+func TestPreviousKeyConfiguration(t *testing.T) {
+	t.Parallel()
+	b, err := os.ReadFile("../../examples/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse(b, func(k string) (string, bool) {
+		if strings.Contains(k, "ENDPOINT") {
+			return "https://models.example", true
+		}
+		return "configured", true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Identity.PreviousEncryptionKeys = map[string]string{"old": "/run/secrets/old"}
+	if validationErr := cfg.Validate(); validationErr != nil {
+		t.Fatal(validationErr)
+	}
+	for _, keys := range []map[string]string{{"": "path"}, {"old": ""}, {cfg.Identity.EncryptionKeyID: "path"}} {
+		cfg.Identity.PreviousEncryptionKeys = keys
+		if cfg.Validate() == nil {
+			t.Fatal("invalid previous key configuration accepted")
+		}
 	}
 }
