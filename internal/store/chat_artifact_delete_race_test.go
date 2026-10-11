@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/artifacts"
+	"github.com/complynx/loom/internal/store"
 )
 
 func TestDeleteChatPreservesArtifactAttachedWhileDeletionWaits(t *testing.T) {

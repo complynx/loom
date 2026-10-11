@@ -15,9 +15,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/acceptance"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/operations"
+	"github.com/complynx/loom/internal/acceptance"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/operations"
 )
 
 const readToken = "isolated-read-token"

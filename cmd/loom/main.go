@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/app"
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/complynx/loom/internal/app"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "clx-scripter:", err)
+		fmt.Fprintln(os.Stderr, "loom:", err)
 		os.Exit(1)
 	}
 }
@@ -107,7 +107,7 @@ func runSandboxSupervisor(ctx context.Context, args []string) error {
 	if err = os.Chmod(*socket, 0600); err != nil {
 		return err
 	}
-	return (sandbox.Supervisor{Logger: slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "clx-scripter-sandbox"), WorkerPath: *worker, WorkerArgs: []string{"sandbox-worker"}, MaxWorkers: *maxWorkers, CleanupTimeout: *cleanup}).Serve(
+	return (sandbox.Supervisor{Logger: slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "loom-sandbox"), WorkerPath: *worker, WorkerArgs: []string{"sandbox-worker"}, MaxWorkers: *maxWorkers, CleanupTimeout: *cleanup}).Serve(
 		ctx,
 		listener,
 	)

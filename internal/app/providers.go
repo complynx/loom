@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/provider"
 )
 
 // Transport selection does not change the model snapshot or its production tariff.

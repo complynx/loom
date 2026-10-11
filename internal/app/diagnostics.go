@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/modules"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/modules"
 )
 
 const diagnosticsModule = "diagnostics"

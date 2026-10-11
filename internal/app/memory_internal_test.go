@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 func TestPersonalMemorySandboxWritesReadsAndIsolates(t *testing.T) {

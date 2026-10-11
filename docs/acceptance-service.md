@@ -10,9 +10,9 @@ Set distinct local QA values for `CLX_QA_READ_TOKEN` and `CLX_QA_WRITE_TOKEN`. S
 docker compose -f compose.yaml -f examples/acceptance.compose.yaml --profile acceptance up --build -d acceptance-service
 ```
 
-Run this command from the repository root. The override uses the root build context. It creates an `acceptance-state` volume and exposes port 8090 on localhost only. The fixture shares the base Compose network, `clx-scripter-dev_default`.
+Run this command from the repository root. The override uses the root build context. It creates an `acceptance-state` volume and exposes port 8090 on localhost only. The fixture shares the base Compose network, `loom-dev_default`.
 
-For a harness in this Compose project, include `clx-scripter-dev_default` in `discovery.allowed_networks`. The registration label is one line:
+For a harness in this Compose project, include `loom-dev_default` in `discovery.allowed_networks`. The registration label is one line:
 
 ```yaml
 clx.harness.service: http://acceptance-service:8090/manifest

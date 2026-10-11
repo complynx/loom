@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/history"
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/history"
+	"github.com/complynx/loom/internal/provider"
 )
 
 var errCheckpointedStop = errors.New("run already checkpointed to stop")

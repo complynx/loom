@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/app"
+	"github.com/complynx/loom/internal/app"
 )
 
 type proxyTransport func(*http.Request) (*http.Response, error)

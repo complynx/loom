@@ -1,5 +1,7 @@
 # Observability for complynx.net
 
+Repository rename: use the coordinated [Loom receiver/Alloy patch](validation/2026-10-12-loom-rename-server.patch). Historical QA patches preserve their original names. Deploy the updated receiver before enabling `updated-loom` dispatch.
+
 The server uses Grafana Alloy with Grafana Cloud Prometheus remote_write and Loki
 Docker log ingestion. The application adds no push credentials or telemetry SDK.
 A fixed Prometheus 0.0.4 exporter uses standard Go; there is no general registry,
@@ -40,7 +42,7 @@ written into free text; do not use debug payload mode for unrestricted secrets.
    the API need this metrics network. No host port or Traefik route exposes 9090.
    Port 8080 serves the authenticated API; `/metrics` is absent there.
 3. Local `server_configs/configs/alloy/config.alloy` now has the scrape target
-   `clx-scripter:9090`, job `integrations/clx-scripter`, instance `complynx.net`.
+   `loom:9090`, job `integrations/loom`, instance `complynx.net`.
    The existing remote_write credentials/receiver are reused. Deprecated `env`
    calls were updated to Alloy `sys.env`; the target and original pipeline were
    validated together. Alloy Compose joins the dedicated external network.
@@ -85,7 +87,7 @@ outcome are persisted in the final JSON log, since the metrics process then exit
 Example Loki queries:
 
 ```logql
-{job="integrations/docker",instance="complynx.net"} | json | service="clx-scripter" | level="ERROR"
+{job="integrations/docker",instance="complynx.net"} | json | service="loom" | level="ERROR"
 {job="integrations/docker",instance="complynx.net"} | json | run_id="<run UUID>"
 {job="integrations/docker",instance="complynx.net"} | json | event="sandbox.worker_killed"
 ```

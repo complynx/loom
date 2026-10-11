@@ -10,8 +10,8 @@ import (
 
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 const maxPreparationDescriptionBytes = 4000

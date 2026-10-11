@@ -19,7 +19,7 @@ an ID for new key material. No keys enter the database or public settings API.
 4. Run the operator command using the same configuration and both key files:
 
    ```sh
-   clx-scripter rotate-session-keys --config config.yaml --batch-size 100
+   loom rotate-session-keys --config config.yaml --batch-size 100
    ```
 
    Each invocation commits at most 100 envelopes (allowed range 1..1000). Repeat

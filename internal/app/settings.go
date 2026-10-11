@@ -3,8 +3,8 @@ package app
 import (
 	"errors"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func bootstrapSettings(c config.Config) (domain.Settings, error) {

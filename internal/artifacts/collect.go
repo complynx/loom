@@ -5,7 +5,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 // MetadataCollector lists only immutable tombstones. Quota must count every

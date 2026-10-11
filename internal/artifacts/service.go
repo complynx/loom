@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 const (

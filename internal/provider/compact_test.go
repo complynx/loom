@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/provider"
 )
 
 const compactReply = `{"id":"compact_1","object":"response.compaction","output":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Find the order"}]},{"type":"compaction","id":"cmp_1","encrypted_content":"opaque-state"}],"usage":{"input_tokens":200,"output_tokens":30,"input_tokens_details":{"cached_tokens":120}}}`

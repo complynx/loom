@@ -15,8 +15,8 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/provider"
 )
 
 func TestInputCountingIncludesVisionAndTools(t *testing.T) {

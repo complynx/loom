@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 type sponsoredStore interface {

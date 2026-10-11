@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/artifacts"
+	"github.com/complynx/loom/internal/domain"
 )
 
 type metadataStore struct {

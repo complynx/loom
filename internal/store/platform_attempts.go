@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 const platformAttemptUnknown = "unknown"

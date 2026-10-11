@@ -16,9 +16,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // Register the database/sql driver used by migrations.
 	"github.com/pressly/goose/v3"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/store/dbgen"
-	"github.com/complynx/clx-scripter/migrations"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/store/dbgen"
+	"github.com/complynx/loom/migrations"
 )
 
 type Enqueue func(context.Context, pgx.Tx, string) error

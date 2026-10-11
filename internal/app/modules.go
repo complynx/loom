@@ -11,13 +11,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/complynx/clx-scripter/internal/runs"
-	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/runs"
+	"github.com/complynx/loom/internal/store"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 type RunAuthorizer func(context.Context, domain.Run) (domain.Principal, string, error)

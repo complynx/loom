@@ -16,10 +16,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/identity"
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/artifacts"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
+	"github.com/complynx/loom/internal/store"
 )
 
 type Authenticator interface {

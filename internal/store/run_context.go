@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 // ExecutionCachedContext is a hint. Authorization and current model policy remain separate.

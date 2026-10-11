@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/api"
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/api"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 func TestOpenAPIBillingAndSessionContracts(t *testing.T) {

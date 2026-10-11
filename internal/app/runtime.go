@@ -19,19 +19,19 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
-	"github.com/complynx/clx-scripter/internal/api"
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/identity"
-	"github.com/complynx/clx-scripter/internal/lifecycle"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/complynx/clx-scripter/internal/runs"
-	"github.com/complynx/clx-scripter/internal/sandbox"
-	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/api"
+	"github.com/complynx/loom/internal/artifacts"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
+	"github.com/complynx/loom/internal/lifecycle"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/runs"
+	"github.com/complynx/loom/internal/sandbox"
+	"github.com/complynx/loom/internal/store"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 type executeRun struct {
@@ -719,7 +719,7 @@ func runtimeObserver(cfg config.Config) (*slog.Logger, *telemetry.Telemetry, err
 		}
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})).
-		With("service", "clx-scripter")
+		With("service", "loom")
 	observer := telemetry.New(logger)
 	observer.EnablePayloads(cfg.Observability.LogPayloads)
 

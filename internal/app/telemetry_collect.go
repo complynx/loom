@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/store"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 func collectTelemetry(

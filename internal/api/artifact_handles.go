@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func (s *server) createArtifactHandle(w http.ResponseWriter, r *http.Request, p domain.Principal) error {

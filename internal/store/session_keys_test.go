@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/identity"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
 )
 
 func TestSessionRotationResumesAndPreservesAuthorization(t *testing.T) {

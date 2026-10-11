@@ -8,8 +8,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/store"
 )
 
 // Migrate is a separate deployment step; the HTTP runtime does not run DDL.

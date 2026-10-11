@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/loom/internal/config"
 )
 
 func TestOperatorConfig(t *testing.T) {

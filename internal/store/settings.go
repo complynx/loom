@@ -3,7 +3,7 @@ package store
 import (
 	"net/http"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func normalizeSettings(v domain.Settings) domain.Settings {

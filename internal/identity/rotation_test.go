@@ -16,8 +16,8 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/identity"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/identity"
 )
 
 func TestRotatedJWKSAndUnknownKeyFlood(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/store/dbgen"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/store/dbgen"
 )
 
 func (s *Store) Preferences(ctx context.Context, p domain.Principal) (domain.Preferences, error) {

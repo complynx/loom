@@ -11,9 +11,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/api"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/api"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/provider"
 )
 
 type operatorAuth struct{}

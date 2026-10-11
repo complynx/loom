@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 const searchOutputBytes = 64 << 10

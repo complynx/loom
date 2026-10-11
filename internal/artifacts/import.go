@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 // Descriptor identifies a blob at the same trusted service which returned it.

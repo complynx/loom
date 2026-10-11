@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/operations"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/operations"
 )
 
 func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {

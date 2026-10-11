@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/modules"
+	"github.com/complynx/loom/internal/modules"
 )
 
 func example(t *testing.T) modules.Manifest {

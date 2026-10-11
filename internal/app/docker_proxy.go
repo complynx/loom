@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/modules"
+	"github.com/complynx/loom/internal/modules"
 )
 
 const (

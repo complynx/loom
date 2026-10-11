@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/lifecycle"
+	"github.com/complynx/loom/internal/lifecycle"
 )
 
 func TestShutdownBoundsBlockedStopAndCancelsIt(t *testing.T) {

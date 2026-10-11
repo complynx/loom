@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
+	"github.com/complynx/loom/internal/artifacts"
 )
 
 func blobDescriptor(body string) artifacts.Descriptor {

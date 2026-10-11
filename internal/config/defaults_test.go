@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/loom/internal/config"
 )
 
 func TestConfigurationRejectsInvalidDefaults(t *testing.T) {

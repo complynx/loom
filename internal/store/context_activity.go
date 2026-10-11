@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 // ExecutionContextHistoryAfter compresses passive activity only in the model view.

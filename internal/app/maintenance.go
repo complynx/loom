@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
+	"github.com/complynx/loom/internal/artifacts"
 )
 
 func reconcileArtifacts(ctx context.Context, files *artifacts.Service, logger *slog.Logger) {

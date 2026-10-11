@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func (s *server) readHistory(w http.ResponseWriter, r *http.Request, p domain.Principal) error {

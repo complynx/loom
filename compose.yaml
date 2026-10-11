@@ -1,5 +1,5 @@
 # Local development; real issuer and model configuration remains required.
-name: clx-scripter-dev
+name: loom-dev
 services:
   postgres:
     image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -51,7 +51,7 @@ services:
     profiles: [app]
     build: .
     platform: linux/amd64
-    command: ["sandbox-supervisor", "--socket", "/run/clx-sandbox/sandbox.sock", "--max-workers", "4", "--worker-executable", "/usr/local/bin/clx-scripter", "--cleanup-timeout", "100ms"]
+    command: ["sandbox-supervisor", "--socket", "/run/clx-sandbox/sandbox.sock", "--max-workers", "4", "--worker-executable", "/usr/local/bin/loom", "--cleanup-timeout", "100ms"]
     network_mode: none
     read_only: true
     cap_drop: [ALL]

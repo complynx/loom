@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "clx-scripter service manifest v1",
+  "title": "loom service manifest v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["protocol_version", "service_id", "revision", "description", "modules"],

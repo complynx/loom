@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/app"
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/app"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func TestDiagnosticsIsolationAndSafeDetail(t *testing.T) {

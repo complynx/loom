@@ -1,4 +1,6 @@
-# Deploy clx-scripter on complynx.net
+# Deploy loom on complynx.net
+
+Repository rename: use the coordinated [Loom receiver/Alloy patch](validation/2026-10-12-loom-rename-server.patch). Historical QA patches preserve their original names. Deploy the updated receiver before enabling `updated-loom` dispatch.
 
 Update 2026-10-12: the [fixture browser follow-up](validation/2026-10-12-browser-qa/README.md) passed login, filter, detail, refresh and disconnect after Daniel installed the test CA and restarted Codex. The earlier TLS blocker below is historical. Production identity and pilot acceptance remain separate.
 
@@ -17,7 +19,7 @@ Read-only SSH inspection on 2026-10-11 found:
 - `zitadel` runs v4.16.3, public issuer `https://id.complynx.net`.
 - `postgres-postgres-1` runs PostgreSQL 17.9 in `pgvector/pgvector:pg17`. Available vector extension is 0.8.2. Its data bind mount is `/home/complynx/server_configs/data/postgres`.
 - Alloy is already running and ingests Docker logs. Its configured destination is Grafana Cloud. The `clx-observability` network is absent on the live host.
-- `configs/clx-scripter` is absent. The live checkout receiver does not list `updated-clx-scripter`. The local sibling checkout contains this mapping and the Alloy scrape changes; they have not been deployed.
+- `configs/loom` is absent. The live checkout has no deployed Loom receiver/profile. The prepared local sibling receiver and Alloy patch use `updated-loom` and `loom:9090`; deploy them together with the source workflow rename. They have not been deployed.
 - Root filesystem had approximately 90 GiB available. This is a snapshot, not a capacity guarantee.
 
 Recheck before making changes:
@@ -40,7 +42,7 @@ df -h data/postgres
 
 Do not overwrite a dirty server checkout. Prepare and review the server profile in `complynx/server_configs`, then update the live checkout to its approved revision. Do not run the global `init.sh` to deploy only this application.
 
-Select an approved clx-scripter release after code review, documentation review and QA. Record the source SHA and the published Docker digest. Pin every application container to `complynx/clx-scripter@sha256:<digest>`. Do not use `latest` for the first rollout or rollback. The application image includes the API, sandbox, Docker proxy and migrations.
+Select an approved loom release after code review, documentation review and QA. Record the source SHA and the published Docker digest. Pin every application container to `complynx/loom@sha256:<digest>`. Do not use `latest` for the first rollout or rollback. The application image includes the API, sandbox, Docker proxy and migrations.
 
 ## 2. Select DNS and create the profile
 
@@ -48,21 +50,21 @@ Select an approved clx-scripter release after code review, documentation review 
 
 The production callback is `https://agent.complynx.net/admin`. There is no new public port: Traefik terminates TLS and routes to API port 8080. Keep metrics 9090 and Docker proxy 2375 unpublished. The illustrative profile publishes API port 58280 only on loopback for SSH acceptance.
 
-Copy [the profile](../deploy/server/docker-compose.prod.yml) into `/home/complynx/server_configs/configs/clx-scripter/docker-compose.prod.yml`. This is a reviewed starting template; it does not create secrets, PostgreSQL roles or a release hook. The profile uses the existing shared database, not the development Compose PostgreSQL.
+Copy [the profile](../deploy/server/docker-compose.prod.yml) into `/home/complynx/server_configs/configs/loom/docker-compose.prod.yml`. This is a reviewed starting template; it does not create secrets, PostgreSQL roles or a release hook. The profile uses the existing shared database, not the development Compose PostgreSQL.
 
 ```sh
 cd /home/complynx/server_configs
-install -d -m 0750 configs/clx-scripter
-install -d -m 0700 data/clx-scripter
-install -d -m 0700 data/clx-scripter/keys
-install -d -m 0750 data/clx-scripter/artifacts
-sudo chown 10001:10001 data/clx-scripter/artifacts
+install -d -m 0750 configs/loom
+install -d -m 0700 data/loom
+install -d -m 0700 data/loom/keys
+install -d -m 0750 data/loom/artifacts
+sudo chown 10001:10001 data/loom/artifacts
 ```
 
-In `configs/clx-scripter/.env`, set non-secret values:
+In `configs/loom/.env`, set non-secret values:
 
 ```dotenv
-CLX_IMAGE=complynx/clx-scripter@sha256:<approved-digest>
+CLX_IMAGE=complynx/loom@sha256:<approved-digest>
 CLX_PUBLIC_HOST=agent.complynx.net
 ```
 
@@ -95,10 +97,10 @@ CREATE ROLE clx_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
 CREATE ROLE clx_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 \password clx_migrator
 \password clx_runtime
-CREATE DATABASE clx_scripter OWNER clx_migrator;
-REVOKE ALL ON DATABASE clx_scripter FROM PUBLIC;
-GRANT CONNECT ON DATABASE clx_scripter TO clx_runtime;
-\connect clx_scripter
+CREATE DATABASE loom OWNER clx_migrator;
+REVOKE ALL ON DATABASE loom FROM PUBLIC;
+GRANT CONNECT ON DATABASE loom TO clx_runtime;
+\connect loom
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO clx_runtime;
 ALTER DEFAULT PRIVILEGES FOR ROLE clx_migrator IN SCHEMA public
@@ -111,11 +113,11 @@ Use `\password` so passwords are not included in shell history or process argume
 
 Use the `postgres` alias directly on `traefik-net`, port 5432; avoid the public Traefik PostgreSQL route for application traffic. DSN passwords must be URL-encoded. `sslmode=disable` matches the existing local bridge deployment; this is not encrypted transport across hosts.
 
-Semantic search starts disabled. Current vector search accepts supplied vectors and stores them in JSONB; it requires an installed pgvector extension for distance calculation. There is no Go fallback when that extension is absent. There is no embeddings service. pgvector availability does not require enabling this feature. If enabled later, an administrator may execute `CREATE EXTENSION IF NOT EXISTS vector` **in `clx_scripter`**, then verify the enabled API/tool behavior; an extension in another database does not apply here.
+Semantic search starts disabled. Current vector search accepts supplied vectors and stores them in JSONB; it requires an installed pgvector extension for distance calculation. There is no Go fallback when that extension is absent. There is no embeddings service. pgvector availability does not require enabling this feature. If enabled later, an administrator may execute `CREATE EXTENSION IF NOT EXISTS vector` **in `loom`**, then verify the enabled API/tool behavior; an extension in another database does not apply here.
 
 ## 4. Install private configuration and encryption keys
 
-Copy the release's [config example](../deploy/config.example.yaml) to `data/clx-scripter/config.yaml`. Set:
+Copy the release's [config example](../deploy/config.example.yaml) to `data/loom/config.yaml`. Set:
 
 - `discovery.allowed_networks: [traefik-net]`, `poll_seconds: 300`, `freshness_ttl_seconds: 3600`.
 - `discovery.docker_api: http://docker-api-proxy:2375`.
@@ -132,19 +134,19 @@ Create the active encryption key without displaying it:
 
 ```sh
 umask 077
-openssl rand -base64 32 > data/clx-scripter/keys/key-v1
-sudo chown 10001:10001 data/clx-scripter/keys/key-v1
-sudo chmod 0400 data/clx-scripter/keys/key-v1
-sudo chown 10001:10001 data/clx-scripter/config.yaml
-sudo chmod 0400 data/clx-scripter/config.yaml
+openssl rand -base64 32 > data/loom/keys/key-v1
+sudo chown 10001:10001 data/loom/keys/key-v1
+sudo chmod 0400 data/loom/keys/key-v1
+sudo chown 10001:10001 data/loom/config.yaml
+sudo chmod 0400 data/loom/config.yaml
 ```
 
 Generate once. Do not regenerate a key on each deployment. Keep a protected, separately stored backup of all key versions. The API runs as UID/GID 10001; that UID must read mounted config and keys and write the artifact directory. The Docker proxy alone runs as root to read its socket.
 
-Create `data/clx-scripter/api.env` using an editor or secret delivery channel:
+Create `data/loom/api.env` using an editor or secret delivery channel:
 
 ```dotenv
-CLX_DATABASE_DSN=postgres://clx_runtime:<URL-encoded-password>@postgres:5432/clx_scripter?sslmode=disable
+CLX_DATABASE_DSN=postgres://clx_runtime:<URL-encoded-password>@postgres:5432/loom?sslmode=disable
 CLX_ZITADEL_ISSUER=https://id.complynx.net
 CLX_ZITADEL_AUDIENCE=<project-id>
 CLX_ZITADEL_CLIENT_ID=<API-introspection-client-id>
@@ -153,7 +155,7 @@ CLX_ADMIN_ORGANIZATION_ID=<approved-admin-org-id>
 CLX_OPENAI_API_KEY=<project-scoped-provider-key>
 ```
 
-Create `data/clx-scripter/migration.env` with **only** `CLX_DATABASE_DSN` for `clx_migrator`. The `migrate` CLI uses that DSN directly and does not need OpenAI, Zitadel or encryption credentials. Both env files are read by host Compose; keep them owned by the deploy login and mode 0600. Container environment can be inspected by Docker administrators; Docker administration is a trusted role.
+Create `data/loom/migration.env` with **only** `CLX_DATABASE_DSN` for `clx_migrator`. The `migrate` CLI uses that DSN directly and does not need OpenAI, Zitadel or encryption credentials. Both env files are read by host Compose; keep them owned by the deploy login and mode 0600. Container environment can be inspected by Docker administrators; Docker administration is a trusted role.
 
 Do not put filled configs, env files, auth keys or database dumps in Git. Do not reuse the local real-model QA token without an operator decision. Bootstrap settings seed the database once; subsequent YAML edits do not overwrite stored settings. Change existing dynamic settings through the versioned settings API.
 
@@ -180,7 +182,7 @@ Ensure Traefik/access logs omit authorization-code query strings on `/admin`, au
 
 ## 6. Migrate before starting execution
 
-From `configs/clx-scripter`, validate shape without printing expanded secrets:
+From `configs/loom`, validate shape without printing expanded secrets:
 
 ```sh
 docker compose -f docker-compose.prod.yml config --quiet
@@ -193,7 +195,7 @@ Migration first runs the application Goose migrations, then River migrations. St
 Grant existing objects after migration through the administrator connection:
 
 ```sh
-docker exec -i postgres-postgres-1 psql -v ON_ERROR_STOP=1 -U complynx -d clx_scripter <<'SQL'
+docker exec -i postgres-postgres-1 psql -v ON_ERROR_STOP=1 -U complynx -d loom <<'SQL'
 GRANT USAGE ON SCHEMA public TO clx_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO clx_runtime;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO clx_runtime;
@@ -224,20 +226,20 @@ labels:
 
 The alias must belong to the container on `traefik-net`; a label pointing at an arbitrary external URL is rejected. Publish a valid v1 manifest and implement the described authorization, operation IDs, idempotency and status semantics before allowing writes. Check the model sees only methods allowed for the pilot user. Passive events must not create a run. The model acceptance service is a QA fixture; it does not establish acceptance of zns-chatbot or another production service.
 
-Deploy the reviewed sibling Alloy changes after creating `clx-observability`: Alloy must join it and scrape `clx-scripter:9090`. Keep the existing Docker log pipeline; a second source duplicates ingestion. Use the existing Grafana Cloud credentials, not new application push secrets. Restart only the Alloy profile when its approved configuration is ready:
+Deploy the reviewed sibling Alloy changes after creating `clx-observability`: Alloy must join it and scrape `loom:9090`. Keep the existing Docker log pipeline; a second source duplicates ingestion. Use the existing Grafana Cloud credentials, not new application push secrets. Restart only the Alloy profile when its approved configuration is ready:
 
 ```sh
 cd /home/complynx/server_configs
 bash scripts/rollout.sh --config-name alloy --profile prod
 ```
 
-Confirm Prometheus `up{job="integrations/clx-scripter"}=1`, current snapshot timestamps, dependency gauges and parsed JSON logs in Loki. Import [alert rules](../deploy/observability/alerts.yaml), wire a notification route and send a controlled test. Rule validation does not prove delivery. Keep metrics identifiers bounded; search user/run/operation IDs as log fields. Ensure port 9090 has no external Traefik route.
+Confirm Prometheus `up{job="integrations/loom"}=1`, current snapshot timestamps, dependency gauges and parsed JSON logs in Loki. Import [alert rules](../deploy/observability/alerts.yaml), wire a notification route and send a controlled test. Rule validation does not prove delivery. Keep metrics identifiers bounded; search user/run/operation IDs as log fields. Ensure port 9090 has no external Traefik route.
 
 ## 8. Enable CI delivery after the manual pilot
 
-The source workflow publishes `linux/amd64` on approved `main` pushes after quality gates. Configure source repository secrets `DOCKER_HUB_ACCESS_TOKEN` and `SERVER_REPO_TOKEN`; the latter must dispatch to `complynx/server_configs`. Update the server receiver's default branch with `updated-clx-scripter` mapping, then deploy its approved checkout/profile/hook.
+The source workflow publishes `linux/amd64` on approved `main` pushes after quality gates. Configure source repository secrets `DOCKER_HUB_ACCESS_TOKEN` and `SERVER_REPO_TOKEN`; the latter must dispatch to `complynx/server_configs`. Update the server receiver's default branch with `updated-loom` mapping, then deploy its approved checkout/profile/hook.
 
-The receiver currently calls `rollout_all.sh clx-scripter`. It uses the image in the profile, **not** the dispatch payload digest. With the immutable pin above, a dispatch alone will redeploy the currently pinned release. For each new release, update the reviewed pin before the rollout, or implement an explicit receiver pin-selection step before enabling unattended updates. Do not claim the existing payload automatically selects the new image. Avoid `latest` if exact rollback matters.
+The receiver currently calls `rollout_all.sh loom`. It uses the image in the profile, **not** the dispatch payload digest. With the immutable pin above, a dispatch alone will redeploy the currently pinned release. For each new release, update the reviewed pin before the rollout, or implement an explicit receiver pin-selection step before enabling unattended updates. Do not claim the existing payload automatically selects the new image. Avoid `latest` if exact rollback matters.
 
 The existing server SSH workflow injects its own secrets. The profile uses host-private env files, so new CLX secrets need not be added to that workflow. Its deployment login needs permission to read these files and the approved profile. The release hook must make migration failure block API rollout. Confirm the sender accepted dispatch, the receiver completed, container image IDs match the approved digest, and `/readyz` is healthy; sender success alone is not deployment proof. See [CI contract](ci.md).
 
@@ -248,10 +250,10 @@ Back up database, artifact directory and all encryption keys as one recovery set
 For an initial consistent backup, block new ingress and stop the API (including its worker), leave PostgreSQL running, then take a logical dump and artifact snapshot:
 
 ```sh
-cd /home/complynx/server_configs/configs/clx-scripter
+cd /home/complynx/server_configs/configs/loom
 docker compose -f docker-compose.prod.yml stop api
 umask 077
-docker exec postgres-postgres-1 pg_dump -U complynx -Fc clx_scripter > /secure-backup/clx_scripter.dump
+docker exec postgres-postgres-1 pg_dump -U complynx -Fc loom > /secure-backup/loom.dump
 ```
 
 `/secure-backup` is an operator-created protected destination outside the repository. Copy the artifact tree while API is stopped, and store keys separately under equivalent protection. Check command exit status, nonempty dump, checksums and off-host upload. Restart API only after backup completes successfully. Stopping the worker does not roll back an external request already sent; preserve and inspect uncertainty records.

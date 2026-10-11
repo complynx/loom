@@ -1,5 +1,7 @@
 # CI publication and server deployment trigger
 
+Repository rename: use the coordinated [Loom receiver/Alloy patch](validation/2026-10-12-loom-rename-server.patch). Historical QA patches preserve their original names. Deploy the updated receiver before enabling `updated-loom` dispatch.
+
 The existing CI runs tests, dependency verification, lint and vulnerability checks
 on pushes and pull requests. Once these pass, a push to `main` builds and publishes
 `linux/amd64` images to Docker Hub. Merging a pull request into `main` produces the
@@ -8,8 +10,8 @@ or deployment dispatch.
 
 Published tags:
 
-- `complynx/clx-scripter:latest`
-- `complynx/clx-scripter:sha-<full Git commit SHA>`
+- `complynx/loom:latest`
+- `complynx/loom:sha-<full Git commit SHA>`
 
 Publishing jobs share a concurrency group and do not cancel a running publication.
 Before publishing, the job checks the current remote `main` head; an older run is
@@ -18,10 +20,10 @@ run from replacing `latest`. Buildx uses the GitHub Actions cache.
 
 ## Required GitHub secrets
 
-Set these in `complynx/clx-scripter`:
+Set these in `complynx/loom`:
 
 - `DOCKER_HUB_ACCESS_TOKEN`: token for the `complynx` Docker Hub account with write
-  access to `complynx/clx-scripter`.
+  access to `complynx/loom`.
 - `SERVER_REPO_TOKEN`: token allowed to create repository dispatches in
   `complynx/server_configs`. A fine-grained token needs Contents read/write for
   that target repository; the built-in source repository token cannot dispatch
@@ -33,15 +35,15 @@ secrets, never Docker build arguments. The workflow's built-in token has only
 
 ## Server contract
 
-After the image push succeeds, CI sends `updated-clx-scripter` to
+After the image push succeeds, CI sends `updated-loom` to
 `complynx/server_configs`, following the existing `zns-chatbot` pattern. The payload
 contains the source SHA, immutable commit tag and published image digest. The local
-server receiver maps this event to `clx-scripter` and invokes its existing rollout
+server receiver maps this event to `loom` and invokes its existing rollout
 script. That script uses the Compose profile's configured image; it does not consume
 the payload digest or commit tag to select an image.
 
 The receiver change must reach `server_configs`' default branch before GitHub
-accepts this event type. Server rollout also requires `configs/clx-scripter` to be
+accepts this event type. Server rollout also requires `configs/loom` to be
 configured on the server with its Compose files, production settings, secrets,
 volumes, migrations and networks. That profile does not yet exist in the local
 server repository. The CI trigger alone does not create it or establish production

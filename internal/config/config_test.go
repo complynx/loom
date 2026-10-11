@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/loom/internal/config"
 )
 
 func TestLoadDeploymentConfiguration(t *testing.T) {

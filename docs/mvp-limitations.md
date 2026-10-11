@@ -53,7 +53,7 @@
 
 - Compose — локальный deployment template. Он не заменяет серверную конфигурацию Traefik, отдельные runtime/migration роли PostgreSQL, секреты, backup и восстановление. Локальный PostgreSQL создаётся через образ с привилегированным bootstrap-пользователем; эти credentials нельзя переносить в production runtime.
 
-- CI настроен на build/push Linux image в Docker Hub после успешных проверок на push/merge в main и затем dispatch `updated-clx-scripter` в server_configs. Проверены локальные workflow и сборка; удалённый pipeline, Hub push и rollout в этой работе не выполнялись. Нужны GitHub secrets, поставка receiver patch и отсутствующий profile `configs/clx-scripter`. Receiver пока использует image из Compose, а не digest из payload. [Контракт CI](ci.md).
+- CI настроен на build/push Linux image в Docker Hub после успешных проверок на push/merge в main и затем dispatch `updated-loom` в server_configs. Проверены локальные workflow и сборка; удалённый pipeline, Hub push и rollout в этой работе не выполнялись. Нужны GitHub secrets, поставка receiver patch и отсутствующий profile `configs/loom`. Receiver пока использует image из Compose, а не digest из payload. [Контракт CI](ci.md).
 
 - Добавлен keyring и bounded re-encryption сохранённых сессий: [порядок ротации](session-key-rotation.md). Смена активного ключа требует rolling restart и остановки всех старых writers перед миграцией. Guard проверяет текущую БД; исторические backup требуют отдельного хранения нужных ключей и restore rehearsal (C02).
 

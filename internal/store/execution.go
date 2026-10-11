@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func (s *Store) ClaimRun(ctx context.Context, rid, owner string, duration time.Duration) (domain.Run, error) {

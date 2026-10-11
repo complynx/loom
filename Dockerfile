@@ -4,16 +4,16 @@ ENV GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 COPY . .
-RUN go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/clx-scripter ./cmd/clx-scripter
+RUN go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/loom ./cmd/loom
 RUN mkdir -p /out/run/clx-sandbox /out/data/artifacts && chmod 0770 /out/run/clx-sandbox /out/data/artifacts
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /out/clx-scripter /usr/local/bin/clx-scripter
+COPY --from=build /out/loom /usr/local/bin/loom
 COPY --chown=10001:10001 --from=build /out/run/ /run/
 COPY --chown=10001:10001 --from=build /out/data/ /data/
 COPY docs/dependency-audit/2026-10-11-mvp/notices /licenses/dependencies/
-COPY LICENSE /licenses/clx-scripter/LICENSE
+COPY LICENSE /licenses/loom/LICENSE
 USER 10001:10001
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/local/bin/clx-scripter"]
+ENTRYPOINT ["/usr/local/bin/loom"]
 CMD ["serve"]

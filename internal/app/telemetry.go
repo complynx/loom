@@ -9,12 +9,12 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/identity"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/complynx/clx-scripter/internal/runs"
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/runs"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 func operationOutcome(err error) string {

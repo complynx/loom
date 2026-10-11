@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/loom/internal/config"
 )
 
 const operatorLoginCookie = "clx_operator_login"

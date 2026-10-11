@@ -34,7 +34,7 @@ identity:
 discovery:
   docker_api: "http://docker-api-proxy:2375"
   label: "clx.harness.service"
-  allowed_networks: ["clx-scripter-dev_default"]
+  allowed_networks: ["loom-dev_default"]
   poll_seconds: 300
   freshness_ttl_seconds: 3600
   max_manifest_bytes: 1048576

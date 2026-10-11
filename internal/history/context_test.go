@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/complynx/clx-scripter/internal/history"
+	"github.com/complynx/loom/internal/history"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 func TestContextPreservesUserConstraints(t *testing.T) {

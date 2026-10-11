@@ -1,67 +1,67 @@
 groups:
-  - name: clx-scripter
+  - name: loom
     rules:
-      - alert: ClxScripterScrapeDown
-        expr: up{job="integrations/clx-scripter"} == 0
+      - alert: LoomScrapeDown
+        expr: up{job="integrations/loom"} == 0
         for: 2m
         labels: {severity: critical}
         annotations:
           summary: "Harness metrics endpoint is unavailable"
           description: "Check API container, private network and Alloy target."
-      - alert: ClxScripterDependencyUnavailable
-        expr: clx_dependency_up{job="integrations/clx-scripter"} == 0
+      - alert: LoomDependencyUnavailable
+        expr: clx_dependency_up{job="integrations/loom"} == 0
         for: 1m
         labels: {severity: critical}
         annotations:
           summary: "Harness dependency {{ $labels.component }} unavailable"
           description: "Check safe dependency status logs and container state."
-      - alert: ClxScripterSnapshotStale
-        expr: time() - clx_snapshot_timestamp_seconds{job="integrations/clx-scripter"} > 60
+      - alert: LoomSnapshotStale
+        expr: time() - clx_snapshot_timestamp_seconds{job="integrations/loom"} > 60
         for: 1m
         labels: {severity: warning}
         annotations:
           summary: "Harness durable metrics snapshot is stale"
-      - alert: ClxScripterUnknownInference
-        expr: clx_unknown_inference_steps{job="integrations/clx-scripter"} > 0
+      - alert: LoomUnknownInference
+        expr: clx_unknown_inference_steps{job="integrations/loom"} > 0
         for: 1m
         labels: {severity: warning}
         annotations:
           summary: "Inference requires usage reconciliation"
           description: "Inspect run checkpoints and platform exposure. Recovery is bounded and paid by the platform; do not manually replay uncertain writes."
-      - alert: ClxScripterUnresolvedWrite
-        expr: clx_unresolved_write_operations{job="integrations/clx-scripter"} > 0
+      - alert: LoomUnresolvedWrite
+        expr: clx_unresolved_write_operations{job="integrations/loom"} > 0
         for: 5m
         labels: {severity: warning}
         annotations:
           summary: "Write operation has not reached a confirmed outcome"
           description: "Find write operation checkpoint by run_id/operation_id in Loki and check module status."
-      - alert: ClxScripterOldReservation
-        expr: clx_oldest_reservation_age_seconds{job="integrations/clx-scripter"} > 900
+      - alert: LoomOldReservation
+        expr: clx_oldest_reservation_age_seconds{job="integrations/loom"} > 900
         for: 5m
         labels: {severity: warning}
         annotations:
           summary: "Credit reservation is older than 15 minutes"
-      - alert: ClxScripterQueueStalled
-        expr: clx_oldest_queued_run_age_seconds{job="integrations/clx-scripter"} > 120
+      - alert: LoomQueueStalled
+        expr: clx_oldest_queued_run_age_seconds{job="integrations/loom"} > 120
         for: 5m
         labels: {severity: warning}
         annotations:
           summary: "Harness queue is not progressing"
-      - alert: ClxScripterArtifactDiskLow
-        expr: clx_artifact_volume_free_bytes{job="integrations/clx-scripter"} / clx_artifact_volume_capacity_bytes{job="integrations/clx-scripter"} < 0.1
+      - alert: LoomArtifactDiskLow
+        expr: clx_artifact_volume_free_bytes{job="integrations/loom"} / clx_artifact_volume_capacity_bytes{job="integrations/loom"} < 0.1
         for: 5m
         labels: {severity: warning}
         annotations:
           summary: "Artifact volume has less than 10 percent space available"
-      - alert: ClxScripterExpiredLease
-        expr: clx_expired_run_leases{job="integrations/clx-scripter"} > 0
+      - alert: LoomExpiredLease
+        expr: clx_expired_run_leases{job="integrations/loom"} > 0
         for: 1m
         labels: {severity: warning}
         annotations:
           summary: "Running job has an expired lease"
           description: "Inspect fenced worker recovery and queue status using operator diagnostics."
-      - alert: ClxScripterCancellationStalled
-        expr: clx_cancel_requested_runs{job="integrations/clx-scripter"} > 0
+      - alert: LoomCancellationStalled
+        expr: clx_cancel_requested_runs{job="integrations/loom"} > 0
         for: 1m
         labels: {severity: warning}
         annotations:

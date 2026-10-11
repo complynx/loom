@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 func TestScriptParallelReads(t *testing.T) {

@@ -1,0 +1,99 @@
+diff --git a/.github/workflows/push_update.yml b/.github/workflows/push_update.yml
+index 9e438ff..afd811d 100644
+--- a/.github/workflows/push_update.yml
++++ b/.github/workflows/push_update.yml
+@@ -5,6 +5,7 @@ on:
+     types:
+       - updated-photobot
+       - updated-zns-chatbot
++      - updated-loom
+       - updated-complynx_net
+       - updated-touchzouk
+       - updated-unseen_workshop_site
+@@ -26,6 +27,9 @@ jobs:
+             updated-photobot)
+               echo "services=photobot/vagis_events_bot" >> "$GITHUB_OUTPUT"
+               ;;
++            updated-loom)
++              echo "services=loom" >> "$GITHUB_OUTPUT"
++              ;;
+             updated-zns-chatbot)
+               echo "services=zns-chatbot" >> "$GITHUB_OUTPUT"
+               ;;
+diff --git a/configs/alloy/config.alloy b/configs/alloy/config.alloy
+index 6e98493..ee0ad3f 100644
+--- a/configs/alloy/config.alloy
++++ b/configs/alloy/config.alloy
+@@ -3,7 +3,7 @@ remotecfg {
+     id = "complynx.net"
+     basic_auth {
+         username = "1322916"
+-        password = env("GRAFANA_CLOUD_ALLOY_CLX_TOKEN")
++        password = sys.env("GRAFANA_CLOUD_ALLOY_CLX_TOKEN")
+     }
+ }
+ 
+@@ -13,7 +13,7 @@ prometheus.remote_write "metrics_service" {
+ 
+         basic_auth {
+             username = "2570067"
+-            password = env("GRAFANA_CLOUD_ALLOY_CLX_TOKEN")
++            password = sys.env("GRAFANA_CLOUD_ALLOY_CLX_TOKEN")
+         }
+     }
+ }
+@@ -24,7 +24,7 @@ loki.write "grafana_cloud_loki" {
+ 
+         basic_auth {
+             username = "1280710"
+-            password = env("GRAFANA_CLOUD_ALLOY_CLX_TOKEN")
++            password = sys.env("GRAFANA_CLOUD_ALLOY_CLX_TOKEN")
+         }
+     }
+ }
+@@ -44,7 +44,7 @@ discovery.relabel "integrations_cadvisor" {
+ 
+     rule {
+         target_label = "instance"
+-        replacement  = env("INSTANCE_NAME")
++        replacement  = sys.env("INSTANCE_NAME")
+     }
+ }
+ 
+@@ -77,7 +77,7 @@ discovery.relabel "logs_integrations_docker" {
+ 
+     rule {
+         target_label = "instance"
+-        replacement  = env("INSTANCE_NAME")
++        replacement  = sys.env("INSTANCE_NAME")
+     }
+ 
+     rule {
+@@ -108,7 +108,7 @@ discovery.relabel "metrics_integrations_integrations_traefik" {
+ 
+ 	rule {
+ 		target_label = "instance"
+-		replacement  = env("INSTANCE_NAME")
++		replacement  = sys.env("INSTANCE_NAME")
+ 	}
+ }
+ 
+@@ -127,3 +127,17 @@ prometheus.relabel "metrics_integrations_integrations_traefik" {
+ 		action        = "keep"
+ 	}
+ }
++
++// Append to server_configs/configs/alloy/config.alloy.
++// Existing metrics_service receiver already sends to the correct Grafana Cloud.
++// Alloy and API must both join the dedicated clx-observability Docker network.
++prometheus.scrape "loom" {
++    targets = [{"__address__" = "loom:9090", "instance" = "complynx.net"}]
++    job_name = "integrations/loom"
++    scrape_interval = "15s"
++    scrape_timeout = "5s"
++    forward_to = [prometheus.remote_write.metrics_service.receiver]
++}
++
++// Existing Docker discovery/source already collects application JSON stdout.
++// No second Docker log source: it would duplicate ingestion. Query with | json.
+\ No newline at end of file

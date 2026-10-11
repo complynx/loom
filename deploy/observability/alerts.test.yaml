@@ -3,31 +3,31 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
-      - series: 'clx_dependency_up{job="integrations/clx-scripter",component="database"}'
+      - series: 'clx_dependency_up{job="integrations/loom",component="database"}'
         values: '1 0 0 1 1'
     alert_rule_test:
       - eval_time: 2m
-        alertname: ClxScripterDependencyUnavailable
+        alertname: LoomDependencyUnavailable
         exp_alerts:
-          - exp_labels: {job: integrations/clx-scripter, component: database, severity: critical}
+          - exp_labels: {job: integrations/loom, component: database, severity: critical}
             exp_annotations:
               summary: Harness dependency database unavailable
               description: Check safe dependency status logs and container state.
       - eval_time: 4m
-        alertname: ClxScripterDependencyUnavailable
+        alertname: LoomDependencyUnavailable
         exp_alerts: []
   - interval: 1m
     input_series:
-      - series: 'clx_unknown_inference_steps{job="integrations/clx-scripter"}'
+      - series: 'clx_unknown_inference_steps{job="integrations/loom"}'
         values: '0 1 1 0 0'
     alert_rule_test:
       - eval_time: 2m
-        alertname: ClxScripterUnknownInference
+        alertname: LoomUnknownInference
         exp_alerts:
-          - exp_labels: {job: integrations/clx-scripter, severity: warning}
+          - exp_labels: {job: integrations/loom, severity: warning}
             exp_annotations:
               summary: Inference requires usage reconciliation
-              description: Find the run checkpoint in Loki; reconcile with provider proof. Never replay an unknown billed request.
+              description: Inspect run checkpoints and platform exposure. Recovery is bounded and paid by the platform; do not manually replay uncertain writes.
       - eval_time: 4m
-        alertname: ClxScripterUnknownInference
+        alertname: LoomUnknownInference
         exp_alerts: []

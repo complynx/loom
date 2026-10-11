@@ -23,7 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 //go:embed manifest.schema.json

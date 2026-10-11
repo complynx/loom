@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/loom/internal/config"
 
 	"github.com/stretchr/testify/require"
 )

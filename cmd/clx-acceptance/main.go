@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/acceptance"
+	"github.com/complynx/loom/internal/acceptance"
 )
 
 const headerTimeout = 5 * time.Second

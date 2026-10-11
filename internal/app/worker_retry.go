@@ -7,7 +7,7 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"github.com/complynx/clx-scripter/internal/runs"
+	"github.com/complynx/loom/internal/runs"
 )
 
 func (w *runWorker) executeWithRetry(ctx context.Context, job *river.Job[executeRun]) error {

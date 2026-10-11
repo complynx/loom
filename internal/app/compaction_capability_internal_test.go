@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/provider"
 )
 
 func TestProviderRouterKeepsWrappedCompactionCapability(t *testing.T) {

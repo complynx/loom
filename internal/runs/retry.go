@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/provider"
 )
 
 const providerRetryLimitReason = "provider_retry_limit"

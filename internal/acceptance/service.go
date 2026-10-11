@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/complynx/clx-scripter/internal/modules"
+	"github.com/complynx/loom/internal/modules"
 )
 
 //go:embed manifest.json

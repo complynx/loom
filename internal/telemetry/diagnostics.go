@@ -4,7 +4,7 @@ import (
 	"maps"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 // DiagnosticsHealth copies only bounded dependency observations under the metrics lock.

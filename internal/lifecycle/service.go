@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/store"
 )
 
 const defaultBatch = 100

@@ -14,9 +14,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/artifacts"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/store"
 )
 
 func importSource(t *testing.T, authorize func(context.Context) error) (artifacts.Source, artifacts.Descriptor) {

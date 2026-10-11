@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 // Documentation uses the same DTOs as strict HTTP decoding. SSE and upload
 // handlers remain standard HTTP handlers so deadlines and body limits stay explicit.
 func documentation(mux *http.ServeMux) huma.API {
-	cfg := huma.DefaultConfig("CLX Scripter", "1.0.0")
+	cfg := huma.DefaultConfig("Loom", "1.0.0")
 	cfg.DocsPath = ""
 	cfg.SchemasPath = ""
 	cfg.OpenAPIPath = "/openapi"

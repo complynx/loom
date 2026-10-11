@@ -4,7 +4,7 @@ Loom — агентский API-сервис для инфраструктуры
 
 Репозиторий содержит реализацию MVP и проектную спецификацию. API, PostgreSQL, inference, очередь River, подтверждения, история и отдельная JS-песочница проверяются поведенческими тестами. Изолированные local Zitadel и минимальный live OpenAI call имеют отдельные отчёты; production deployment и production identity/client integration требуют проверки с реальными настройками.
 
-Кодовое название проекта — **Loom**. Технические имена `clx-scripter`, module path, API и deployment labels пока сохранены для совместимости.
+Кодовое название проекта — **Loom**. Репозиторий и Go module — `github.com/complynx/loom`, executable и Docker image — `loom` и `complynx/loom`. Существующие `CLX_*` env variables, права и протокольные `clx.harness.*` labels сохранены для совместимости.
 
 Схема до первого production release объединена в `migrations/00001_loom.sql`. Она предназначена для новой БД; старые QA/dev базы с цепочкой 00001–00012 не обновляйте этой baseline поверх существующей схемы. Сохраните их со старым образом или перенесите данные отдельным проверенным процессом. Объединение не изменяет River migrations.
 

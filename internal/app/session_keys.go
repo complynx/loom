@@ -8,10 +8,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/identity"
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
+	"github.com/complynx/loom/internal/store"
 )
 
 func loadSessionCipher(cfg config.Identity) (*identity.SessionCipher, error) {

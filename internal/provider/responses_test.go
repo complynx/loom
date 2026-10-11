@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/loom/internal/provider"
 )
 
 func TestResponsesPreservesToolAndReasoningContext(t *testing.T) {

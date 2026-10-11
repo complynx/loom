@@ -8,7 +8,7 @@ The upstream MIT license notice remains in `.golangci.yml`.
 The configuration enables all 79 Golden linters and retains `contextcheck`,
 the existing project check for inherited request contexts: 80 linters in total.
 It also enables the Golden `goimports` and `golines` formatters. Imports from
-`github.com/complynx/clx-scripter` form the local import group, and the target
+`github.com/complynx/loom` form the local import group, and the target
 maximum line length is 120.
 
 The project retains the ban on `golang.org/x/crypto/openpgp`, a five minute

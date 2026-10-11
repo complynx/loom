@@ -3,7 +3,7 @@ package store
 import (
 	"slices"
 
-	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/loom/internal/domain"
 )
 
 // effectiveModels intersects current descriptors with the user's allowed efforts.

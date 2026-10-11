@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/store"
 )
 
 type backend struct {

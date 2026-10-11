@@ -11,9 +11,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/complynx/clx-scripter/internal/runs"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/runs"
 )
 
 func TestManualQAProviderUsesProductionAccounting(t *testing.T) {

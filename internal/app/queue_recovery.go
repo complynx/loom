@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/store"
+	"github.com/complynx/loom/internal/store"
 )
 
 // Queue exhaustion pauses work until an explicit resume. It never repeats an

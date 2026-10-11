@@ -7,7 +7,7 @@ integration:
 	test -n "$(CLX_TEST_DATABASE_DSN)"
 	go test -parallel=4 -tags=integration ./...
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/clx-scripter ./cmd/clx-scripter
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/loom ./cmd/loom
 lint:
 	golangci-lint run --build-tags=integration ./...
 fmt:

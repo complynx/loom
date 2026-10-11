@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 func TestMetricsAndLogsExcludeClientDataAndPreserveStreaming(t *testing.T) {

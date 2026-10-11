@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/complynx/clx-scripter/internal/artifacts"
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/complynx/clx-scripter/internal/runs"
-	"github.com/complynx/clx-scripter/internal/sandbox"
-	"github.com/complynx/clx-scripter/internal/store"
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/artifacts"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/runs"
+	"github.com/complynx/loom/internal/sandbox"
+	"github.com/complynx/loom/internal/store"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 type runtimeTools struct {

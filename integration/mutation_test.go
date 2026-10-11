@@ -13,12 +13,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/app"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/modules"
-	"github.com/complynx/clx-scripter/internal/operations"
-	"github.com/complynx/clx-scripter/internal/provider"
-	"github.com/complynx/clx-scripter/internal/runs"
+	"github.com/complynx/loom/internal/app"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/runs"
 )
 
 type bookingService struct {

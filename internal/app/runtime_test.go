@@ -22,10 +22,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/complynx/clx-scripter/internal/app"
-	"github.com/complynx/clx-scripter/internal/config"
-	"github.com/complynx/clx-scripter/internal/domain"
-	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/complynx/loom/internal/app"
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 //nolint:paralleltest // This entry point serves as the sandbox subprocess and exits the test process.

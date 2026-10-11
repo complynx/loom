@@ -1,6 +1,6 @@
-# Copy into server_configs/configs/clx-scripter. Read docs/server-rollout.md first.
-# CLX_IMAGE must be complynx/clx-scripter@sha256:<approved release digest>.
-name: clx-scripter
+# Copy into server_configs/configs/loom. Read docs/server-rollout.md first.
+# CLX_IMAGE must be complynx/loom@sha256:<approved release digest>.
+name: loom
 x-runtime: &runtime
   image: ${CLX_IMAGE:?Set an approved immutable image digest}
   platform: linux/amd64
@@ -15,7 +15,7 @@ services:
     <<: *runtime
     profiles: [migration]
     command: [migrate]
-    env_file: [../../data/clx-scripter/migration.env]
+    env_file: [../../data/loom/migration.env]
     networks: [traefik-net]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
     pids_limit: 32
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
   sandbox:
     <<: *runtime
-    command: [sandbox-supervisor, --socket, /run/clx-sandbox/sandbox.sock, --max-workers, "4", --worker-executable, /usr/local/bin/clx-scripter, --cleanup-timeout, 100ms]
+    command: [sandbox-supervisor, --socket, /run/clx-sandbox/sandbox.sock, --max-workers, "4", --worker-executable, /usr/local/bin/loom, --cleanup-timeout, 100ms]
     network_mode: none
     volumes: ["sandbox-socket:/run/clx-sandbox"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
@@ -46,18 +46,18 @@ services:
     <<: *runtime
     command: [serve]
     environment: {CLX_CONFIG: /etc/clx/config.yaml}
-    env_file: [../../data/clx-scripter/api.env]
+    env_file: [../../data/loom/api.env]
     volumes:
-      - ../../data/clx-scripter/config.yaml:/etc/clx/config.yaml:ro
-      - ../../data/clx-scripter/keys/key-v1:/run/secrets/clx-auth-key:ro
-      - ../../data/clx-scripter/artifacts:/data/artifacts
+      - ../../data/loom/config.yaml:/etc/clx/config.yaml:ro
+      - ../../data/loom/keys/key-v1:/run/secrets/clx-auth-key:ro
+      - ../../data/loom/artifacts:/data/artifacts
       - sandbox-socket:/run/clx-sandbox:ro
     ports: ["127.0.0.1:58280:8080"]
     expose: ["8080", "9090"]
     networks:
       traefik-net: {}
       discovery-proxy: {}
-      clx-observability: {aliases: [clx-scripter]}
+      clx-observability: {aliases: [loom]}
     depends_on:
       sandbox: {condition: service_started}
       docker-api-proxy: {condition: service_started}
@@ -70,10 +70,10 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-net"
-      - "traefik.http.routers.clx-scripter.rule=Host(`${CLX_PUBLIC_HOST:?Set an approved DNS host}`)"
-      - "traefik.http.routers.clx-scripter.entrypoints=web"
-      - "traefik.http.routers.clx-scripter.tls.certresolver=letsencrypt"
-      - "traefik.http.services.clx-scripter.loadbalancer.server.port=8080"
+      - "traefik.http.routers.loom.rule=Host(`${CLX_PUBLIC_HOST:?Set an approved DNS host}`)"
+      - "traefik.http.routers.loom.entrypoints=web"
+      - "traefik.http.routers.loom.tls.certresolver=letsencrypt"
+      - "traefik.http.services.loom.loadbalancer.server.port=8080"
       - "complynx.docker.rollout-strategy=recreate"
 networks:
   traefik-net: {external: true}

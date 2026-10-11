@@ -1,4 +1,4 @@
-module github.com/complynx/clx-scripter
+module github.com/complynx/loom
 
 go 1.27.2
 

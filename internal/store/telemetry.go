@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/complynx/clx-scripter/internal/telemetry"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 // TelemetrySnapshot reads aggregates only. It never reads prompts, identities,
