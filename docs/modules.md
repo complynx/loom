@@ -91,7 +91,7 @@ Prepare — без бизнес-изменений. Человеческий т�
 
 ## JS API
 
-Worker получает разрешённые proxy modules и встроенные `history`, `artifacts`, [личную память `memory`](user-memory.md). Память доступна каждому авторизованному пользователю; `diagnostics` требует `diagnostics.read`. Эти четыре имени зарезервированы; сервис не может заменить встроенный модуль. Пример формы:
+Worker получает разрешённые proxy modules и встроенные `history`, `artifacts`, [личную память `memory`](user-memory.md), `files`, `diagnostics` и `help`. Память и справка доступны каждому авторизованному пользователю; `files` требует включённого file worker, `artifacts.read` и `chat.read`, а `diagnostics` — `diagnostics.read`. Все шесть имён зарезервированы; сервис не может заменить встроенный модуль. Пример формы:
 
 ```javascript
 const [slots, history] = await Promise.all([
