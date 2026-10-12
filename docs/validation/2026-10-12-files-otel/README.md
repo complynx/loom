@@ -46,3 +46,12 @@ on behalf of Daniel Drizhuk
 - License manifest: 69 modules match locked versions/commits; all 72 notices byte-match the exact Go module cache.
 
 - Final general source review (pass 6): No actionable findings. Final dedicated OTel review (pass 2): No actionable findings. Earlier verified findings were fixed and retested. Staged diff stayed empty throughout review.
+
+## GitHub source mirror repair
+
+Initial push and PR CI for 3fde8d1 passed dependency checks, both race suites, Golden and govulncheck, then failed in source-bundled worker construction. Alpine GitLab returned HTTP 418 for apk-tools-v3.0.8.tar.gz. CI run: https://github.com/complynx/loom/actions/runs/38275172599 .
+
+The source collector now uses abuild's native DISTFILES_MIRROR with the official Alpine v3.24 distfiles service first, retaining upstream fallback and exact pinned APKBUILD checksum verification. A clean Alpine build environment downloaded the formerly failing archive and verified its checksum and patch. Deliberate archive corruption was rejected. A fresh independent source review of this repair reported No actionable findings. No source or license requirement was removed. The production worker still runs as UID 10001; the acceptance fixture uses build-stage tooling.
+
+Linux Golden with integration tags also passed, including Linux-only socket ownership/recovery code.
+Mirror repair full worker rebuild: PASS; all 757 source checksums PASS. GitHub rerun is tracked separately from this local result.

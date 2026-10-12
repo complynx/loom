@@ -45,7 +45,9 @@ to provide source later is not this release procedure.
 
 The build reads the exact installed package metadata and fetches each origin's
 APKBUILD and patches at its recorded full aports commit. It downloads and verifies
-upstream source archives for every runtime origin, preserving upstream license
+source archives from the official Alpine distfiles mirror first, with upstream
+fallback. APKBUILD checksum verification is unchanged for every runtime origin.
+The bundle preserves upstream license
 and copyright material inside those archives. The bundle includes the package
 lock, recipes, patches, upstream archives, and checksums. It can be large,
 including compiler/runtime library sources. Build tools remain in a separate

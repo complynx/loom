@@ -31,7 +31,7 @@ while IFS='|' read -r name version origin commit license; do
     cached_source="/var/cache/loom-sources/$origin-$commit"
     source_directory="$destination/sources/$origin-$commit"
     mkdir -p "$cached_source" "$source_directory"
-    (cd "$directory" && SRCDEST="$cached_source" abuild -F fetch verify </dev/null)
+    (cd "$directory" && SRCDEST="$cached_source" DISTFILES_MIRROR=https://distfiles.alpinelinux.org/distfiles/v3.24 abuild -F fetch verify </dev/null)
     cp -a "$cached_source/." "$source_directory/"
 done
 cp /licenses/runtime/*.txt /licenses/runtime/packages.json "$destination/"
