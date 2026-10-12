@@ -21,4 +21,3 @@ otelcol.exporter.otlphttp "loom_traces" {
     endpoint = sys.env("LOOM_TRACE_ENDPOINT")
   }
 }
-
