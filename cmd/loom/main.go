@@ -37,12 +37,14 @@ func main() {
 func run(args []string) error {
 	if len(args) == 0 {
 		return errors.New(
-			"expected serve, migrate, rotate-session-keys, sandbox-supervisor, sandbox-worker or docker-proxy",
+			"expected serve, migrate, rotate-session-keys, sandbox-supervisor, sandbox-worker, file-worker or docker-proxy",
 		)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	switch args[0] {
+	case "file-worker":
+		return runFileWorker(ctx, args)
 	case "docker-proxy":
 		return runDockerProxy(ctx, args)
 	case "sandbox-worker":

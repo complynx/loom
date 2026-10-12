@@ -450,3 +450,27 @@ func (e *Engine) saveHistoryPrefix(
 	}
 	return cache.SaveRunContext(ctx, run.ID, e.opts.Owner, run.Fence, events[len(events)-1].Seq, items)
 }
+
+// boundedContextModel applies live reductions before the next provider request.
+func (e *Engine) boundedContextModel(model domain.Model, snapshot, current domain.Settings) domain.Model {
+	limit := e.inputTokenLimit(model)
+	for _, value := range []int{snapshot.ContextInputTokenBudget, current.ContextInputTokenBudget} {
+		if value > 0 && int64(value) < limit {
+			limit = int64(value)
+		}
+	}
+	model.InputTokenLimit = limit
+	return model
+}
+
+func (e *Engine) modelForTurn(ctx context.Context, run domain.Run) (domain.Model, error) {
+	model, err := e.store.ExecutionModel(ctx, run.ID)
+	if err != nil {
+		return model, err
+	}
+	current, err := e.store.GetSettings(ctx)
+	if err != nil {
+		return model, err
+	}
+	return e.boundedContextModel(model, run.SettingsSnapshot, current), nil
+}

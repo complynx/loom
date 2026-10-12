@@ -137,6 +137,7 @@ type SourceFunc func(context.Context) ([]Endpoint, error)
 func (f SourceFunc) Discover(ctx context.Context) ([]Endpoint, error) { return f(ctx) }
 
 type Options struct {
+	WrapTransport func(http.RoundTripper) http.RoundTripper
 	// OnCallerBindings persists trusted identities before publishing the snapshot.
 	OnCallerBindings                    func(context.Context, []CallerBinding) error
 	RequestTimeout, DynamicCacheCeiling time.Duration
@@ -347,7 +348,7 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	seen := map[string]bool{}
 	for _, module := range m.Modules {
 		if seen[module.ID] || reserved(module.ID) || module.ID == "history" || module.ID == fieldArtifacts ||
-			module.ID == "diagnostics" || module.ID == "memory" {
+			module.ID == "diagnostics" || module.ID == "memory" || module.ID == "files" {
 			return m, errors.New("duplicate or reserved module id")
 		}
 		seen[module.ID] = true
@@ -996,6 +997,9 @@ func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
 		if e != nil {
 			failures = append(failures, e)
 			continue
+		}
+		if r.opts.WrapTransport != nil {
+			client.Transport = r.opts.WrapTransport(client.Transport)
 		}
 		request, e := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 		if e != nil {

@@ -96,6 +96,15 @@ bootstrap_settings:
   external_disclosure_default: false
 
 observability:
+  otel:
+    enabled: false
+    endpoint: http://alloy:4318
+    service_name: loom
+    sample_ratio: 0.1
+    timeout_ms: 1000
+    export_interval_ms: 15000
+    max_queue: 512
+    max_batch: 64
   metrics_listen: ":9090" # Private Docker network only; never publish through Traefik.
   log_level: "info"
   log_payloads: false
@@ -108,3 +117,18 @@ search:
 operator:
   client_id: ""
   redirect_uri: ""
+
+# Optional private streamed file worker; see docs/file-tools.md.
+file_tools:
+  enabled: false
+  socket: /run/loom-files/processor.sock
+  timeout_ms: 30000
+transcription:
+  enabled: false
+  provider: openai
+  model: gpt-transcribe
+  endpoint: https://api.openai.com/v1/audio/transcriptions
+  # Empty value uses providers.openai.api_key in the API process only.
+  api_key: ""
+  credits_per_second: 75
+  max_duration_seconds: 300

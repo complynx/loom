@@ -46,3 +46,34 @@ func validateLifecycleSettings(v domain.Settings) error {
 	}
 	return nil
 }
+
+// SetExecutionCeilings binds editable limits to immutable deployment ceilings before serving.
+func (s *Store) SetExecutionCeilings(script, parallel, contextBudget int, defaults domain.Settings) {
+	s.scriptCeiling, s.parallelCeiling, s.contextCeiling = script, parallel, contextBudget
+	s.executionDefaults = defaults
+}
+
+func (s *Store) normalizeExecutionSettings(v domain.Settings) domain.Settings {
+	if v.TotalActiveRunLimit == 0 {
+		v.TotalActiveRunLimit = s.executionDefaults.TotalActiveRunLimit
+	}
+	if v.ScriptTimeoutMS == 0 {
+		v.ScriptTimeoutMS = s.executionDefaults.ScriptTimeoutMS
+	}
+	if v.ParallelRPCLimit == 0 {
+		v.ParallelRPCLimit = s.executionDefaults.ParallelRPCLimit
+	}
+	if v.ContextInputTokenBudget == 0 {
+		v.ContextInputTokenBudget = s.executionDefaults.ContextInputTokenBudget
+	}
+	return v
+}
+
+func (s *Store) validateExecutionSettings(v domain.Settings) error {
+	for _, pair := range [][2]int{{v.TotalActiveRunLimit, s.totalCeiling}, {v.ScriptTimeoutMS, s.scriptCeiling}, {v.ParallelRPCLimit, s.parallelCeiling}, {v.ContextInputTokenBudget, s.contextCeiling}} {
+		if pair[0] < 0 || (pair[1] > 0 && (pair[0] < 1 || pair[0] > pair[1])) {
+			return domain.NewError(http.StatusUnprocessableEntity, "hard_execution_ceiling")
+		}
+	}
+	return nil
+}

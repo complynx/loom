@@ -60,19 +60,25 @@ func (p measuredProvider) SupportsCompaction(request provider.Request) bool {
 }
 
 func (p measuredProvider) Compact(ctx context.Context, request provider.Request) (provider.Response, error) {
+	ctx, finishTrace := p.observer.Start(ctx, "model", telemetry.RunID(ctx))
 	started := time.Now()
 	client, ok := p.client.(provider.CompactClient)
 	if !ok {
-		return provider.Response{}, &provider.Failure{Code: "compaction_unavailable"}
+		err := &provider.Failure{Code: "compaction_unavailable"}
+		finishTrace(err)
+		return provider.Response{}, err
 	}
 	result, err := client.Compact(ctx, request)
+	finishTrace(err)
 	p.observer.Operation(ctx, "model", operationOutcome(err), telemetry.RunID(ctx), started)
 	return result, err
 }
 
 func (p measuredProvider) Respond(ctx context.Context, request provider.Request) (provider.Response, error) {
+	ctx, finishTrace := p.observer.Start(ctx, "model", telemetry.RunID(ctx))
 	started := time.Now()
 	var err error
+	defer func() { finishTrace(err) }()
 	defer func() { p.observer.Operation(ctx, "model", operationOutcome(err), telemetry.RunID(ctx), started) }()
 	p.observer.DebugPayload(ctx, "model_request", request)
 	result, err := p.client.Respond(ctx, request)
@@ -80,8 +86,10 @@ func (p measuredProvider) Respond(ctx context.Context, request provider.Request)
 	return result, err
 }
 func (p measuredProvider) CountInputTokens(ctx context.Context, request provider.Request) (int64, error) {
+	ctx, finishTrace := p.observer.Start(ctx, "token_count", telemetry.RunID(ctx))
 	started := time.Now()
 	var err error
+	defer func() { finishTrace(err) }()
 	defer func() { p.observer.Operation(ctx, "token_count", operationOutcome(err), telemetry.RunID(ctx), started) }()
 	counter, ok := p.client.(provider.TokenCounter)
 	if !ok {
@@ -98,8 +106,10 @@ type measuredAuth struct {
 }
 
 func (a measuredAuth) Authenticate(ctx context.Context, r *http.Request) (domain.Principal, error) {
+	ctx, finishTrace := a.observer.Start(ctx, "authorization", telemetry.RunID(ctx))
 	started := time.Now()
 	var err error
+	defer func() { finishTrace(err) }()
 	defer func() {
 		a.observer.Operation(ctx, "authorization", operationOutcome(err), telemetry.RunID(ctx), started)
 	}()

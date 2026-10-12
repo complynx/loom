@@ -294,3 +294,18 @@ Approved hostname/DNS, release digest, server-config revision/profile/hook, Post
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk
+
+## Optional file processing rollout
+
+Read [the file-worker contract and license checklist](file-worker.md) and [tool bounds](file-tools.md). The main CI publishes API and source-bundled worker images for the same commit. Pin both digests from `updated-loom` payload; the receiver must explicitly mount the worker socket and configure the optional worker. Sending the payload does not enable this new service in an older receiver.
+
+On `/home/complynx/server_configs`, add the private worker using the [compose overlay](../examples/file-worker.compose.yaml), adapting API service name `loom` to the actual profile. Keep `/run/loom-files` shared only between API (read-only mount) and file-worker. Give the worker no networks, host paths, database, Docker socket or secrets. Use the declared UID, memory/PID/CPU limits and bounded tmpfs. Do not add Traefik labels to the worker.
+
+Merge [the config fragment](../examples/file-worker.config.yaml) into `data/loom/config.yaml`; reuse the API OpenAI secret if transcription is enabled. Start with `file_tools.enabled: true`, `transcription.enabled: false`; check readiness, `file_processor` dependency, small PDF/image/text processing, artifact quota and denial cases. Enable transcription only after selecting its tariff, credit budget and minimal paid acceptance. Existing API/artifact recovery gates remain required. To roll back optional tools, disable both settings and restart the API before removing the worker/socket volume. Do not remove stored derived artifacts or transcription checkpoints.
+
+Written by Codex (gpt-6/Codex desktop)
+on behalf of Daniel Drizhuk
+
+## Optional OpenTelemetry rollout
+
+Use [the OTel configuration and private Alloy receiver](opentelemetry.md). The server currently has no OTLP receiver. Add the prepared stable snippet to configs/alloy/config.alloy, configure the trace backend and collector-side authentication, and keep port 4318 private. Join Loom to the existing clx-observability network, validate Alloy, then enable observability.otel in data/loom/config.yaml. Verify traces, operation metrics, correlated logs and collector-outage behavior before pilot acceptance. Existing clx_* scrape metrics remain active. No production collector changes have been applied.

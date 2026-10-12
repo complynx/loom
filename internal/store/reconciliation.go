@@ -93,17 +93,21 @@ func (s *Store) reconcileStep(
 	if err := validateReconciliationRun(*r); err != nil {
 		return err
 	}
-	reserve, e := reconciliationReserve(ctx, tx, rid, sid)
+	reserve, e := reconciliationReceiptReserve(ctx, tx, rid, sid)
 	if e != nil {
 		return e
 	}
-	cost, e := validatedReceiptCost(in.Usage, r.Model, reserve)
+	cost, e := reconciliationCost(ctx, tx, rid, sid, in.Usage, r.Model, reserve)
 	if e != nil {
 		return e
 	}
 	result := in.Result
 	if len(result) == 0 {
 		result = json.RawMessage(`{"ErrorCode":"receipt_output_unavailable"}`)
+	}
+	result, e = reconciliationOutput(ctx, tx, rid, sid, result)
+	if e != nil {
+		return e
 	}
 	_, e = tx.Exec(
 		ctx,
@@ -223,7 +227,8 @@ func reconciliationReserve(ctx context.Context, tx pgx.Tx, rid, sid string) (int
 		Scan(&state, &kind, &reserve); err != nil {
 		return 0, err
 	}
-	if (state != "unknown" && state != stepPending) || (kind != "model" && kind != "summary" && kind != "compact") {
+	if (state != platformAttemptUnknown && state != stepPending) ||
+		(kind != "model" && kind != "summary" && kind != "compact") {
 		return 0, domain.Conflict("step_not_reconcilable")
 	}
 	return reserve, nil

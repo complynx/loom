@@ -19,6 +19,9 @@ const (
 	statusClassDivisor     = 100
 	authorizationComponent = "authorization"
 	cancelledOutcome       = "cancelled"
+	successOutcome         = "success"
+	modelComponent         = "model"
+	runComponent           = "run_execution"
 )
 
 type runIDKey struct{}
@@ -45,17 +48,20 @@ type sample struct {
 type HTTPKey struct{ Route, Method, Status string }
 type CallKey struct{ Component, Outcome string }
 type Telemetry struct {
-	recoveryMode bool
-	logPayloads  bool
-	mu           sync.Mutex
-	logger       *slog.Logger
-	started      time.Time
-	http         map[HTTPKey]sample
-	calls        map[CallKey]sample
-	inFlight     int64
-	snapshot     Snapshot
-	sampled      time.Time
-	dependencies map[string]bool
+	traceExportFailures  uint64
+	metricExportFailures uint64
+	otel                 *otelState
+	recoveryMode         bool
+	logPayloads          bool
+	mu                   sync.Mutex
+	logger               *slog.Logger
+	started              time.Time
+	http                 map[HTTPKey]sample
+	calls                map[CallKey]sample
+	inFlight             int64
+	snapshot             Snapshot
+	sampled              time.Time
+	dependencies         map[string]bool
 }
 
 func histogramBounds() [8]float64 { return [8]float64{.005, .025, .1, .5, 1, 5, 30, 300} }
@@ -97,7 +103,7 @@ func (t *Telemetry) Publish(snapshot Snapshot) {
 }
 func (t *Telemetry) Dependency(ctx context.Context, name string, up bool) {
 	switch name {
-	case "database", "sandbox", "discovery", "artifact_volume":
+	case "database", "sandbox", "discovery", "artifact_volume", "file_processor":
 	default:
 		return
 	}
@@ -116,25 +122,15 @@ func (t *Telemetry) Dependency(ctx context.Context, name string, up bool) {
 
 // Operation admits only fixed components and outcomes, never module names or IDs.
 func (t *Telemetry) Operation(ctx context.Context, component, outcome, runID string, started time.Time) {
-	switch component {
-	case "diagnostics", "model",
-		"token_count",
-		authorizationComponent,
-		"module_rpc",
-		"module_call",
-		"script",
-		"artifact_gc",
-		"queue_recovery",
-		"lifecycle",
-		"run_execution":
-	default:
+	if !knownComponent(component) {
 		return
 	}
 	switch outcome {
-	case "success", errorOutcome, cancelledOutcome, "timeout", "unknown", "denied":
+	case successOutcome, errorOutcome, cancelledOutcome, "timeout", "unknown", "denied":
 	default:
 		outcome = errorOutcome
 	}
+	t.otelOperation(ctx, component, outcome, started)
 	elapsed := time.Since(started)
 	key := CallKey{component, outcome}
 	t.mu.Lock()
@@ -146,7 +142,7 @@ func (t *Telemetry) Operation(ctx context.Context, component, outcome, runID str
 	}
 	level := slog.LevelWarn
 	message := "operation stopped"
-	if outcome == "success" {
+	if outcome == successOutcome {
 		level = slog.LevelDebug
 		message = "operation finished"
 	}
@@ -154,7 +150,7 @@ func (t *Telemetry) Operation(ctx context.Context, component, outcome, runID str
 		level = slog.LevelDebug
 	}
 	if outcome == errorOutcome &&
-		(component == "model" || component == authorizationComponent || component == "run_execution") {
+		(component == modelComponent || component == authorizationComponent || component == runComponent) {
 		level = slog.LevelError
 	}
 	t.logger.Log(ctx, level, message, attrs...)
@@ -164,6 +160,7 @@ func (t *Telemetry) Event(ctx context.Context, event string, attrs ...any) {
 }
 func (t *Telemetry) HTTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r, span := t.otelHTTP(r)
 		started := time.Now()
 		requestID := uuid.NewString()
 		ctx := context.WithValue(r.Context(), requestIDKey{}, requestID)
@@ -185,6 +182,7 @@ func (t *Telemetry) HTTP(next http.Handler) http.Handler {
 			default:
 				method = "OTHER"
 			}
+			finishHTTP(span, route, method, wrapped.status)
 			status := fmt.Sprintf("%dxx", wrapped.status/statusClassDivisor)
 			elapsed := time.Since(started)
 			key := HTTPKey{route, method, status}
@@ -264,7 +262,7 @@ func (t *Telemetry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gauge := func(name, help string, value float64) {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s %g\n", name, help, name, name, value)
 	}
-	t.processGauges(gauge)
+	t.processMetrics(gauge, &b)
 	gauge("clx_http_in_flight", "HTTP requests currently served.", float64(t.inFlight))
 	timestamp := float64(0)
 	if !t.sampled.IsZero() {
@@ -276,7 +274,7 @@ func (t *Telemetry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		timestamp,
 	)
 	fmt.Fprintln(&b, "# HELP clx_dependency_up Current dependency availability.\n# TYPE clx_dependency_up gauge")
-	for _, name := range []string{"database", "sandbox", "discovery", "artifact_volume"} {
+	for _, name := range []string{"database", "sandbox", "discovery", "artifact_volume", "file_processor"} {
 		value := 0
 		if t.dependencies[name] {
 			value = 1
@@ -384,7 +382,24 @@ func (t *Telemetry) recoveryGauge() float64 {
 	return 0
 }
 
-func (t *Telemetry) processGauges(gauge func(string, string, float64)) {
+func (t *Telemetry) processMetrics(gauge func(string, string, float64), b *strings.Builder) {
+	t.exportFailureMetrics(b)
 	gauge("clx_recovery_mode", "Restore dispatch barrier enabled.", t.recoveryGauge())
 	gauge("clx_process_start_time_seconds", "Unix process start time.", float64(t.started.Unix()))
+}
+
+// exportFailureMetrics is called while the telemetry lock is held.
+func (t *Telemetry) exportFailureMetrics(b *strings.Builder) {
+	fmt.Fprintln(
+		b,
+		"# HELP clx_otel_export_failures_total OTLP export requests dropped after failure, including partial rejection.\n# TYPE clx_otel_export_failures_total counter",
+	)
+	fmt.Fprintf(
+		b,
+		"clx_otel_export_failures_total{signal=%q} %d\nclx_otel_export_failures_total{signal=%q} %d\n",
+		"traces",
+		t.traceExportFailures,
+		"metrics",
+		t.metricExportFailures,
+	)
 }

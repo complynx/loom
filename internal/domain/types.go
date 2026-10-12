@@ -244,28 +244,32 @@ type UserPolicy struct {
 	Version        int64   `json:"version"`
 }
 type Settings struct {
-	RunActiveTimeSeconds   int       `json:"run_active_time_seconds"`
-	RegexPatternMaxChars   int       `json:"regex_pattern_max_chars"`
-	RegexScanMaxBytes      int       `json:"regex_scan_max_bytes"`
-	RegexDeadlineMS        int       `json:"regex_deadline_ms"`
-	RunLifetimeSeconds     int       `json:"run_lifetime_seconds"`
-	InputWaitSeconds       int       `json:"input_wait_seconds"`
-	ApprovalWaitSeconds    int       `json:"approval_wait_seconds"`
-	PausedWaitSeconds      int       `json:"paused_wait_seconds"`
-	HistoryRetention       Retention `json:"history_retention"`
-	ArtifactRetention      Retention `json:"artifact_retention"`
-	TraceRetention         Retention `json:"trace_retention"`
-	ExternalDisclosure     bool      `json:"external_disclosure"`
-	Models                 []Model   `json:"models"`
-	DefaultModelID         string    `json:"default_model_id"`
-	DefaultEffort          string    `json:"default_effort"`
-	InitialCredits         int64     `json:"initial_credits"`
-	MaxRunMicrocredits     int64     `json:"max_run_microcredits"`
-	ActiveRunLimit         int       `json:"active_run_limit"`
-	HistoryRecentLimit     int       `json:"history_recent_limit"`
-	MaxSteps               int       `json:"max_steps"`
-	QuestionTimeoutSeconds int       `json:"question_timeout_seconds"`
-	Version                int64     `json:"version"`
+	TotalActiveRunLimit     int       `json:"total_active_run_limit"`
+	ScriptTimeoutMS         int       `json:"script_timeout_ms"`
+	ParallelRPCLimit        int       `json:"parallel_rpc_limit"`
+	ContextInputTokenBudget int       `json:"context_input_token_budget"`
+	RunActiveTimeSeconds    int       `json:"run_active_time_seconds"`
+	RegexPatternMaxChars    int       `json:"regex_pattern_max_chars"`
+	RegexScanMaxBytes       int       `json:"regex_scan_max_bytes"`
+	RegexDeadlineMS         int       `json:"regex_deadline_ms"`
+	RunLifetimeSeconds      int       `json:"run_lifetime_seconds"`
+	InputWaitSeconds        int       `json:"input_wait_seconds"`
+	ApprovalWaitSeconds     int       `json:"approval_wait_seconds"`
+	PausedWaitSeconds       int       `json:"paused_wait_seconds"`
+	HistoryRetention        Retention `json:"history_retention"`
+	ArtifactRetention       Retention `json:"artifact_retention"`
+	TraceRetention          Retention `json:"trace_retention"`
+	ExternalDisclosure      bool      `json:"external_disclosure"`
+	Models                  []Model   `json:"models"`
+	DefaultModelID          string    `json:"default_model_id"`
+	DefaultEffort           string    `json:"default_effort"`
+	InitialCredits          int64     `json:"initial_credits"`
+	MaxRunMicrocredits      int64     `json:"max_run_microcredits"`
+	ActiveRunLimit          int       `json:"active_run_limit"`
+	HistoryRecentLimit      int       `json:"history_recent_limit"`
+	MaxSteps                int       `json:"max_steps"`
+	QuestionTimeoutSeconds  int       `json:"question_timeout_seconds"`
+	Version                 int64     `json:"version"`
 }
 type Balance struct {
 	AvailableMicrocredits int64 `json:"available_microcredits"`
@@ -278,6 +282,9 @@ type Message struct {
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 type Usage struct {
+	AudioInputTokens  int64  `json:"audio_input_tokens,omitempty"`
+	TextInputTokens   int64  `json:"text_input_tokens,omitempty"`
+	AudioDurationMS   int64  `json:"audio_duration_ms,omitempty"`
 	CacheWriteTokens  int64  `json:"cache_write_tokens,omitempty"`
 	CachedInputTokens int64  `json:"cached_input_tokens"`
 	InputTokens       int64  `json:"input_tokens"`

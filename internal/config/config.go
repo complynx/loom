@@ -162,6 +162,7 @@ type Settings struct {
 	ExternalDisclosureDefault bool      `yaml:"external_disclosure_default"`
 }
 type Observability struct {
+	OTel          OTel   `yaml:"otel"`
 	LogLevel      string `yaml:"log_level"`
 	MetricsListen string `yaml:"metrics_listen"`
 	LogPayloads   bool   `yaml:"log_payloads"`
@@ -171,6 +172,8 @@ type Search struct {
 }
 
 type Config struct {
+	FileTools         FileTools           `yaml:"file_tools"`
+	Transcription     Transcription       `yaml:"transcription"`
 	Operator          Operator            `yaml:"operator"`
 	Search            Search              `yaml:"search"`
 	HTTP              HTTP                `yaml:"http"`
@@ -231,6 +234,7 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	strict := yaml.NewDecoder(bytes.NewReader(expanded))
 	strict.KnownFields(true)
 	c := Config{
+		Observability: Observability{OTel: OTel{SampleRatio: DefaultOTelSampleRatio}},
 		Execution: Execution{
 			SponsoredAttemptLimit:      defaultSponsoredAttemptLimit,
 			ProviderRetryAttemptLimit:  defaultProviderRetryAttempts,
@@ -243,9 +247,17 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, decodeErr
 	}
 	applyOpenAIDefaults(&c)
+	applyFileDefaults(&c)
+	c.Observability.OTel.ApplyDefaults()
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if err := c.Observability.OTel.Validate(); err != nil {
+		return err
+	}
+	if err := c.ValidateFileTools(); err != nil {
+		return err
+	}
 	for _, check := range []func() error{c.validateTrust, c.validateDeployment, c.validateLimits, c.validateCatalog, c.validateProviders, c.validateRetention} {
 		if err := check(); err != nil {
 			return err

@@ -18,17 +18,19 @@ import (
 	"github.com/complynx/loom/internal/sandbox"
 	"github.com/complynx/loom/internal/store"
 	"github.com/complynx/loom/internal/telemetry"
+	"github.com/complynx/loom/internal/transcription"
 )
 
 type runtimeTools struct {
-	observer   *telemetry.Telemetry
-	cfg        config.Config
-	registry   *modules.Registry
-	repository *store.Store
-	files      *artifacts.Service
-	executor   sandbox.Executor
-	authorize  RunAuthorizer
-	bridge     *ModuleBridge
+	transcriber transcription.Provider
+	observer    *telemetry.Telemetry
+	cfg         config.Config
+	registry    *modules.Registry
+	repository  *store.Store
+	files       *artifacts.Service
+	executor    sandbox.Executor
+	authorize   RunAuthorizer
+	bridge      *ModuleBridge
 }
 
 func (t runtimeTools) tools(
@@ -62,6 +64,9 @@ func (t runtimeTools) tools(
 	) + ". Builtins: modules.history.search({mode:'literal'|'fulltext'|'regex',query,after_seq,before_seq,event_types,limit,max_bytes,snippet_chars}); literal is default, no regex escaping needed. Results include partial, reason, next_cursor, truncated_seqs and skipped_seqs. Use modules.history.read({after_seq,limit,max_bytes}) for bounded event pages. Await calls; return JSON. Never use external service writes in scripts."
 	if fresh.Has("artifacts.read") {
 		description += " Artifacts: modules.artifacts.read({artifact_id,offset,limit}) returns bounded base64 and next_offset; modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes."
+	}
+	if t.cfg.FileTools.Enabled && fresh.Has("artifacts.read") && fresh.Has("chat.read") {
+		description += fileToolDescription()
 	}
 	description += memoryToolDescription(fresh)
 	if fresh.Has(diagnosticsPermission) {
@@ -115,6 +120,9 @@ func (t runtimeTools) tools(
 			},
 		)
 	}
+	if t.cfg.Transcription.Enabled && fresh.Has("artifacts.read") && fresh.Has("chat.read") {
+		tools = append(tools, transcriptionTool())
+	}
 	return tools, nil
 }
 func (t runtimeTools) fresh(ctx context.Context, r domain.Run) (domain.Principal, string, error) {
@@ -127,8 +135,13 @@ func (t runtimeTools) script(
 	_ domain.Principal,
 	_ string, code string,
 ) (json.RawMessage, error) {
-	started := time.Now()
 	var err error
+	if t.observer != nil {
+		var finishTrace func(error)
+		ctx, finishTrace = t.observer.Start(ctx, "script", r.ID)
+		defer func() { finishTrace(err) }()
+	}
+	started := time.Now()
 	defer func() {
 		if t.observer != nil {
 			t.observer.Operation(ctx, "script", operationOutcome(err), r.ID, started)
@@ -160,6 +173,9 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 	if err != nil {
 		return nil, err
 	}
+	if t.cfg.FileTools.Enabled && fresh.Has("artifacts.read") && fresh.Has("chat.read") {
+		bindings = append(bindings, sandbox.Binding{Module: filesModule, Methods: fileMethods()})
+	}
 	if fresh.Has(diagnosticsPermission) {
 		bindings = append(
 			bindings,
@@ -178,12 +194,9 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 		value.UserID = r.OwnerID
 		return value, refreshErr
 	}, r.ID, func(c context.Context) error { return t.bridge.guard(c, r) })
-	parallelLimit := t.cfg.BootstrapSettings.ParallelRPCLimit
-	if parallelLimit <= 0 || parallelLimit > t.cfg.Sandbox.ParallelRPCCeiling {
-		parallelLimit = t.cfg.Sandbox.ParallelRPCCeiling
-	}
-	if parallelLimit <= 0 || parallelLimit > parallelRPCLimit {
-		parallelLimit = parallelRPCLimit
+	limit, parallelLimit, err := t.scriptLimits(ctx, r)
+	if err != nil {
+		return nil, &runs.ScriptNotStartedError{Cause: err}
 	}
 	slots := make(chan struct{}, parallelLimit)
 	broker := sandbox.BrokerFunc(
@@ -195,7 +208,7 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 				return nil, c.Err()
 			}
 			if module != historyModule && module != artifactsModule && module != diagnosticsModule &&
-				module != memoryModule {
+				module != memoryModule && module != filesModule {
 				rpcStarted := time.Now()
 				rpcResult, rpcErr := remote.Call(c, module, method, raw)
 				if t.observer != nil {
@@ -206,10 +219,6 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 			return t.builtin(c, r, module, method, raw)
 		},
 	)
-	limit := t.cfg.BootstrapSettings.ScriptTimeoutMS
-	if limit <= 0 || limit > t.cfg.Sandbox.ScriptTimeoutCeilingMS {
-		limit = t.cfg.Sandbox.ScriptTimeoutCeilingMS
-	}
 	scriptCtx, cancel := context.WithTimeout(ctx, time.Duration(limit)*time.Millisecond)
 	defer cancel()
 	return t.executor.Execute(scriptCtx, code, bindings, broker)
@@ -297,7 +306,7 @@ func scriptBindings(reads []modules.Tool, artifactAccess bool) ([]sandbox.Bindin
 	}
 	for _, tool := range reads {
 		if tool.Module == historyModule || tool.Module == artifactsModule || tool.Module == diagnosticsModule ||
-			tool.Module == memoryModule {
+			tool.Module == memoryModule || tool.Module == filesModule {
 			return nil, errors.New("reserved builtin module name collision")
 		}
 		index, ok := indexes[tool.Module]
@@ -324,6 +333,9 @@ func (t runtimeTools) builtin(
 	fresh, _, e := t.fresh(c, r)
 	if e != nil {
 		return nil, e
+	}
+	if module == filesModule {
+		return t.processFile(c, r, fresh, method, raw)
 	}
 	if module == memoryModule {
 		return t.memory(c, r, fresh, method, raw)
@@ -486,4 +498,43 @@ func (t runtimeTools) attachArtifact(ctx context.Context, r domain.Run, hid stri
 	}
 	r.Input.ArtifactIDs = []string{handle.ArtifactID}
 	return t.modelArtifacts(ctx, r)
+}
+
+// boundedActionLimit applies reductions to the next action without enlarging an admitted run.
+func boundedActionLimit(snapshot, current, ceiling int) int {
+	limit := ceiling
+	for _, value := range []int{snapshot, current} {
+		if value > 0 && value < limit {
+			limit = value
+		}
+	}
+	return limit
+}
+
+func (t runtimeTools) scriptLimits(ctx context.Context, r domain.Run) (int, int, error) {
+	current := domain.Settings{
+		ScriptTimeoutMS:  t.cfg.BootstrapSettings.ScriptTimeoutMS,
+		ParallelRPCLimit: t.cfg.BootstrapSettings.ParallelRPCLimit,
+	}
+	if t.repository != nil {
+		var err error
+		current, err = t.repository.GetSettings(ctx)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	timeout := boundedActionLimit(
+		r.SettingsSnapshot.ScriptTimeoutMS,
+		current.ScriptTimeoutMS,
+		t.cfg.Sandbox.ScriptTimeoutCeilingMS,
+	)
+	parallel := boundedActionLimit(
+		r.SettingsSnapshot.ParallelRPCLimit,
+		current.ParallelRPCLimit,
+		t.cfg.Sandbox.ParallelRPCCeiling,
+	)
+	if parallel <= 0 || parallel > parallelRPCLimit {
+		parallel = parallelRPCLimit
+	}
+	return timeout, parallel, nil
 }

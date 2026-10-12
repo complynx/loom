@@ -150,6 +150,9 @@ func (s *Store) UpdatePolicy(
 	}
 	v.Version = version + 1
 	e = s.tx(ctx, func(tx pgx.Tx) error {
+		if err := lockAdmission(ctx, tx); err != nil {
+			return err
+		}
 		if version == 0 {
 			_, insertErr := tx.Exec(
 				ctx,
@@ -191,7 +194,10 @@ func (s *Store) UpdateSettings(
 	if !p.Has("settings.write") {
 		return v, domain.Forbidden()
 	}
-	v = normalizeSettings(v)
+	v = s.normalizeExecutionSettings(normalizeSettings(v))
+	if e := s.validateExecutionSettings(v); e != nil {
+		return v, e
+	}
 	if e := s.validateProviders(v); e != nil {
 		return v, e
 	}
@@ -219,6 +225,9 @@ func (s *Store) UpdateSettings(
 	}
 	v.Version = version + 1
 	e := s.tx(ctx, func(tx pgx.Tx) error {
+		if e := lockAdmission(ctx, tx); e != nil {
+			return e
+		}
 		tag, e := tx.Exec(
 			ctx,
 			"UPDATE settings SET doc=$1,version=version+1 WHERE singleton AND version=$2",

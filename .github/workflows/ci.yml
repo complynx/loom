@@ -29,6 +29,12 @@ jobs:
       - run: go mod verify
       - run: python3 scripts/dependency-lock.py --check
       - run: go test -race -parallel=4 -tags=integration ./...
+      - name: Test pinned media CLIs in Linux worker environment
+        run: >-
+          docker run --rm --network host -v "$PWD:/src" -w /src
+          -e CLX_TEST_DATABASE_DSN
+          golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+          sh -c 'apk add --no-cache gcc musl-dev ffmpeg=8.1.2-r0 poppler-utils=25.12.0-r1 >/dev/null && CGO_ENABLED=1 go test -race -parallel=4 -tags=integration ./internal/fileproc ./internal/app ./integration'
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/loom
       - run: sh scripts/install-tools.sh
       - run: bin/golangci-lint config verify
@@ -36,7 +42,9 @@ jobs:
       - run: bin/govulncheck ./...
       - name: Verify container build without publishing
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        run: docker build --platform linux/amd64 -t loom:ci .
+        run: |
+          docker build --platform linux/amd64 --target api -t loom:ci .
+          docker build --platform linux/amd64 --target file-worker -t loom:file-worker-ci .
 
   publish-and-deploy:
     name: Publish Docker image and request server deployment
@@ -96,6 +104,23 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build and push source-bundled file worker
+        id: file-worker
+        if: steps.current.outputs.publish == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: file-worker
+          platforms: linux/amd64
+          push: true
+          tags: |
+            complynx/loom:file-worker-latest
+            complynx/loom:file-worker-sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=file-worker
+          cache-to: type=gha,scope=file-worker,mode=max
       - name: Dispatch event to server
         if: steps.current.outputs.publish == 'true'
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
@@ -104,4 +129,4 @@ jobs:
           repository: complynx/server_configs
           event-type: updated-loom
           client-payload: >-
-            {"sha":"${{ github.sha }}","image":"complynx/loom:sha-${{ github.sha }}","digest":"${{ steps.image.outputs.digest }}"}
+            {"sha":"${{ github.sha }}","image":"complynx/loom:sha-${{ github.sha }}","digest":"${{ steps.image.outputs.digest }}","file_worker_image":"complynx/loom:file-worker-sha-${{ github.sha }}","file_worker_digest":"${{ steps.file-worker.outputs.digest }}"}

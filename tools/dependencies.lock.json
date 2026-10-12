@@ -1,5 +1,5 @@
 {
-  "audit_date": "2026-10-11",
+  "audit_date": "2026-10-12",
   "go": {
     "version": "go1.27.2",
     "commit": "022c8636110ebac86a9b88724cda168ed713c21f",
@@ -19,6 +19,27 @@
     ]
   },
   "modules": [
+    {
+      "module": "cel.dev/expr",
+      "version": "v0.25.2",
+      "commit": "cb51b4176013ad19bd00df94be273c322916a620",
+      "repository": "https://github.com/google/cel-spec",
+      "indirect": true
+    },
+    {
+      "module": "cloud.google.com/go/auth",
+      "version": "v0.18.2",
+      "commit": "75e6b63c37d2b97010a2ccaa20239cae237e5d10",
+      "repository": "https://github.com/googleapis/google-cloud-go",
+      "indirect": true
+    },
+    {
+      "module": "cloud.google.com/go/compute/metadata",
+      "version": "v0.9.0",
+      "commit": "7b2365446764b0bba37198a55644954b437bddd0",
+      "repository": "https://github.com/googleapis/google-cloud-go",
+      "indirect": true
+    },
     {
       "module": "filippo.io/edwards25519",
       "version": "v1.2.0",
@@ -69,6 +90,13 @@
       "indirect": true
     },
     {
+      "module": "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp",
+      "version": "v1.33.0",
+      "commit": "059f723244364dd67f86051b38d67c66094651bd",
+      "repository": "https://github.com/GoogleCloudPlatform/opentelemetry-operations-go",
+      "indirect": true
+    },
+    {
       "module": "github.com/Masterminds/semver/v3",
       "version": "v3.5.0",
       "commit": "8b89c86cb53c57cfd5d07c13de12bc4d78954e99",
@@ -97,6 +125,13 @@
       "indirect": true
     },
     {
+      "module": "github.com/apapsch/go-jsonmerge/v2",
+      "version": "v2.0.0",
+      "commit": "90b01458c2af82553f17c56a431386c57a8a569f",
+      "repository": "https://github.com/apapsch/go-jsonmerge",
+      "indirect": true
+    },
+    {
       "module": "github.com/bytedance/gopkg",
       "version": "v0.1.4",
       "commit": "165f9e47565258dbf687d8153427a5e1ed3e6b61",
@@ -115,6 +150,13 @@
       "version": "v0.5.1",
       "commit": "d64ddf953f35a9e8bfa91bf64c6779c45842504e",
       "repository": "https://github.com/bytedance/sonic",
+      "indirect": true
+    },
+    {
+      "module": "github.com/cenkalti/backoff/v5",
+      "version": "v5.0.3",
+      "commit": "7cad66a637c4ffff09d0795608116ddcc7eb1769",
+      "repository": "https://github.com/cenkalti/backoff",
       "indirect": true
     },
     {
@@ -143,6 +185,13 @@
       "version": "v0.1.7",
       "commit": "4122261cd561666b700ae01022be575d27447d92",
       "repository": "https://github.com/cloudwego/base64x",
+      "indirect": true
+    },
+    {
+      "module": "github.com/cncf/xds/go",
+      "version": "v0.0.0-20260202195803-dba9d589def2",
+      "commit": "dba9d589def2cd10099a3a64887d859188c2f57a",
+      "repository": "https://github.com/cncf/xds",
       "indirect": true
     },
     {
@@ -265,6 +314,34 @@
       "indirect": true
     },
     {
+      "module": "github.com/envoyproxy/go-control-plane",
+      "version": "v0.14.0",
+      "commit": "71637ad69bbc5f51fbb2562e612a4365292804a5",
+      "repository": "https://github.com/envoyproxy/go-control-plane",
+      "indirect": true
+    },
+    {
+      "module": "github.com/envoyproxy/go-control-plane/envoy",
+      "version": "v1.37.0",
+      "commit": "004b9ec70a4696c9fac559adea646dab4ebf62b7",
+      "repository": "https://github.com/envoyproxy/go-control-plane",
+      "indirect": true
+    },
+    {
+      "module": "github.com/envoyproxy/go-control-plane/ratelimit",
+      "version": "v0.1.0",
+      "commit": "2cdf9fc1e8a104e69a6487721514041c335d86f6",
+      "repository": "https://github.com/envoyproxy/go-control-plane",
+      "indirect": true
+    },
+    {
+      "module": "github.com/envoyproxy/protoc-gen-validate",
+      "version": "v1.3.3",
+      "commit": "92b9a7df69ca9f71bfc492f7a90adf4d36eab569",
+      "repository": "https://github.com/envoyproxy/protoc-gen-validate",
+      "indirect": true
+    },
+    {
       "module": "github.com/evanphx/json-patch/v5",
       "version": "v5.9.11",
       "commit": "84a4bb100ade42a86fce2647c95a7dbcbf569cb2",
@@ -349,6 +426,160 @@
       "indirect": true
     },
     {
+      "module": "github.com/go-openapi/analysis",
+      "version": "v0.25.5",
+      "commit": "f65b57650f15860b5c7225e5391d194b6241dd9b",
+      "repository": "https://github.com/go-openapi/analysis",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/errors",
+      "version": "v0.22.8",
+      "commit": "a6770388153a83b5e93288d66979a29883828211",
+      "repository": "https://github.com/go-openapi/errors",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/jsonpointer",
+      "version": "v1.0.0",
+      "commit": "94e86086395062d3094c09c01aea3592df0fcba3",
+      "repository": "https://github.com/go-openapi/jsonpointer",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/jsonreference",
+      "version": "v1.0.0",
+      "commit": "edb350b0a13c936c03de055a3483ea334a50478c",
+      "repository": "https://github.com/go-openapi/jsonreference",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/loads",
+      "version": "v0.25.0",
+      "commit": "8538331e9bf306361c9549b885844c978c1c21a5",
+      "repository": "https://github.com/go-openapi/loads",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/runtime",
+      "version": "v0.33.0",
+      "commit": "accfcf5c480ab8f04b693164b8d65449bb2273b5",
+      "repository": "https://github.com/go-openapi/runtime",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/runtime/server-middleware",
+      "version": "v0.30.0",
+      "commit": "644458839dffd601a7e1790861a36da72f013346",
+      "repository": "https://github.com/go-openapi/runtime",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/spec",
+      "version": "v0.22.9",
+      "commit": "e682f665cd0b25eee1bcc3ec42d939d7b037a1f1",
+      "repository": "https://github.com/go-openapi/spec",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/strfmt",
+      "version": "v0.27.0",
+      "commit": "836482188ed4ce2c1b9207af61ac5c7bae328155",
+      "repository": "https://github.com/go-openapi/strfmt",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/cmdutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/conv",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/fileutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/jsonutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/loading",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/mangling",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/netutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/pools",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/stringutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/typeutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/swag/yamlutils",
+      "version": "v0.28.0",
+      "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+      "repository": "https://github.com/go-openapi/swag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-openapi/validate",
+      "version": "v0.26.1",
+      "commit": "9b81767db56f7b5b2f868bcb884d9dc07e6a7da0",
+      "repository": "https://github.com/go-openapi/validate",
+      "indirect": true
+    },
+    {
       "module": "github.com/go-playground/locales",
       "version": "v0.14.1",
       "commit": "ce315c8672599942003599943a1e64288f55b03f",
@@ -381,6 +612,13 @@
       "version": "v1.10.0",
       "commit": "a065b60ab6d0c8e15468e7709c7f76acf4431647",
       "repository": "https://github.com/go-sql-driver/mysql",
+      "indirect": true
+    },
+    {
+      "module": "github.com/go-viper/mapstructure/v2",
+      "version": "v2.5.0",
+      "commit": "9aa3f77c68e2a56222ea436c1bfa631f1b1072d5",
+      "repository": "https://github.com/go-viper/mapstructure",
       "indirect": true
     },
     {
@@ -454,10 +692,38 @@
       "indirect": true
     },
     {
+      "module": "github.com/golang/glog",
+      "version": "v1.2.5",
+      "commit": "2b790ef78571cd58d29ce909a8d4e3f71cc4c47e",
+      "repository": "https://github.com/golang/glog",
+      "indirect": true
+    },
+    {
+      "module": "github.com/golang/protobuf",
+      "version": "v1.5.4",
+      "commit": "75de7c059e36b64f01d0dd234ff2fff404ec3374",
+      "repository": "https://github.com/golang/protobuf",
+      "indirect": true
+    },
+    {
+      "module": "github.com/google/go-cmp",
+      "version": "v0.7.0",
+      "commit": "9b12f366a942ebc7254abc7f32ca05068b455fb7",
+      "repository": "https://github.com/google/go-cmp",
+      "indirect": true
+    },
+    {
       "module": "github.com/google/pprof",
       "version": "v0.0.0-20240727154555-813a5fbdbec8",
       "commit": "813a5fbdbec8a66f7a5aedb876e1b2c3ee0f99ac",
       "repository": "https://github.com/google/pprof",
+      "indirect": true
+    },
+    {
+      "module": "github.com/google/s2a-go",
+      "version": "v0.1.9",
+      "commit": "b293be1aa7a6e6e4565f9967c093dd412253b267",
+      "repository": "https://github.com/google/s2a-go",
       "indirect": true
     },
     {
@@ -468,10 +734,31 @@
       "indirect": false
     },
     {
+      "module": "github.com/googleapis/enterprise-certificate-proxy",
+      "version": "v0.3.11",
+      "commit": "84fe33f9b5f729c5596077f469ad19751a239a42",
+      "repository": "https://github.com/googleapis/enterprise-certificate-proxy",
+      "indirect": true
+    },
+    {
+      "module": "github.com/googleapis/gax-go/v2",
+      "version": "v2.17.0",
+      "commit": "f3fb23db5cd85c402dac650b2357356245711508",
+      "repository": "https://github.com/googleapis/gax-go",
+      "indirect": true
+    },
+    {
       "module": "github.com/gorilla/mux",
       "version": "v1.8.1",
       "commit": "b4617d0b9670ad14039b2739167fd35a60f557c5",
       "repository": "https://github.com/gorilla/mux",
+      "indirect": true
+    },
+    {
+      "module": "github.com/grpc-ecosystem/grpc-gateway/v2",
+      "version": "v2.30.0",
+      "commit": "1debdeabd09134bc7755b9bc85802a7840bae100",
+      "repository": "https://github.com/grpc-ecosystem/grpc-gateway",
       "indirect": true
     },
     {
@@ -567,8 +854,8 @@
     },
     {
       "module": "github.com/kr/pretty",
-      "version": "v0.3.0",
-      "commit": "a883a8422cd235c67c6c4fdcb7bbb022143e10b1",
+      "version": "v0.3.1",
+      "commit": "3cd153a126da607b78d1762779b1e1054f9889fc",
       "repository": "https://github.com/kr/pretty",
       "indirect": true
     },
@@ -692,6 +979,20 @@
       "indirect": true
     },
     {
+      "module": "github.com/oapi-codegen/runtime",
+      "version": "v1.6.0",
+      "commit": "01be2fa2667493dab65b6167f668a3c09a38ab34",
+      "repository": "https://github.com/oapi-codegen/runtime",
+      "indirect": true
+    },
+    {
+      "module": "github.com/oklog/ulid/v2",
+      "version": "v2.1.1",
+      "commit": "96c4edf226ef639c92f96f42c7c2a161ae0e1a66",
+      "repository": "https://github.com/oklog/ulid",
+      "indirect": true
+    },
+    {
       "module": "github.com/opencontainers/go-digest",
       "version": "v1.0.0",
       "commit": "ea51bea511f75cfa3ef6098cc253c5c3609b037a",
@@ -738,6 +1039,13 @@
       "version": "v0.0.0-20240102092130-5ac0b6a4141c",
       "commit": "5ac0b6a4141c771a0d3a081c36b87c977cf9c7db",
       "repository": "https://github.com/pkg/browser",
+      "indirect": true
+    },
+    {
+      "module": "github.com/planetscale/vtprotobuf",
+      "version": "v0.6.1-0.20240319094008-0393e58bdf10",
+      "commit": "0393e58bdf106fe0347e554d272a8f2c84d12461",
+      "repository": "https://github.com/planetscale/vtprotobuf",
       "indirect": true
     },
     {
@@ -825,6 +1133,13 @@
       "indirect": true
     },
     {
+      "module": "github.com/rogpeppe/fastuuid",
+      "version": "v1.2.0",
+      "commit": "10c3923834d38e951ae8f627bfec2dc632c5b6cb",
+      "repository": "https://github.com/rogpeppe/fastuuid",
+      "indirect": true
+    },
+    {
       "module": "github.com/rogpeppe/go-internal",
       "version": "v1.14.1",
       "commit": "9ee3698d19c525c9cefe855433e5f6096b77c6f5",
@@ -871,6 +1186,13 @@
       "version": "v1.0.10",
       "commit": "0491e5702ad2bb108bc519a5221bcc0f52aa9564",
       "repository": "https://github.com/spf13/pflag",
+      "indirect": true
+    },
+    {
+      "module": "github.com/spiffe/go-spiffe/v2",
+      "version": "v2.7.0",
+      "commit": "76b14bd4140aac9bef74b27a77c81333c47feee1",
+      "repository": "https://github.com/spiffe/go-spiffe",
       "indirect": true
     },
     {
@@ -1028,6 +1350,20 @@
       "indirect": true
     },
     {
+      "module": "go.opentelemetry.io/contrib/detectors/gcp",
+      "version": "v1.44.0",
+      "commit": "03b2bcdb54b3dde73c9ff91ae216aec262f6c8f5",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go-contrib",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
+      "version": "v0.70.0",
+      "commit": "c8a87a60ba1b3374fd16df11fc3eeae6c41abbc9",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go-contrib",
+      "indirect": true
+    },
+    {
       "module": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
       "version": "v0.71.0",
       "commit": "c4c6248ec2289133b6a51f554ca9367ece1de8e7",
@@ -1036,23 +1372,86 @@
     },
     {
       "module": "go.opentelemetry.io/otel",
-      "version": "v1.46.0",
-      "commit": "58db4c898f5b5594f8ba78f156475bf48486e2f2",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/otel/exporters/stdout/stdouttrace",
+      "version": "v1.45.0",
+      "commit": "93a693edeed0e07ce5ebd1dfe67af42d1e2055d8",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": true
+    },
+    {
+      "module": "go.opentelemetry.io/otel/log",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
       "repository": "https://github.com/open-telemetry/opentelemetry-go",
       "indirect": true
     },
     {
       "module": "go.opentelemetry.io/otel/metric",
-      "version": "v1.46.0",
-      "commit": "58db4c898f5b5594f8ba78f156475bf48486e2f2",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/otel/metric/x",
+      "version": "v0.69.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
       "repository": "https://github.com/open-telemetry/opentelemetry-go",
       "indirect": true
     },
     {
-      "module": "go.opentelemetry.io/otel/trace",
-      "version": "v1.46.0",
-      "commit": "58db4c898f5b5594f8ba78f156475bf48486e2f2",
+      "module": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
       "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/otel/sdk/metric",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/otel/trace",
+      "version": "v1.47.0",
+      "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+      "repository": "https://github.com/open-telemetry/opentelemetry-go",
+      "indirect": false
+    },
+    {
+      "module": "go.opentelemetry.io/proto/otlp",
+      "version": "v1.11.0",
+      "commit": "bc625d6e040020737ab65c675c87e03bc841fd60",
+      "repository": "https://github.com/open-telemetry/opentelemetry-proto-go",
       "indirect": true
     },
     {
@@ -1085,8 +1484,8 @@
     },
     {
       "module": "golang.org/x/crypto",
-      "version": "v0.56.0",
-      "commit": "86efde54dc7069251a8b007026c500d28e4239ce",
+      "version": "v0.58.0",
+      "commit": "8fdf07b3114278fb3b78c1cf1814e08bd851eb4c",
       "repository": "https://go.googlesource.com/crypto",
       "indirect": true
     },
@@ -1106,9 +1505,16 @@
     },
     {
       "module": "golang.org/x/net",
-      "version": "v0.58.0",
-      "commit": "acc78e0d2b2c855c0c4fbdcfe5f42a9e3d0f9778",
+      "version": "v0.61.0",
+      "commit": "c1d31df183e51b1075a2fd670d6f6f4efb871773",
       "repository": "https://go.googlesource.com/net",
+      "indirect": true
+    },
+    {
+      "module": "golang.org/x/oauth2",
+      "version": "v0.36.0",
+      "commit": "4d954e69a88d9e1ccb8439f8d5b6cbef230c4ef9",
+      "repository": "https://go.googlesource.com/oauth2",
       "indirect": true
     },
     {
@@ -1120,15 +1526,15 @@
     },
     {
       "module": "golang.org/x/sys",
-      "version": "v0.47.0",
-      "commit": "9e7e939dcafac07e8ab4cffa6e5fc74908413f00",
+      "version": "v0.49.0",
+      "commit": "b6b8557e8e2974925aec7a136ba0e323eedc5f43",
       "repository": "https://go.googlesource.com/sys",
       "indirect": true
     },
     {
       "module": "golang.org/x/term",
-      "version": "v0.45.0",
-      "commit": "9f69229da31ca6a34b522f59dbe07cad5ea21587",
+      "version": "v0.47.0",
+      "commit": "0851034afad912733699827b3bb94436f059797f",
       "repository": "https://go.googlesource.com/term",
       "indirect": true
     },
@@ -1147,9 +1553,23 @@
       "indirect": true
     },
     {
+      "module": "gonum.org/v1/gonum",
+      "version": "v0.17.0",
+      "commit": "fc402bc485e3a92f8d4f1f0ee5a49e2edf232ed2",
+      "repository": "https://github.com/gonum/gonum",
+      "indirect": true
+    },
+    {
+      "module": "google.golang.org/genproto/googleapis/api",
+      "version": "v0.0.0-20260928230214-8a89bd6388cc",
+      "commit": "8a89bd6388cc9f960fc7076f7e2a43f96ad592e9",
+      "repository": "https://github.com/googleapis/go-genproto",
+      "indirect": true
+    },
+    {
       "module": "google.golang.org/genproto/googleapis/rpc",
-      "version": "v0.0.0-20260831171406-18b4a7587f8a",
-      "commit": "18b4a7587f8a25f7b80ffcf55cb06eabd19bafb9",
+      "version": "v0.0.0-20260928230214-8a89bd6388cc",
+      "commit": "8a89bd6388cc9f960fc7076f7e2a43f96ad592e9",
       "repository": "https://github.com/googleapis/go-genproto",
       "indirect": true
     },

@@ -534,11 +534,11 @@ func (s *Store) completeStep(
 		}
 		return nil
 	}
-	if state != stepPending && state != "unknown" {
+	if state != stepPending && state != platformAttemptUnknown {
 		return domain.Conflict("step_conflict")
 	}
-	if usage.Microcredits > reserve {
-		return domain.Conflict("usage_exceeds_reservation")
+	if e = validateStepSettlement(ctx, tx, rid, sid, reserve, usage); e != nil {
+		return e
 	}
 	_, e = tx.Exec(
 		ctx,

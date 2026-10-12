@@ -1,0 +1,26 @@
+# Overlay on the API compose file. Rename `loom` if the API service differs.
+services:
+  loom:
+    volumes:
+      - file-socket:/run/loom-files:ro
+    depends_on:
+      file-worker:
+        condition: service_started
+  file-worker:
+    image: ${LOOM_FILE_WORKER_IMAGE:?Set a verified immutable worker image digest}
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+    stop_grace_period: 5s
+    tmpfs:
+      - /tmp:size=134217728,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - file-socket:/run/loom-files
+volumes:
+  file-socket:

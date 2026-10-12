@@ -33,6 +33,7 @@ import (
 	"github.com/complynx/loom/internal/sandbox"
 	"github.com/complynx/loom/internal/store"
 	"github.com/complynx/loom/internal/telemetry"
+	"github.com/complynx/loom/internal/transcription"
 )
 
 const zitadelCallerType = "zitadel"
@@ -53,6 +54,8 @@ type runWorker struct {
 
 func (w *runWorker) Work(ctx context.Context, job *river.Job[executeRun]) (err error) {
 	ctx = telemetry.WithRun(ctx, job.Args.RunID)
+	ctx, finishTrace := w.observer.Start(ctx, "run_execution", job.Args.RunID)
+	defer func() { finishTrace(err) }()
 	w.observer.Event(ctx, "run execution started", "run_id", job.Args.RunID)
 	started := time.Now()
 	defer func() { w.observer.Operation(ctx, "run_execution", operationOutcome(err), job.Args.RunID, started) }()
@@ -145,7 +148,7 @@ func (s deploymentSource) Discover(ctx context.Context) ([]modules.Endpoint, err
 // Serve uses a separate worker supervisor. It never evaluates JavaScript inside
 // the API process, and all mutation dispatch passes through a fenced coordinator.
 func Serve(ctx context.Context, cfg config.Config) error {
-	logger, observer, err := runtimeObserver(cfg)
+	logger, observer, stopTelemetry, err := runtimeTelemetry(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -156,6 +159,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 	defer func() {
 		if !startupOK {
 			resources.closeStartup()
+			flushTelemetry(ctx, stopTelemetry)
 		}
 	}()
 	if err = resources.initStorage(ctx, cfg); err != nil {
@@ -164,22 +168,16 @@ func Serve(ctx context.Context, cfg config.Config) error {
 	if err = resources.initAgent(ctx, cfg, logger, observer); err != nil {
 		return err
 	}
+	if err = resources.startBackground(runtimeCtx, cfg, logger); err != nil {
+		return err
+	}
 	queue := resources.queue
-	if queue != nil {
-		if err = queue.Start(runtimeCtx); err != nil {
-			return errors.New("queue unavailable")
-		}
-	}
-	go resources.registry.Run(runtimeCtx)
-	if !cfg.Execution.RecoveryMode {
-		sweeper := lifecycle.New(resources.repository, time.Minute)
-		sweeper.Logger = logger
-		go sweeper.Run(runtimeCtx)
-		go recoverExhaustedQueue(runtimeCtx, resources.repository, logger)
-		go reconcileArtifacts(runtimeCtx, resources.files, logger)
-	}
 	var draining atomic.Bool
-	ready := runtimeReadiness(&draining, resources.registry, resources.pool, resources.executor)
+	ready := runtimeFileReadiness(
+		cfg,
+		observer,
+		runtimeReadiness(&draining, resources.registry, resources.pool, resources.executor),
+	)
 	operatorLogin, err := api.NewOperatorLogin(cfg.Identity.Issuer, cfg.Identity.Audience, cfg.Operator)
 	if err != nil {
 		return err
@@ -231,7 +229,18 @@ func Serve(ctx context.Context, cfg config.Config) error {
 	}
 	draining.Store(true)
 	cancelRuntime()
-	shutdownRuntime(ctx, cfg, resources.engine, queue, server, metricsServer, resources.files, resources.pool, logger)
+	shutdownRuntime(
+		ctx,
+		cfg,
+		resources.engine,
+		queue,
+		server,
+		metricsServer,
+		resources.files,
+		resources.pool,
+		logger,
+		stopTelemetry,
+	)
 	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 		return errors.New("HTTP server stopped unexpectedly")
 	}
@@ -313,6 +322,8 @@ func executionAuthorizer(
 	return func(c context.Context, r domain.Run) (domain.Principal, string, error) {
 		started := time.Now()
 		var err error
+		c, finishTrace := observer.Start(c, "authorization", r.ID)
+		defer func() { finishTrace(err) }()
 		defer func() { observer.Operation(c, "authorization", operationOutcome(err), r.ID, started) }()
 		principal, token, err := authorize(c, r)
 		return principal, token, err
@@ -360,6 +371,7 @@ func runtimeRegistry(
 		sources,
 		modules.Options{
 			OnCallerBindings:    bindings,
+			WrapTransport:       func(base http.RoundTripper) http.RoundTripper { return telemetry.TraceTransport{Base: base} },
 			ImportArtifact:      importArtifact,
 			RequestTimeout:      time.Duration(cfg.Discovery.RequestTimeoutMS) * time.Millisecond,
 			DynamicCacheCeiling: time.Duration(cfg.Discovery.DynamicCacheCeilingSeconds) * time.Second,
@@ -391,7 +403,7 @@ func runtimeAuthenticator(
 ) (*identity.Authenticator, error) {
 	auth, err := identity.New(
 		cfg.Identity,
-		&http.Client{},
+		&http.Client{Transport: telemetry.TraceTransport{}},
 		func(c context.Context, _ *http.Request, p domain.Principal) (identity.Binding, error) {
 			return checkService(c, p)
 		},
@@ -459,20 +471,37 @@ func runtimeEngine(
 	bridge := NewModuleBridge(registry, coordinator, repository, authorize)
 	bridge.observer = observer
 	repository.SetApprovalHandler(bridge.ApproveTx)
+	var speech transcription.Provider
+	if cfg.Transcription.Enabled {
+		var speechErr error
+		speech, speechErr = transcription.NewOpenAI(
+			transcription.Options{
+				Endpoint:   cfg.Transcription.Endpoint,
+				APIKey:     cfg.Transcription.APIKey,
+				HTTPClient: &http.Client{Transport: telemetry.TraceTransport{}},
+			},
+		)
+		if speechErr != nil {
+			return nil, sandbox.Client{}, speechErr
+		}
+	}
 	hooks := runtimeTools{
-		cfg:        cfg,
-		registry:   registry,
-		repository: repository,
-		files:      files,
-		executor:   executor,
-		authorize:  authorize,
-		bridge:     bridge,
-		observer:   observer,
+		transcriber: speech,
+		cfg:         cfg,
+		registry:    registry,
+		repository:  repository,
+		files:       files,
+		executor:    executor,
+		authorize:   authorize,
+		bridge:      bridge,
+		observer:    observer,
 	}
 	engine := runs.New(
 		repository,
 		router,
 		runs.Options{
+			PaidTool:                hooks,
+			PaidToolReplay:          hooks.replayPaidTool,
 			SponsoredAttemptLimit:   cfg.Execution.SponsoredAttemptLimit,
 			RetryAttemptLimit:       cfg.Execution.ProviderRetryAttemptLimit,
 			RetryWindow:             time.Duration(cfg.Execution.ProviderRetryWindowSeconds) * time.Second,
@@ -491,6 +520,8 @@ func runtimeEngine(
 			ModuleCall: func(c context.Context, r domain.Run, p domain.Principal, token string, call provider.Call) (json.RawMessage, *domain.Approval, error) {
 				started := time.Now()
 				var err error
+				c, finishTrace := observer.Start(c, "module_call", r.ID)
+				defer func() { finishTrace(err) }()
 				defer func() { observer.Operation(c, "module_call", operationOutcome(err), r.ID, started) }()
 				result, approval, err := bridge.Call(c, r, p, token, call)
 				return result, approval, err
@@ -668,6 +699,7 @@ func runtimeServers(
 			registry.TrustReady,
 			func(c context.Context) bool { return !cfg.Execution.RecoveryMode && executor.Health(c) == nil },
 			cfg.Artifacts.Root,
+			cfg.FileTools,
 		)
 	}
 
@@ -683,6 +715,7 @@ func shutdownRuntime(
 	files *artifacts.Service,
 	pool *pgxpool.Pool,
 	logger *slog.Logger,
+	stopTelemetry func(context.Context) error,
 ) {
 	shutdownStarted := time.Now()
 	stops := []func(context.Context) error{server.Shutdown}
@@ -711,6 +744,11 @@ func shutdownRuntime(
 				_ = files.Close()
 			}
 			pool.Close()
+			flushCtx, flushCancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+			defer flushCancel()
+			if err := stopTelemetry(flushCtx); err != nil {
+				logger.WarnContext(flushCtx, "telemetry shutdown incomplete")
+			}
 		},
 	)
 	if !complete {
@@ -767,6 +805,7 @@ func runtimeObserver(cfg config.Config) (*slog.Logger, *telemetry.Telemetry, err
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})).
 		With("service", "loom")
+	logger = telemetry.CorrelateLogger(logger)
 	observer := telemetry.New(logger)
 	observer.EnablePayloads(cfg.Observability.LogPayloads)
 	observer.SetRecoveryMode(cfg.Execution.RecoveryMode)
@@ -810,6 +849,17 @@ func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) 
 	})
 	r.repository.SetSemanticSearchEnabled(cfg.Search.SemanticEnabled)
 	r.repository.SetPolicyCeilings(cfg.Execution.ActiveRunsPerUserCeiling, cfg.Execution.ActiveRunsTotalCeiling)
+	r.repository.SetExecutionCeilings(
+		cfg.Sandbox.ScriptTimeoutCeilingMS,
+		cfg.Sandbox.ParallelRPCCeiling,
+		cfg.BootstrapSettings.ContextInputTokenBudget,
+		domain.Settings{
+			TotalActiveRunLimit:     cfg.Execution.ActiveRunsTotalCeiling,
+			ScriptTimeoutMS:         cfg.BootstrapSettings.ScriptTimeoutMS,
+			ParallelRPCLimit:        cfg.BootstrapSettings.ParallelRPCLimit,
+			ContextInputTokenBudget: cfg.BootstrapSettings.ContextInputTokenBudget,
+		},
+	)
 	aliases := make([]string, 0, len(cfg.Providers))
 	for alias := range cfg.Providers {
 		aliases = append(aliases, alias)
@@ -952,4 +1002,40 @@ func importModuleArtifact(
 		}
 		return json.Marshal(item)
 	}
+}
+
+func runtimeTelemetry(
+	ctx context.Context,
+	cfg config.Config,
+) (*slog.Logger, *telemetry.Telemetry, func(context.Context) error, error) {
+	logger, observer, err := runtimeObserver(cfg)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stop, err := observer.EnableOTel(ctx, cfg.Observability.OTel)
+	return logger, observer, stop, err
+}
+func flushTelemetry(ctx context.Context, stop func(context.Context) error) {
+	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	_ = stop(flushCtx)
+}
+
+func (r *runtimeComponents) startBackground(runtimeCtx context.Context, cfg config.Config, logger *slog.Logger) error {
+	var err error
+	if r.queue != nil {
+		if err = r.queue.Start(runtimeCtx); err != nil {
+			return errors.New("queue unavailable")
+		}
+	}
+	go r.registry.Run(runtimeCtx)
+	if !cfg.Execution.RecoveryMode {
+		sweeper := lifecycle.New(r.repository, time.Minute)
+		sweeper.Logger = logger
+		go sweeper.Run(runtimeCtx)
+		go recoverExhaustedQueue(runtimeCtx, r.repository, logger)
+		go reconcileArtifacts(runtimeCtx, r.files, logger)
+	}
+
+	return nil
 }

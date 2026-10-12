@@ -6,13 +6,18 @@ import (
 
 	"github.com/complynx/loom/internal/config"
 	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 // Transport selection does not change the model snapshot or its production tariff.
 func configuredProvider(p config.Provider) (provider.Client, error) {
 	switch p.Kind {
 	case "", "responses":
-		return provider.NewResponses(p.Endpoint, p.APIKey, &http.Client{Timeout: inferenceTimeout})
+		return provider.NewResponses(
+			p.Endpoint,
+			p.APIKey,
+			&http.Client{Timeout: inferenceTimeout, Transport: telemetry.TraceTransport{}},
+		)
 	case "mock":
 		return provider.NewMock(p.Mailbox)
 	case "codex":

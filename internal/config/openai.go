@@ -20,7 +20,7 @@ const (
 // applyOpenAIDefaults seeds only an omitted catalog for the named OpenAI provider.
 // Explicit catalogs and persisted database settings remain operator-owned.
 func applyOpenAIDefaults(c *Config) {
-	if _, ok := c.Providers["openai"]; !ok || len(c.BootstrapSettings.ModelCatalog) != 0 {
+	if _, ok := c.Providers[openAIProvider]; !ok || len(c.BootstrapSettings.ModelCatalog) != 0 {
 		return
 	}
 	b := &c.BootstrapSettings
@@ -41,7 +41,7 @@ func applyOpenAIDefaults(c *Config) {
 			efforts = append([]string{"none"}, efforts...)
 		}
 		modalities := []string{"text", "image"}
-		if c.Providers["openai"].Kind == "codex" || c.Providers["openai"].Kind == "mock" {
+		if c.Providers[openAIProvider].Kind == "codex" || c.Providers[openAIProvider].Kind == "mock" {
 			modalities = []string{"text"}
 		}
 		b.ModelCatalog = append(
@@ -51,7 +51,7 @@ func applyOpenAIDefaults(c *Config) {
 				CompactionThresholdTokens: openAICompactionTrigger,
 				CompactionTargetTokens:    openAICompactionTarget,
 				ID:                        entry.id,
-				Provider:                  "openai",
+				Provider:                  openAIProvider,
 				Model:                     entry.id,
 				Efforts:                   efforts,
 				MaxEffort:                 "max",

@@ -26,8 +26,11 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | Artifact root, upload limit, per-user quota | Immutable artifact service. Per-user quota includes tombstoned blobs until physical unlink, directory synchronization and the collected marker succeed. Four concurrent upload slots bound temporary upload bytes to 4 × (max_upload_bytes + 1). |
 | Sandbox socket and script timeout | Process client and per-script deadlines. |
 | Sandbox parallel RPC limits | Script bridge limits, clamped to deployment ceiling. |
+| Live execution limits | DB total_active_run_limit, script_timeout_ms and parallel_rpc_limit cannot exceed startup ceilings. Serialized admission uses the live total; next scripts apply reductions without interrupting current work. |
+| File tools | Optional private Unix worker, default disabled; 30-second maximum job timeout, bounded streams and scoped artifact handles. Poppler/FFmpeg stay outside the API/JS process. |
+| Transcription | Optional, default disabled. Default openai/gpt-transcribe, 75 microcredits/second; API key inherits providers.openai.api_key. Duration-only billing, frozen reserve/tariff, no automatic retry, reconciliation for uncertain dispatch. whisper-1 needs an explicit correct rate. |
 | Sandbox engine | Goja only. Other engine names fail validation. |
-| Sandbox memory and PIDs | External container enforcement. Compose sets a shared 128 MiB memory ceiling and 32 PIDs for the supervisor and its child processes, matching deployment YAML. This is not a per-worker memory allowance. |
+| Sandbox memory and PIDs | External container enforcement. Compose sets a shared 128 MiB memory ceiling and 128 PIDs for the supervisor and its child processes, matching deployment YAML. This is not a per-worker memory allowance. |
 | Sandbox maximum workers | Supervisor CLI owns the process count. Deployment must supply the matching value; broker configuration alone does not set supervisor capacity. |
 | Sandbox cleanup timeout | Supervisor --cleanup-timeout flag, set to 100 ms in Compose to match deployment YAML. Other deployments must keep the flag and YAML value aligned. |
 | Execution lease and total worker ceiling | Fenced run engine and River worker pool; the total active-run admission cap is also enforced by the store. |
@@ -46,7 +49,7 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | OpenAI omitted catalog | Seeds the reviewed three-model catalog and Standard global rates only when the catalog, default ID and tariffs are omitted. Existing database settings remain intact. |
 | Model input_token_limit / compaction threshold / target | Validated per-model context bounds, conservative history assembly and complete-input hard limit. Target is a history budget, not a provider token guarantee. |
 | Cache-write and long-context tariffs | Separate disjoint input categories; threshold selects whole-request rates. Reservation covers worst supported rates. |
-| Global input-token budget | Run engine token-budget option; maximum input bytes is a separate bounded limit. Conservative accounting and model context limits apply. |
+| Global input-token budget | Hard startup ceiling plus live DB context_input_token_budget. Next model turn uses the stricter live/admitted/hard bound; oversized context pauses before dispatch. Input bytes are bounded separately. |
 | Global output-token limit | Bootstrap clamps each model output limit to this global ceiling. |
 | Search semantic_enabled | Deployment switch, default false: hides semantic agent tool and omits vector-indexing HTTP route. Enabled queries require externally supplied matching vectors and installed pgvector; no paid embeddings call or automatic index. |
 | Personal user memory | Available to authenticated users without additional role mappings. Fixed bounded layout and CAS versions; micro profile included in every inference. No public YAML memory limit or automatic extraction. See [memory](../../docs/user-memory.md). |
@@ -55,6 +58,7 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | Trace retention | No separate persisted trace stream is emitted. Only forever/unspecified policy is supported; duration fails validation. Operational Docker log retention is a deployment responsibility; recovery checkpoints are not trace records. |
 | Observability log level | DEBUG/INFO/WARN/ERROR filter structured JSON logs. Invalid levels fail validation; DEBUG includes authenticated identity diagnostics. |
 | Observability payload logging | Optional debug-only request/model diagnostics, bounded to 4 KiB. JWT signatures and opaque credentials are masked; arbitrary free-text secrets cannot be recognized. Default false; enabling outside debug fails validation. |
+| Observability OTel | Optional scoped OTLP/HTTP trace and operation-metric export; default disabled, 10% root sampling (explicit zero preserved), bounded queue/timeout, safe route attributes and trace-correlated JSON logs. Collector failure does not gate API readiness. No durable trace-parent restoration across queue restarts. |
 | Observability metrics_listen | Optional separate private Prometheus listener. Cached aggregates refresh every 15 seconds with a two-second database budget; no SQL or JS runs on scrape. Empty disables metrics. No public API metrics route. |
 
 An access token belonging to a never-registered machine cannot be identified as a machine from an invented claim. It cannot delegate another subject: delegation requires a current trusted caller registration. Its own-subject scope is determined by explicit Zitadel role mappings. Assign machine roles no human permissions unless that behavior is intended.

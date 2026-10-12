@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/fileproc"
 	"github.com/complynx/loom/internal/store"
 	"github.com/complynx/loom/internal/telemetry"
 )
@@ -15,6 +17,7 @@ func collectTelemetry(
 	trust func() error,
 	sandboxReady func(context.Context) bool,
 	root string,
+	fileTools config.FileTools,
 ) {
 	timer := time.NewTicker(telemetryInterval)
 	defer timer.Stop()
@@ -45,6 +48,12 @@ func collectTelemetry(
 		}
 		observer.Dependency(ctx, "sandbox", available)
 		stop()
+		if fileTools.Enabled {
+			fileProbe, fileStop := context.WithTimeout(ctx, time.Second)
+			fileErr := (fileproc.Client{Socket: fileTools.Socket, Timeout: time.Second}).Health(fileProbe)
+			observer.Dependency(ctx, "file_processor", fileErr == nil)
+			fileStop()
+		}
 		select {
 		case <-ctx.Done():
 			return

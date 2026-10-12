@@ -36,6 +36,8 @@ type Store interface {
 
 // Options configures execution boundaries. Authorize also runs before model-only turns.
 type Options struct {
+	PaidTool                PaidTool
+	PaidToolReplay          func(context.Context, domain.Run, domain.PaidToolIntent) error
 	RetryAttemptLimit       int
 	RetryWindow             time.Duration
 	RetryShortLimit         int
@@ -254,7 +256,7 @@ func (e *Engine) executeAuthorizedTurn(
 	settings := run.SettingsSnapshot
 
 	settings = effectiveRunSettings(settings)
-	model, modelErr := e.store.ExecutionModel(ctx, run.ID)
+	model, modelErr := e.modelForTurn(ctx, run)
 	if modelErr != nil {
 		return false, e.finish(ctx, run, domain.Paused, "model_unavailable", "")
 	}
@@ -332,6 +334,18 @@ func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState
 			return replayErr
 		}
 
+	case "transcription":
+		var intent domain.PaidToolIntent
+		if err = json.Unmarshal(step.Input, &intent); err != nil {
+			return err
+		}
+		if e.opts.PaidToolReplay != nil {
+			if err = e.opts.PaidToolReplay(ctx, run, intent); err != nil {
+				return e.stopTurn(ctx, run, domain.Paused, "artifact_disclosure_denied")
+			}
+		}
+		turn.items = append(turn.items, step.Result)
+		turn.completed[intent.Call.ID] = true
 	case "tool":
 		var call provider.Call
 		if err = json.Unmarshal(step.Input, &call); err != nil {
@@ -539,7 +553,7 @@ func (e *Engine) turnTools(
 		}
 		for _, replacement := range extra {
 			if replacement.Name != toolScript && replacement.Name != toolQuestion &&
-				replacement.Name != toolModuleCall && replacement.Name != toolArtifactAttach {
+				replacement.Name != toolModuleCall && replacement.Name != toolArtifactAttach && replacement.Name != "audio_transcribe" {
 				continue
 			}
 			replaced := false
@@ -890,6 +904,9 @@ func (e *Engine) executePending(
 	turn *turnState,
 	call provider.Call,
 ) (bool, error) {
+	if call.Name == "audio_transcribe" && e.opts.PaidTool != nil && !turn.steeringAfterModel {
+		return e.executePaidTool(ctx, run, principal, token, call, e.opts.PaidTool)
+	}
 	id := run.ID
 	payload, _ := json.Marshal(call)
 	var step domain.Step

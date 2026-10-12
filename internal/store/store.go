@@ -23,12 +23,14 @@ import (
 
 type Enqueue func(context.Context, pgx.Tx, string) error
 type Store struct {
-	semanticEnabled           bool
-	allowedProviders          map[string]bool
-	userCeiling, totalCeiling int
-	pool                      *pgxpool.Pool
-	enqueue                   Enqueue
-	approval                  func(context.Context, pgx.Tx, domain.Run, domain.RunInput) error
+	semanticEnabled                                bool
+	allowedProviders                               map[string]bool
+	userCeiling, totalCeiling                      int
+	executionDefaults                              domain.Settings
+	scriptCeiling, parallelCeiling, contextCeiling int
+	pool                                           *pgxpool.Pool
+	enqueue                                        Enqueue
+	approval                                       func(context.Context, pgx.Tx, domain.Run, domain.RunInput) error
 }
 
 func New(pool *pgxpool.Pool, enqueue Enqueue) *Store { return &Store{pool: pool, enqueue: enqueue} }
@@ -123,7 +125,7 @@ func (s *Store) txOnce(ctx context.Context, fn func(pgx.Tx) error) (err error) {
 	return mapError(tx.Commit(ctx))
 }
 func (s *Store) Bootstrap(ctx context.Context, settings domain.Settings) error {
-	settings = normalizeSettings(settings)
+	settings = s.normalizeExecutionSettings(normalizeSettings(settings))
 	if err := validateSettingsModels(settings); err != nil {
 		return err
 	}
@@ -149,7 +151,7 @@ func (s *Store) GetSettings(ctx context.Context) (domain.Settings, error) {
 	}
 	e = json.Unmarshal(row.Doc, &v)
 	v.Version = row.Version
-	return v, e
+	return s.normalizeExecutionSettings(v), e
 }
 func (s *Store) ensureUser(ctx context.Context, tx pgx.Tx, p domain.Principal) (string, error) {
 	if p.Issuer == "" || p.Subject == "" || p.OrgID == "" {
@@ -594,21 +596,21 @@ func readRunSettings(
 	return settings, prefs, policy, limit, nil
 }
 
-func (s *Store) checkRunCapacity(ctx context.Context, tx pgx.Tx, uid string, limit int) error {
+func (s *Store) checkRunCapacity(ctx context.Context, tx pgx.Tx, uid string, limit, totalLimit int) error {
 	var e error
 	if s.userCeiling > 0 && limit > s.userCeiling {
 		limit = s.userCeiling
 	}
-	if s.totalCeiling > 0 {
-		if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1129076785)"); e != nil {
-			return e
-		}
+	if s.totalCeiling > 0 && (totalLimit <= 0 || totalLimit > s.totalCeiling) {
+		totalLimit = s.totalCeiling
+	}
+	if totalLimit > 0 {
 		var total int
 		if e = tx.QueryRow(ctx, "SELECT count(*) FROM runs WHERE state NOT IN('completed','cancelled','failed')").
 			Scan(&total); e != nil {
 			return e
 		}
-		if total >= s.totalCeiling {
+		if total >= totalLimit {
 			return domain.NewError(http.StatusTooManyRequests, "total_run_limit")
 		}
 	}
@@ -742,11 +744,8 @@ func (s *Store) admitRun(
 			return domain.Run{}, domain.NewError(http.StatusUnauthorized, "invalid_auth_session")
 		}
 	}
-	settings, prefs, policy, limit, e := readRunSettings(ctx, tx, uid, p.OrgID)
+	settings, prefs, policy, e := s.admissionSettings(ctx, tx, uid, p.OrgID)
 	if e != nil {
-		return domain.Run{}, e
-	}
-	if e = s.checkRunCapacity(ctx, tx, uid, limit); e != nil {
 		return domain.Run{}, e
 	}
 	return buildRun(p, uid, cid, in, settings, prefs, policy)
@@ -796,3 +795,26 @@ func (s *Store) persistRun(
 
 func (s *Store) SetSemanticSearchEnabled(enabled bool) { s.semanticEnabled = enabled }
 func (s *Store) SemanticSearchEnabled() bool           { return s != nil && s.semanticEnabled }
+
+// lockAdmission orders settings changes and new admission on all API replicas.
+func lockAdmission(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1129076785)")
+	return err
+}
+
+func (s *Store) admissionSettings(
+	ctx context.Context,
+	tx pgx.Tx,
+	uid, orgID string,
+) (domain.Settings, domain.Preferences, domain.UserPolicy, error) {
+	if err := lockAdmission(ctx, tx); err != nil {
+		return domain.Settings{}, domain.Preferences{}, domain.UserPolicy{}, err
+	}
+	settings, prefs, policy, limit, err := readRunSettings(ctx, tx, uid, orgID)
+	if err != nil {
+		return settings, prefs, policy, err
+	}
+	settings = s.normalizeExecutionSettings(settings)
+	err = s.checkRunCapacity(ctx, tx, uid, limit, settings.TotalActiveRunLimit)
+	return settings, prefs, policy, err
+}
