@@ -41,7 +41,8 @@
 | POST | `/admin/runs/{id}/steps/{step}/reconcile` | Аудируемая сверка неизвестной оплаты inference |
 | POST | `/artifacts` | Ограниченная загрузка файла |
 | GET | `/artifacts/{id}` | Метаданные |
-| GET | `/artifacts/{id}/content` | Авторизованное потоковое чтение |
+| GET | `/artifacts/{id}/content` | Авторизованное чтение целиком или HTTP byte ranges |
+| HEAD | `/artifacts/{id}/content` | Те же проверки доступа, только headers |
 
 `/healthz` проверяет процесс; `/readyz` — способность безопасно принимать durable запросы. Metrics доступны только через отдельный private listener. Полный актуальный wire contract отдаёт `/openapi.json`; таблица выше — основные routes. [Личная память](user-memory.md) и [diagnostics/panel](diagnostics.md) описывают дополнительные endpoints.
 
@@ -51,7 +52,8 @@
 | POST | `/chats/{id}/history/read` | Bounded страницы событий или текста одного события |
 | POST | `/chats/{id}/history/embeddings` | Внешний вектор для события; route только при enabled, нужны `chat.embeddings.write` и `chat.read` |
 | POST | `/runs/{id}/artifacts/handles` | Временный handle из `{artifact_id}` |
-| GET | `/artifact-handles/{id}/content` | Авторизованный stream по handle, ID сам не является credential; TTL 15 минут |
+| GET | `/artifact-handles/{id}/content` | Авторизованный stream/ranges по handle, ID сам не является credential; TTL 15 минут |
+| HEAD | `/artifact-handles/{id}/content` | Headers действующего handle без body |
 
 ## Создание run
 
@@ -137,6 +139,12 @@ Durable события имеют монотонный `seq` внутри run; `
 MVP доставляет сохранённые run events, а не поток token deltas провайдера. SSE читает bounded database batches. Запись в медленное соединение ограничена deadline; клиент после обрыва дочитывает durable события. Доставка как минимум один раз; дедупликация по seq.
 
 Отсутствие подписчиков не отменяет run при `continue`. Политика `pause` действует после разрыва последнего stream и disconnect grace. Reconnect согласован с финальной проверкой pause; одноразовый HTTP async запрос не считается stream-разрывом.
+
+## Частичное чтение blobs
+
+Оба content endpoint принимают `Range: bytes=offset-end`, открытый конец, suffix и multipart ranges. Ответ — 206 с `Content-Range`; обычное чтение — 200. HEAD возвращает полные headers без body и игнорирует Range/If-Range. `ETag` содержит SHA-256 исходных bytes; для возобновления используйте `If-Range`. При несовпадении `If-Range` сервер отдаёт полный 200, поэтому клиент обязан проверять status перед дописыванием файла. Совпадающий `If-None-Match` даёт 304, проваленный `If-Match` — 412, недоступный/невалидный диапазон — 416. Arbitrary MIME сохраняется; multipart использует `multipart/byteranges`.
+
+Владение, `artifacts.read` и TTL handle проверяются до conditional/range обработки. Чужой или истёкший handle не даёт 304 или раскрытие размера. Long transfer сохраняет периодическую reauthorization, cancellation и 30-second write deadline. Bytes идут из файла в HTTP напрямую, без JS и без полной загрузки blob в память. Structured API errors остаются JSON; стандартные HTTP range/precondition errors могут иметь text body.
 
 ## Ошибки
 

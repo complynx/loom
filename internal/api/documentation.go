@@ -12,11 +12,13 @@ import (
 )
 
 const (
-	bearerScheme  = "bearer"
-	schemaString  = "string"
-	schemaInteger = "integer"
-	queryLocation = "query"
-	runsPath      = "/v1/runs"
+	bearerScheme   = "bearer"
+	schemaString   = "string"
+	schemaInteger  = "integer"
+	binaryFormat   = "binary"
+	queryLocation  = "query"
+	headerLocation = "header"
+	runsPath       = "/v1/runs"
 )
 
 // Documentation uses the same DTOs as strict HTTP decoding. SSE and upload
@@ -54,7 +56,7 @@ func documentOperation(api huma.API, pattern, permission string) {
 			op.Parameters,
 			&huma.Param{
 				Name:     "Idempotency-Key",
-				In:       "header",
+				In:       headerLocation,
 				Required: true,
 				Schema:   &huma.Schema{Type: schemaString, MaxLength: new(maxIdempotencyKeyLength)},
 			},
@@ -97,6 +99,9 @@ func documentOperation(api huma.API, pattern, permission string) {
 		op.Responses["200"].Content = map[string]*huma.MediaType{
 			"text/event-stream": {Schema: &huma.Schema{Type: schemaString}},
 		}
+	}
+	if artifactContentOperation(op) {
+		artifactHeadOperation(api, op)
 	}
 	api.OpenAPI().AddOperation(op)
 }

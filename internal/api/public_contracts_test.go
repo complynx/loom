@@ -125,3 +125,46 @@ func TestHTTPErrorRequestIDMatchesHeaderAndLog(t *testing.T) {
 	require.NotEmpty(t, body.Error.RequestID)
 	require.Equal(t, response.Header().Get("X-Request-ID"), body.Error.RequestID)
 }
+
+func TestOpenAPIArtifactRangeContracts(t *testing.T) {
+	t.Parallel()
+	response := request(api.New(nil, authFunc(allowed), api.Options{}), "GET", "/openapi.json", "", "", "")
+	require.Equal(t, http.StatusOK, response.Code)
+	var document map[string]any
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &document))
+	paths := document["paths"].(map[string]any)
+	for _, path := range []string{"/v1/artifacts/{id}/content", "/v1/artifact-handles/{id}/content"} {
+		operations := paths[path].(map[string]any)
+		get := operations["get"].(map[string]any)
+		headers := make([]string, 0)
+		for _, parameter := range get["parameters"].([]any) {
+			value := parameter.(map[string]any)
+			if value["in"] == "header" {
+				headers = append(headers, value["name"].(string))
+			}
+		}
+		require.Contains(t, headers, "Range")
+		require.Contains(t, headers, "If-Range")
+		require.Contains(t, headers, "If-None-Match")
+		responses := get["responses"].(map[string]any)
+		for _, status := range []string{"200", "206", "304", "412", "416"} {
+			require.Contains(t, responses, status)
+		}
+		partial := responses["206"].(map[string]any)
+		content := partial["content"].(map[string]any)["*/*"].(map[string]any)
+		require.Equal(t, "binary", content["schema"].(map[string]any)["format"])
+		require.Contains(t, partial["headers"].(map[string]any), "Content-Range")
+		head := operations["head"].(map[string]any)
+		require.NotEqual(t, get["operationId"], head["operationId"])
+		require.NotContains(t, head["responses"], "206")
+		require.NotContains(t, head["responses"], "416")
+		for _, parameter := range head["parameters"].([]any) {
+			value := parameter.(map[string]any)
+			require.NotEqual(t, "Range", value["name"])
+			require.NotEqual(t, "If-Range", value["name"])
+		}
+		for _, value := range head["responses"].(map[string]any) {
+			require.NotContains(t, value.(map[string]any), "content")
+		}
+	}
+}

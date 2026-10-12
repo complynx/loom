@@ -465,3 +465,34 @@ func TestConcurrentUploadLimitCancelsQueuedClientBeforeReading(t *testing.T) {
 		t.Fatal("blocked or canceled upload committed metadata")
 	}
 }
+
+func TestDownloadSeekRespectsCancellation(t *testing.T) {
+	t.Parallel()
+	s, _ := service(t, 10, 20)
+	item, err := s.Upload(context.Background(), testOwner(), "text/plain", bytes.NewBufferString("0123456789"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, reader, err := s.Download(ctx, testOwner(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	}()
+	if _, err = reader.Seek(5, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil || string(data) != "56789" {
+		t.Fatalf("seeked read: %q, %v", data, err)
+	}
+	cancel()
+	if _, err = reader.Seek(0, io.SeekStart); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled seek: %v", err)
+	}
+}

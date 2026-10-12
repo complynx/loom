@@ -3,9 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/complynx/loom/internal/artifacts"
@@ -107,7 +105,6 @@ func (s *server) artifactContent(w http.ResponseWriter, r *http.Request, p domai
 		}
 	}()
 	w.Header().Set("Content-Type", artifact.MIME)
-	w.Header().Set("Content-Length", strconv.FormatInt(artifact.Size, 10))
 	w.Header().Set("Content-Disposition", `attachment; filename="artifact"`)
 	w.Header().Set("ETag", `"`+artifact.SHA256+`"`)
 	controller := http.NewResponseController(w)
@@ -117,6 +114,12 @@ func (s *server) artifactContent(w http.ResponseWriter, r *http.Request, p domai
 		!errors.Is(deadlineErr, http.ErrNotSupported) {
 		return nil
 	}
-	_, _ = io.Copy(w, reader)
+	request := r.WithContext(ctx)
+	if request.Method == http.MethodHead {
+		request.Header = request.Header.Clone()
+		request.Header.Del("Range")
+		request.Header.Del("If-Range")
+	}
+	http.ServeContent(w, request, "artifact", artifact.CreatedAt, reader)
 	return nil
 }

@@ -257,7 +257,7 @@ func (s *Service) Metadata(ctx context.Context, p Principal, id string) (domain.
 	return a, nil
 }
 
-func (s *Service) Download(ctx context.Context, p Principal, id string) (domain.Artifact, io.ReadCloser, error) {
+func (s *Service) Download(ctx context.Context, p Principal, id string) (domain.Artifact, io.ReadSeekCloser, error) {
 	a, err := s.Metadata(ctx, p, id)
 	if err != nil {
 		return domain.Artifact{}, nil, err
@@ -273,7 +273,9 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (domain.
 	if err != nil {
 		return domain.Artifact{}, nil, err
 	}
-	return a, &contextReadCloser{ctx: ctx, reader: f, closer: f}, nil
+	return a, &contextReadSeekCloser{
+		ctx: ctx, reader: f, closer: f, seeker: f,
+	}, nil
 }
 
 // AllowDisclosure grants access only when this destination is explicitly allowed.
@@ -312,6 +314,19 @@ type contextReadCloser struct {
 }
 
 func (r *contextReadCloser) Close() error { return r.closer.Close() }
+
+type contextReadSeekCloser struct {
+	contextReadCloser
+
+	seeker io.Seeker
+}
+
+func (r *contextReadSeekCloser) Seek(offset int64, whence int) (int64, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.seeker.Seek(offset, whence)
+}
 
 // Reconcile removes aged, definitively unreferenced content after a crash. Each
 // pass scans at most 256 entries and keeps its directory position for the next

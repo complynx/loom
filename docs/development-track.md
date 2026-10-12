@@ -96,6 +96,8 @@
 - [ ] **F05 · P2 · Private inference и большие blobs.** Отдельно спроектировать trusted local provider boundary, обработку приватных данных, object storage/chunk reads и новые native formats. **Готово:** размещение endpoint само по себе не отменяет disclosure policy; доступ и бюджет сохраняются при переносе данных.
 - [ ] **F06 · P2 · Субагенты и proactive runs.** Только после отдельного решения продукта. Субагенты — внутренний модуль с ограниченными правами и общим бюджетом; proactive execution требует явного opt-in и триггерного контракта. **Готово:** passive event по-прежнему ничего сам не запускает, child run не расширяет права родителя.
 
+- [x] **F07 · P2 · HTTP partial blob delivery. Статус: implemented / local fixture PASS; production pending.** Artifact и handle content поддерживают byte ranges, HEAD, ETag/If-Range и conditional reads. Нет полной буферизации blob или JS-передачи bytes. Владение, роли и expiry проверяются до conditional responses. [QA](validation/2026-10-12-artifact-range/README.md). Это отдельный завершённый транспортный слой; object storage и новые native model formats остаются F05.
+
 ## Ближайшая работа и решения
 
 Provider/model уже выбраны: openai/gpt-6-luna/medium. Тарифы, per-model context defaults и Golden зафиксированы; повторного выбора не требуется. Для live приёмки остаются production issuer/audience/roles/scopes, тестовые credentials и бюджет, pilot limits, первый сервис и его write contract, DB runtime/migration roles, backup destination и RPO/RTO. Неподтверждённые возможности Zitadel нельзя включать по наличию полей конфигурации.
