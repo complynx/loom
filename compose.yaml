@@ -56,7 +56,8 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    pids_limit: 32
+    # Include supervisor and Go runtime threads for all four workers.
+    pids_limit: 128
     mem_limit: 128m
     cpus: 1.0
     volumes: ["sandbox-socket:/run/clx-sandbox"]

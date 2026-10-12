@@ -37,7 +37,8 @@ services:
     network_mode: none
     volumes: ["sandbox-socket:/run/clx-sandbox"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
-    pids_limit: 32
+    # Include supervisor and Go runtime threads for all four workers.
+    pids_limit: 128
     mem_limit: 128m
     cpus: 1.0
     stop_grace_period: 6s

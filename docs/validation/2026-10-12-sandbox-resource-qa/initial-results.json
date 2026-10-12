@@ -1,0 +1,39 @@
+[
+  {
+    "scenario": "CPU",
+    "attack_run": "fe04bace-4d7d-4948-a942-d7c1e3efeff1",
+    "healthy_run": "e8ed4cfd-b6de-48b7-8e91-4859dbd840cc",
+    "attack_state": "completed",
+    "attack_reason": null,
+    "healthy_state": "completed",
+    "attack_state_when_healthy_finished": "running",
+    "elapsed_seconds": 10.719,
+    "attack_spent": 220,
+    "healthy_spent": 220,
+    "attack_reserved": 0,
+    "healthy_reserved": 0,
+    "attack_tool_result": {
+      "error": "tool_failed"
+    },
+    "healthy_tool_result": {
+      "error": "tool_failed"
+    },
+    "before": {
+      "id": "b102aa475cb09adea3638e0e56200c6ea682fc881968eba45a25185588e3d947",
+      "running": true,
+      "oom_killed": false,
+      "restart_count": 0,
+      "memory_limit_bytes": 134217728,
+      "pids_limit": 32
+    },
+    "after": {
+      "id": "b102aa475cb09adea3638e0e56200c6ea682fc881968eba45a25185588e3d947",
+      "running": true,
+      "oom_killed": false,
+      "restart_count": 0,
+      "memory_limit_bytes": 134217728,
+      "pids_limit": 32
+    },
+    "oom_events": []
+  }
+]

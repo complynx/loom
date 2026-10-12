@@ -434,12 +434,26 @@ func (s Supervisor) waitForChild(ctx context.Context, stdin io.Closer, cmd *exec
 	waited := make(chan error, 1)
 	go func() { waited <- cmd.Wait() }()
 	select {
-	case <-waited:
+	case err := <-waited:
+		s.logWorkerExit(ctx, cmd, err)
 	case <-time.After(s.cleanupTimeout()):
 		s.logKilled(ctx, cmd)
 		_ = cmd.Process.Kill()
 		<-waited
 	}
+}
+
+func (s Supervisor) logWorkerExit(ctx context.Context, cmd *exec.Cmd, err error) {
+	if err == nil || ctx.Err() != nil || s.Logger == nil {
+		return
+	}
+	exitCode := -1
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		exitCode = exit.ExitCode()
+	}
+	s.Logger.WarnContext(ctx, "sandbox worker exited unsuccessfully",
+		"event", "sandbox.worker_exited", "component", "sandbox",
+		"pid", cmd.Process.Pid, "exit_code", exitCode, "error", err.Error())
 }
 
 func (s Supervisor) logKilled(ctx context.Context, cmd *exec.Cmd) {
