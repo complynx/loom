@@ -168,6 +168,27 @@ func TestArtifactHandlesAndPagedBytesNeverNeedJSData(t *testing.T) {
 		offset = result.Next
 	}
 	require.Equal(t, data, bytesRead)
+	for _, offset := range []int64{int64(len(data) - 5), int64(len(data))} {
+		raw, _ = json.Marshal(map[string]any{"artifact_id": blob.ID, "offset": offset, "limit": 100000})
+		page, readErr := tools.readArtifact(ctx, run, raw)
+		require.NoError(t, readErr)
+		var result struct {
+			Data    string `json:"data"`
+			Next    int64  `json:"next_offset"`
+			Partial bool   `json:"partial"`
+		}
+		require.NoError(t, json.Unmarshal(page, &result))
+		chunk, decodeErr := base64.StdEncoding.DecodeString(result.Data)
+		require.NoError(t, decodeErr)
+		require.Equal(t, data[offset:], chunk)
+		require.Equal(t, int64(len(data)), result.Next)
+		require.False(t, result.Partial)
+	}
+	for _, offset := range []int64{-1, int64(len(data) + 1)} {
+		raw, _ = json.Marshal(map[string]any{"artifact_id": blob.ID, "offset": offset})
+		_, readErr := tools.readArtifact(ctx, run, raw)
+		require.ErrorIs(t, readErr, artifacts.ErrInvalid)
+	}
 	png, _ := base64.StdEncoding.DecodeString(
 		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfWQAAAAASUVORK5CYII=",
 	)

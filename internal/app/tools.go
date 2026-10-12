@@ -424,7 +424,7 @@ func (t runtimeTools) readArtifact(c context.Context, r domain.Run, raw json.Raw
 	if readLimit <= 0 || readLimit > limit {
 		readLimit = limit
 	}
-	if _, e = io.CopyN(io.Discard, reader, input.Offset); e != nil {
+	if _, e = reader.Seek(input.Offset, io.SeekStart); e != nil {
 		return nil, e
 	}
 	data, e := io.ReadAll(io.LimitReader(reader, readLimit))

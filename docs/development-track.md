@@ -96,7 +96,7 @@
 - [ ] **F05 · P2 · Private inference и большие blobs.** Отдельно спроектировать trusted local provider boundary, обработку приватных данных, object storage/chunk reads и новые native formats. **Готово:** размещение endpoint само по себе не отменяет disclosure policy; доступ и бюджет сохраняются при переносе данных.
 - [ ] **F06 · P2 · Субагенты и proactive runs.** Только после отдельного решения продукта. Субагенты — внутренний модуль с ограниченными правами и общим бюджетом; proactive execution требует явного opt-in и триггерного контракта. **Готово:** passive event по-прежнему ничего сам не запускает, child run не расширяет права родителя.
 
-- [x] **F07 · P2 · HTTP partial blob delivery. Статус: implemented / local fixture PASS; production pending.** Artifact и handle content поддерживают byte ranges, HEAD, ETag/If-Range и conditional reads. Нет полной буферизации blob или JS-передачи bytes. Владение, роли и expiry проверяются до conditional responses. [QA](validation/2026-10-12-artifact-range/README.md). Это отдельный завершённый транспортный слой; object storage и новые native model formats остаются F05.
+- [x] **F07 · P2 · HTTP partial blob delivery. Статус: implemented / local fixture PASS; production pending.** Artifact и handle content поддерживают byte ranges, HEAD, ETag/If-Range и conditional reads. Нет полной буферизации blob или JS-передачи bytes. Владение, роли и expiry проверяются до conditional responses. [QA](validation/2026-10-12-artifact-range/README.md). Постраничное чтение в scripts также использует прямой seek ([QA](validation/2026-10-12-paged-blob/README.md)). Object storage и новые native model formats остаются F05.
 
 ## Ближайшая работа и решения
 

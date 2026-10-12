@@ -1,0 +1,10 @@
+{
+  "run_id": "c79834c9-89a8-44a1-ba40-e3745c27f54d",
+  "scenario": "Actual API/River/Goja RPC paged artifact read at 1MiB-16",
+  "next_offset": 1048576,
+  "reserved_microcredits": 0,
+  "status": "PASS",
+  "spent_microcredits": 220,
+  "image": "sha256:6a612565995722d99a2ac08171ac6bc69420731f2692305f4a89568271b396e1",
+  "partial": false
+}

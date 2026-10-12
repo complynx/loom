@@ -99,7 +99,7 @@
 
 - Все model endpoints считаются внешними, включая локальные. Нужны разрешение текущей политики и snapshot run; отдельного режима доверенного локального inference нет. По умолчанию передача выключена.
 
-- Blob хранится на локальном persistent volume. Object storage, отдельный upload/download chunk session API и перенос между hosts не реализованы. Builtin JS чтение отдаёт страницы до 512 KiB с offset/next_offset и base64; handle streaming не проходит через JS. HTTP byte ranges, HEAD и conditional reads реализованы для artifact/handle content; fresh ownership/TTL checks остаются обязательными. Приёмка текущего этапа: [Range QA](validation/2026-10-12-artifact-range/README.md).
+- Blob хранится на локальном persistent volume. Object storage, отдельный upload/download chunk session API и перенос между hosts не реализованы. Builtin JS чтение отдаёт страницы до 512 KiB с offset/next_offset и base64, используя прямой seek без повторного чтения префикса; handle streaming не проходит через JS. HTTP byte ranges, HEAD и conditional reads реализованы для artifact/handle content; fresh ownership/TTL checks остаются обязательными. Приёмка текущего этапа: [Range QA](validation/2026-10-12-artifact-range/README.md).
 
 - Модель получает поддерживаемые картинки из `input.artifact_ids`. Произвольные PDF, аудио и видео как native input не поддержаны. Временный handle можно явно приложить через artifact_attach; модель получает поддерживаемую картинку напрямую, с повторной проверкой прав и disclosure. Через HTTP content handle сервис получает исходные bytes без JS.
 
