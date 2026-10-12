@@ -123,3 +123,5 @@ on behalf of Daniel Drizhuk
 File refresh acceptance: [same-run TTL/restart, helper and initial image](validation/2026-10-12-file-refresh/README.md), two container groups PASS; Windows integration, Linux race/integration and Golden PASS. Two independent review passes; no unresolved findings. Real-service/target-server acceptance remains pending by scope.
 
 On-demand method help implemented: permission-filtered searchable index and bounded per-method cards with examples, limits and service input/output schemas. [Local API/sandbox acceptance](validation/2026-10-12-method-help/README.md) PASS; Windows integration, Linux race/integration, Golden and two independent review passes complete. Developer contract: [usable method help](modules.md#developer-requirement-usable-method-help).
+
+Caller-restart classification (issue #2): implemented; PostgreSQL HTTP/session proof, Windows/Linux race integration, Golden, two independent reviews and [actual-Zitadel isolated acceptance](validation/2026-10-13-caller-recovery/README.md) PASS. Full Shuttle/Telegram rerun remains pending. [Retry and explicit reauthorization contract](caller-recovery.md).

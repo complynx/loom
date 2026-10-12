@@ -168,9 +168,8 @@ func (a *Authenticator) VerifySession(
 	}
 	userToken := tokens[0]
 	var actor domain.Principal
-	var binding Binding
 	if expected.Actor != expected.Subject {
-		actor, binding, err = a.verifySessionActor(ctx, expected, tokens[0], checkService)
+		actor, err = a.verifySessionActor(ctx, expected, tokens[0])
 		if err != nil {
 			return domain.Principal{}, "", err
 		}
@@ -190,6 +189,16 @@ func (a *Authenticator) VerifySession(
 	}
 	user.Actor = expected.Actor
 	if actor.Subject != "" {
+		if checkService == nil {
+			return domain.Principal{}, "", ErrUnauthorized
+		}
+		binding, bindingErr := checkService(ctx, actor)
+		if bindingErr != nil {
+			return domain.Principal{}, "", bindingErr
+		}
+		if binding.Actor != actor.Subject {
+			return domain.Principal{}, "", ErrUnauthorized
+		}
 		user.Permissions = delegatedPermissions(user.Permissions, actor.Permissions, binding.Permissions)
 		if actor.ExpiresAt.Before(user.ExpiresAt) {
 			user.ExpiresAt = actor.ExpiresAt
@@ -202,27 +211,19 @@ func (a *Authenticator) verifySessionActor(
 	ctx context.Context,
 	expected domain.Principal,
 	token string,
-	checkService func(context.Context, domain.Principal) (Binding, error),
-) (domain.Principal, Binding, error) {
-	if checkService == nil {
-		return domain.Principal{}, Binding{}, ErrUnauthorized
-	}
+) (domain.Principal, error) {
 	actor, err := a.authenticateToken(ctx, token)
 	if err != nil {
-		return domain.Principal{}, Binding{}, err
+		return domain.Principal{}, err
 	}
 	actorService, err := a.classifyService(ctx, actor)
 	if err != nil {
-		return domain.Principal{}, Binding{}, err
+		return domain.Principal{}, err
 	}
 	if actor.Subject != expected.Actor || actor.OrgID != expected.OrgID || !actorService {
-		return domain.Principal{}, Binding{}, ErrUnauthorized
+		return domain.Principal{}, ErrUnauthorized
 	}
-	binding, err := checkService(ctx, actor)
-	if err != nil || binding.Actor != actor.Subject {
-		return domain.Principal{}, Binding{}, ErrUnauthorized
-	}
-	return actor, binding, nil
+	return actor, nil
 }
 
 // SessionResolver loads only a session bound to the independently verified current actor.
@@ -252,10 +253,6 @@ func (a *Authenticator) authenticateSession(
 	if a.sessionCipher == nil || a.sessionResolver == nil || a.binding == nil || len(id) > 256 {
 		return domain.Principal{}, ErrUnauthorized
 	}
-	binding, err := a.binding(ctx, r, actor)
-	if err != nil || binding.Actor != actor.Subject {
-		return domain.Principal{}, ErrUnauthorized
-	}
 	expected, envelope, err := a.sessionResolver(ctx, id, actor)
 	if err != nil {
 		return domain.Principal{}, err
@@ -266,6 +263,13 @@ func (a *Authenticator) authenticateSession(
 	fresh, _, err := a.VerifySession(ctx, a.sessionCipher, expected, envelope, a.sessionServiceCheck)
 	if err != nil {
 		return domain.Principal{}, err
+	}
+	binding, err := a.binding(ctx, r, actor)
+	if err != nil {
+		return domain.Principal{}, err
+	}
+	if binding.Actor != actor.Subject {
+		return domain.Principal{}, ErrUnauthorized
 	}
 	fresh.Permissions = delegatedPermissions(fresh.Permissions, actor.Permissions, binding.Permissions)
 	if actor.ExpiresAt.Before(fresh.ExpiresAt) {

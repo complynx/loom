@@ -133,10 +133,6 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (doma
 	if delegated == "" || a.binding == nil {
 		return domain.Principal{}, ErrUnauthorized
 	}
-	bound, err := a.binding(ctx, r, p)
-	if err != nil || bound.Actor != p.Subject {
-		return domain.Principal{}, ErrUnauthorized
-	}
 	user, err := a.authenticateToken(ctx, delegated)
 	if err != nil {
 		return domain.Principal{}, err
@@ -146,6 +142,13 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (doma
 		return domain.Principal{}, err
 	}
 	if delegatedService || user.OrgID == "" || user.OrgID != p.OrgID {
+		return domain.Principal{}, ErrUnauthorized
+	}
+	bound, err := a.binding(ctx, r, p)
+	if err != nil {
+		return domain.Principal{}, err
+	}
+	if bound.Actor != p.Subject {
 		return domain.Principal{}, ErrUnauthorized
 	}
 	user.Actor = p.Subject

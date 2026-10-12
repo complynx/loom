@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "issuer_version": "Zitadel 4.16.3 (existing isolated IAM)",
+  "run_id": "1119e38f-f163-48e5-ab92-6c360f5a9f14",
+  "status_cycle": [
+    200,
+    503,
+    200
+  ],
+  "code": "caller_binding_unavailable",
+  "retryable": true,
+  "unique_model_request_ids": 1,
+  "explicit_reauthorization": true,
+  "same_session": true,
+  "reserved_microcredits": 0,
+  "spent_microcredits": 15,
+  "invalid_actor_during_absence": 401,
+  "invalid_user_during_absence": 401,
+  "caller_permission_removed": 403,
+  "revoked_session_during_absence": 404,
+  "real_token_revocation_or_role_mutation": "not performed; synthetic online revocation covered by behavioral tests"
+}

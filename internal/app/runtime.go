@@ -279,6 +279,14 @@ func callerBinding(
 			binding.Permissions[permission] = true
 		}
 	}
+	if count == 0 {
+		return identity.Binding{}, &domain.Error{
+			Status:    http.StatusServiceUnavailable,
+			Code:      "caller_binding_unavailable",
+			Message:   "Current caller registration is unavailable",
+			Retryable: true,
+		}
+	}
 	if count != 1 {
 		return identity.Binding{}, identity.ErrUnauthorized
 	}
