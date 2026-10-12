@@ -59,7 +59,10 @@ func (t runtimeTools) tools(
 	}
 	description := "Execute JavaScript. Read-only APIs: " + string(
 		catalog,
-	) + ". Builtins: modules.history.search({mode:'literal'|'fulltext'|'regex',query,after_seq,before_seq,event_types,limit,max_bytes,snippet_chars}); literal is default, no regex escaping needed. Results include partial, reason, next_cursor, truncated_seqs and skipped_seqs. Use modules.history.read({after_seq,limit,max_bytes}) for bounded event pages. modules.artifacts.read({artifact_id,offset,limit}) returns bounded base64 and next_offset; modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes. Await calls; return JSON. Never use external service writes in scripts."
+	) + ". Builtins: modules.history.search({mode:'literal'|'fulltext'|'regex',query,after_seq,before_seq,event_types,limit,max_bytes,snippet_chars}); literal is default, no regex escaping needed. Results include partial, reason, next_cursor, truncated_seqs and skipped_seqs. Use modules.history.read({after_seq,limit,max_bytes}) for bounded event pages. Await calls; return JSON. Never use external service writes in scripts."
+	if fresh.Has("artifacts.read") {
+		description += " Artifacts: modules.artifacts.read({artifact_id,offset,limit}) returns bounded base64 and next_offset; modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes."
+	}
 	description += memoryToolDescription(fresh)
 	if fresh.Has(diagnosticsPermission) {
 		description += " Diagnostics read-only: modules.diagnostics.health({}), modules.diagnostics.overview({}), modules.diagnostics.runs({state,after_id,limit}), modules.diagnostics.run({run_id}). Organization-scoped metadata only. Lists partial; follow next_cursor as after_id. Never treat exposure as actual provider billing."
@@ -153,7 +156,7 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 	if err != nil {
 		return nil, err
 	}
-	bindings, err := scriptBindings(reads)
+	bindings, err := scriptBindings(reads, fresh.Has("artifacts.read"))
 	if err != nil {
 		return nil, err
 	}
@@ -280,12 +283,18 @@ func (t runtimeTools) modelArtifacts(ctx context.Context, r domain.Run) ([]provi
 	return []provider.Item{item}, nil
 }
 
-func scriptBindings(reads []modules.Tool) ([]sandbox.Binding, error) {
+func scriptBindings(reads []modules.Tool, artifactAccess bool) ([]sandbox.Binding, error) {
 	bindings := []sandbox.Binding{
 		{Module: historyModule, Methods: []string{"search", builtinReadMethod}},
-		{Module: artifactsModule, Methods: []string{builtinReadMethod, "open"}},
 	}
-	indexes := map[string]int{historyModule: 0, artifactsModule: 1}
+	indexes := map[string]int{historyModule: 0}
+	if artifactAccess {
+		indexes[artifactsModule] = len(bindings)
+		bindings = append(
+			bindings,
+			sandbox.Binding{Module: artifactsModule, Methods: []string{builtinReadMethod, "open"}},
+		)
+	}
 	for _, tool := range reads {
 		if tool.Module == historyModule || tool.Module == artifactsModule || tool.Module == diagnosticsModule ||
 			tool.Module == memoryModule {

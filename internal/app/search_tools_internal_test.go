@@ -19,6 +19,7 @@ import (
 	"github.com/complynx/loom/internal/config"
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/modules"
+	"github.com/complynx/loom/internal/sandbox"
 	"github.com/complynx/loom/internal/store"
 )
 
@@ -217,4 +218,37 @@ func TestArtifactHandlesAndPagedBytesNeverNeedJSData(t *testing.T) {
 	require.NoError(t, err)
 	_, err = tools.attachArtifact(ctx, run, imageHandle.ID)
 	require.Error(t, err)
+}
+
+func TestArtifactToolsFollowCurrentPermission(t *testing.T) {
+	t.Parallel()
+	p := domain.Principal{
+		Subject: "alice", Actor: "alice", OrgID: "org", Permissions: map[string]bool{"chat.read": true},
+	}
+	tools := runtimeTools{
+		registry: &modules.Registry{}, executor: sandbox.Inline{},
+		authorize: func(context.Context, domain.Run) (domain.Principal, string, error) { return p, "", nil },
+		cfg:       config.Config{Sandbox: config.Sandbox{ScriptTimeoutCeilingMS: 5000}},
+	}
+	for _, allowed := range []bool{false, true, false} {
+		p.Permissions["artifacts.read"] = allowed
+		catalog, err := tools.tools(t.Context(), domain.Run{}, p, "")
+		require.NoError(t, err)
+		encoded, err := json.Marshal(catalog)
+		require.NoError(t, err)
+		require.Equal(t, allowed, strings.Contains(string(encoded), "modules.artifacts.read"))
+		require.Equal(t, allowed, strings.Contains(string(encoded), "modules.artifacts.open"))
+		require.Equal(t, allowed, strings.Contains(string(encoded), "artifact_attach"))
+		result, err := tools.executeScript(
+			t.Context(),
+			domain.Run{},
+			`return {available: typeof modules.artifacts !== 'undefined'};`,
+		)
+		require.NoError(t, err)
+		var value struct {
+			Available bool `json:"available"`
+		}
+		require.NoError(t, json.Unmarshal(result, &value))
+		require.Equal(t, allowed, value.Available)
+	}
 }
