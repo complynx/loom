@@ -1,0 +1,8 @@
+--- FAIL: TestFinalizationBlockedOnRunDoesNotDeadlockChatDeletion (1.30s)
+    chat_run_lock_test.go:41: 
+        	Error Trace:	C:/Users/ddriz/Projects/clx-scripter/internal/store/chat_run_lock_test.go:41
+        	Error:      	Condition never satisfied
+        	Test:       	TestFinalizationBlockedOnRunDoesNotDeadlockChatDeletion
+FAIL
+FAIL	github.com/complynx/loom/internal/store	2.699s
+FAIL

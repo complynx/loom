@@ -21,6 +21,15 @@ func (s *Store) ClaimRun(ctx context.Context, rid, owner string, duration time.D
 	}
 	return r, err
 }
+
+// History writers lock the chat before the run, matching DeleteChat. The
+// immutable chat_id lookup does not lock runs; callers still check ownership or
+// the execution fence after this lock. Call before taking any run row lock.
+func lockRunChat(ctx context.Context, tx pgx.Tx, rid string) error {
+	_, err := tx.Exec(ctx, "SELECT id FROM chats WHERE id=(SELECT chat_id FROM runs WHERE id=$1) FOR UPDATE", rid)
+	return err
+}
+
 func leaseRun(ctx context.Context, tx pgx.Tx, rid, owner string, fence int64) (domain.Run, error) {
 	r, e := scanRun(
 		tx.QueryRow(
@@ -262,11 +271,19 @@ func (s *Store) Transition(
 	reason, result string,
 ) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
+		if state == domain.Completed {
+			if err := lockRunChat(ctx, tx, rid); err != nil {
+				return err
+			}
+		}
 		return s.transition(ctx, tx, rid, owner, fence, state, reason, result)
 	})
 }
 func (s *Store) AskQuestion(ctx context.Context, rid, owner string, fence int64, q domain.Question) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
+		if err := lockRunChat(ctx, tx, rid); err != nil {
+			return err
+		}
 		return s.askQuestion(ctx, tx, rid, owner, fence, q)
 	})
 }
@@ -357,6 +374,9 @@ func inWithoutID(in domain.RunInput) domain.RunInput { in.ID = ""; return in }
 
 func (s *Store) AskApproval(ctx context.Context, rid, owner string, fence int64, a domain.Approval) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
+		if err := lockRunChat(ctx, tx, rid); err != nil {
+			return err
+		}
 		return s.askApproval(ctx, tx, rid, owner, fence, a)
 	})
 }
@@ -749,6 +769,9 @@ func (s *Store) addInput(
 ) error {
 	uid, e := s.ensureUser(ctx, tx, p)
 	if e != nil {
+		return e
+	}
+	if e = lockRunChat(ctx, tx, rid); e != nil {
 		return e
 	}
 	*r, e = scanRun(
