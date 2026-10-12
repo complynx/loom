@@ -51,7 +51,7 @@ func documentOperation(api huma.API, pattern, permission string) {
 		)
 	}
 	if method == http.MethodPost &&
-		(path == runsPath || strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events") && !strings.HasSuffix(path, "/artifacts/handles") || strings.HasSuffix(path, "/adjustments") || strings.HasSuffix(path, "/reconcile")) {
+		(path == runsPath || strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events") && !strings.HasSuffix(path, "/artifacts/handles") || strings.HasSuffix(path, "/adjustments") || strings.HasSuffix(path, "/reconcile") || strings.HasSuffix(path, "/recovery/prepare")) {
 		op.Parameters = append(
 			op.Parameters,
 			&huma.Param{
@@ -114,6 +114,8 @@ func operationTypes(method, path string) (any, any, string) {
 		status = "204"
 	}
 	switch {
+	case strings.HasSuffix(path, "/recovery/prepare"):
+		return domain.RecoveryPrepareRequest{}, recoveryPreparationReceipt{}, status
 	case strings.HasSuffix(path, "/reconcile"):
 		return domain.ReconcileStepRequest{}, reconciliationReceipt{}, status
 	case strings.HasSuffix(path, "/artifacts/handles"):

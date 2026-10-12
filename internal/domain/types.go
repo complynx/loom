@@ -352,6 +352,13 @@ type ReconcileEvidence struct {
 	Reference string `json:"reference"`
 	Reason    string `json:"reason"`
 }
+
+// RecoveryPrepareRequest records why an expired execution is quarantined.
+type RecoveryPrepareRequest struct {
+	ExpectedFence int64             `json:"expected_fence" minimum:"1"`
+	Evidence      ReconcileEvidence `json:"evidence"`
+}
+
 type ReconcileStepRequest struct {
 	Usage    Usage             `json:"usage"`
 	Evidence ReconcileEvidence `json:"evidence"`

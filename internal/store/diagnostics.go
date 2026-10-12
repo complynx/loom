@@ -90,7 +90,7 @@ func (s *Store) DiagnosticsOverview(ctx context.Context, p domain.Principal) (do
 	return out, rows.Err()
 }
 
-const diagnosticRunColumns = `r.id::text,r.chat_id::text,r.state,r.created_at,r.updated_at,r.lease_until,r.pause_requested,r.cancel_requested,r.spent_microcredits,r.reserved_microcredits,(SELECT count(*) FROM platform_provider_attempts a WHERE a.run_id=r.id AND a.org_id=r.org_id AND a.status='unknown')`
+const diagnosticRunColumns = `r.id::text,r.chat_id::text,r.state,r.fence,r.created_at,r.updated_at,r.lease_until,r.pause_requested,r.cancel_requested,r.spent_microcredits,r.reserved_microcredits,(SELECT count(*) FROM platform_provider_attempts a WHERE a.run_id=r.id AND a.org_id=r.org_id AND a.status='unknown')`
 
 func scanDiagnosticRun(row pgx.Row) (domain.DiagnosticRun, error) {
 	var r domain.DiagnosticRun
@@ -98,6 +98,7 @@ func scanDiagnosticRun(row pgx.Row) (domain.DiagnosticRun, error) {
 		&r.ID,
 		&r.ChatID,
 		&r.State,
+		&r.Fence,
 		&r.CreatedAt,
 		&r.UpdatedAt,
 		&r.LeaseUntil,

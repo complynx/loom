@@ -182,6 +182,7 @@ func (s *server) registerRoutes(mux *http.ServeMux) {
 	s.route(mux, "GET /v1/admin/users/{id}/preferences", "preferences.other.write", s.userPreferences)
 	s.route(mux, "PATCH /v1/admin/users/{id}/preferences", "preferences.other.write", s.updatePreferences)
 	s.route(mux, "POST /v1/admin/billing/{id}/adjustments", "billing.adjust", s.adjustCredits)
+	s.route(mux, "POST /v1/admin/runs/{id}/recovery/prepare", "operations.reconcile", s.prepareRecovery)
 	s.route(mux, "POST /v1/admin/runs/{id}/steps/{step}/reconcile", "operations.reconcile", s.reconcileStep)
 	s.route(mux, "POST /v1/artifacts", "artifacts.write", s.uploadArtifact)
 	s.route(mux, "GET /v1/artifacts/{id}", "artifacts.read", s.artifactMetadata)
@@ -243,6 +244,7 @@ func recoveryRoute(pattern string) bool {
 		"GET /v1/admin/diagnostics/runs/{id}",
 		"GET /v1/admin/settings",
 		"POST /v1/admin/runs/{id}/steps/{step}/reconcile",
+		"POST /v1/admin/runs/{id}/recovery/prepare",
 		"POST /v1/runs/{id}/cancel":
 		return true
 	default:

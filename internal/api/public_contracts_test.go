@@ -56,6 +56,7 @@ func TestOpenAPIRunWaitAndCollectionResponses(t *testing.T) {
 		{"/v1/models", "get", "models"},
 		{"/v1/chats/{id}/history", "get", "events"},
 		{"/v1/admin/runs/{id}/steps/{step}/reconcile", "post", "unresolved_steps"},
+		{"/v1/admin/runs/{id}/recovery/prepare", "post", "fence"},
 	} {
 		operation := paths[route.path].(map[string]any)[route.method].(map[string]any)
 		responses := operation["responses"].(map[string]any)

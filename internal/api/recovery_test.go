@@ -63,3 +63,27 @@ func TestRecoveryKeepsAuthorizationAndDiagnostics(t *testing.T) {
 	}), api.Options{RecoveryMode: true})
 	require.Equal(t, 403, request(denied, "POST", "/v1/runs", "", "", "").Code)
 }
+
+func TestRecoveryPreparationRequiresModeAndAttestation(t *testing.T) {
+	t.Parallel()
+	auth := authFunc(func(ctx context.Context, r *http.Request) (domain.Principal, error) {
+		p, e := allowed(ctx, r)
+		p.Permissions["operations.reconcile"] = true
+		return p, e
+	})
+	path := "/v1/admin/runs/example/recovery/prepare"
+	w := request(api.New(nil, auth, api.Options{}), "POST", path, "{}", "application/json", "key")
+	require.Equal(t, 409, w.Code)
+	require.Contains(t, w.Body.String(), "recovery_mode_required")
+	w = request(api.New(nil, auth, api.Options{RecoveryMode: true}), "POST", path, "{}", "application/json", "")
+	require.Equal(t, 422, w.Code)
+	w = request(
+		api.New(nil, authFunc(allowed), api.Options{RecoveryMode: true}),
+		"POST",
+		path,
+		"{}",
+		"application/json",
+		"key",
+	)
+	require.Equal(t, 403, w.Code)
+}

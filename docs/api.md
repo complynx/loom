@@ -38,6 +38,7 @@
 | GET/PATCH | `/admin/users/{id}/policy` | Лимиты и доступ пользователя |
 | GET/PATCH | `/admin/users/{id}/preferences` | Выбор модели другого пользователя |
 | POST | `/admin/billing/{id}/adjustments` | Аудируемое начисление или корректировка, не прямое изменение balance |
+| POST | `/admin/runs/{id}/recovery/prepare` | Подготовка expired uncertain Running к сверке; только recovery mode |
 | POST | `/admin/runs/{id}/steps/{step}/reconcile` | Аудируемая сверка неизвестной оплаты inference |
 | POST | `/artifacts` | Ограниченная загрузка файла |
 | GET | `/artifacts/{id}` | Метаданные |
@@ -158,3 +159,11 @@ MVP доставляет сохранённые run events, а не поток t
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk
+
+## Подготовка восстановленного запуска
+
+`POST /v1/admin/runs/{id}/recovery/prepare` требует `execution.recovery_mode: true`, `operations.reconcile` и `Idempotency-Key`. Body: `expected_fence` из admin diagnostics и `evidence` с `kind: operator_attestation`, непустыми `reference` и `reason`. См. [контракт recovery](recovery-mode.md).
+
+Ответ содержит `run_id`, `status`, `reason`, новый `fence`, `unresolved_steps`, `spent_microcredits` и `reserved_microcredits`. Запуск переходит из Running в reconciling; pending/unknown шаги, записи внешних эффектов и финансовые резервы сохраняются. Подготовка не делает inference и не ставит job в очередь. Diagnostics run теперь содержит `fence` для условной команды оператора.
+
+403 — нет права; 404 — запуск вне организации; 409 `lease_busy`, `recovery_fence_changed`, `run_not_running`, `run_not_uncertain`, `idempotency_conflict` или `recovery_mode_required`; 422 `invalid_recovery_evidence` — неверное основание/expected_fence. Совпадающий повтор с тем же ключом возвращает текущую квитанцию без нового перехода или аудита. После подготовки можно отменить запуск штатной owner-ручкой и отдельно сверить подтверждённый provider receipt.

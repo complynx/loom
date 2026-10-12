@@ -18,6 +18,7 @@ type DiagnosticsOverview struct {
 }
 
 type DiagnosticRun struct {
+	Fence                int64      `json:"fence"`
 	ID                   string     `json:"id"`
 	ChatID               string     `json:"chat_id"`
 	State                RunState   `json:"state"`
