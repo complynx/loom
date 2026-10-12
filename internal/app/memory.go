@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	memoryModule   = "memory"
-	memorySetMicro = "set_micro"
+	memoryModule      = "memory"
+	memoryStateMethod = "state"
+	memorySetMicro    = "set_micro"
 )
 
 func memoryMethods(_ domain.Principal) []string {
-	return []string{"state", "list", "read", memorySetMicro, "set_index", "put", "delete", "clear"}
+	return []string{memoryStateMethod, "list", "read", memorySetMicro, "set_index", "put", "delete", "clear"}
 }
 
 func memoryToolDescription(_ domain.Principal) string {
@@ -49,7 +50,7 @@ func (t runtimeTools) callMemory(ctx context.Context, p domain.Principal,
 	method string, raw json.RawMessage,
 ) (any, error) {
 	switch method {
-	case "state":
+	case memoryStateMethod:
 		var input struct{}
 		if err := decodeMemoryInput(raw, &input); err != nil {
 			return nil, err

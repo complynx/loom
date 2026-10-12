@@ -45,6 +45,9 @@ Current ownership, live chat references, module permissions and both source/fetc
 
 Raw uploads, derived files without a source refetch contract, and legacy imports without `fetch_method` cannot be recovered automatically. Supply them again when needed. Migration 00003 adds reference metadata; it does not guess legacy source methods. Deleting all chats referencing a file prevents resurrection. The acceptance service exposes `fixture.fetch_file` for `fixture-file` and `fixture-image`.
 
+## Reading method help
+
+Use `modules.help.list({module:"files",query:"PDF",limit:10})`, then `modules.help.read({module:"files",method:"pdf_text"})`. Lists are short and permission-filtered; cards describe parameters, examples, results, limits and recovery. Follow `next_cursor` as `after_id` for lists, or `cursor` for cards. Paid/model functions use module `$tools` in help and remain outside JS.
 ## Methods
 
 - `info`: stored MIME, size and checksum (direct metadata object, without a `data` wrapper). `pdf_info.data.info` is native pdfinfo text; `video_info.data` is native FFprobe JSON.
