@@ -13,18 +13,21 @@ import (
 	"github.com/complynx/loom/internal/fileproc"
 )
 
-func waitWorker(t *testing.T, client fileproc.Client) {
+func waitWorker(t *testing.T, client fileproc.Client, stopped <-chan error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	for {
-		if client.Health(ctx) == nil {
+		err := client.Health(ctx)
+		if err == nil {
 			return
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("worker did not become healthy")
-		case <-time.After(time.Millisecond):
+			t.Fatalf("worker did not become healthy: %v", err)
+		case stopErr := <-stopped:
+			t.Fatalf("worker stopped before readiness: %v", stopErr)
+		case <-time.After(10 * time.Millisecond):
 		}
 	}
 }
@@ -47,7 +50,7 @@ func TestWorkerReclaimsStaleSocket(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- (&fileproc.Handler{}).ListenAndServe(ctx, path) }()
-	waitWorker(t, fileproc.Client{Socket: path})
+	waitWorker(t, fileproc.Client{Socket: path}, done)
 	cancel()
 	select {
 	case err = <-done:
@@ -66,7 +69,7 @@ func TestSecondWorkerCannotReplaceActiveSocket(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- (&fileproc.Handler{}).ListenAndServe(ctx, path) }()
 	client := fileproc.Client{Socket: path}
-	waitWorker(t, client)
+	waitWorker(t, client, done)
 	if err := (&fileproc.Handler{}).ListenAndServe(t.Context(), path); err == nil {
 		t.Fatal("second worker replaced active socket")
 	}

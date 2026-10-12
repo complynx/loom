@@ -55,3 +55,9 @@ The source collector now uses abuild's native DISTFILES_MIRROR with the official
 
 Linux Golden with integration tags also passed, including Linux-only socket ownership/recovery code.
 Mirror repair full worker rebuild: PASS; all 757 source checksums PASS. GitHub rerun is tracked separately from this local result.
+
+## Readiness fixture follow-up
+
+PR CI for c708402 passed the main race suite but failed TestWorkerReclaimsStaleSocket in the media suite: the fixture did not observe health within one second. The same push media suite passed. Before the patch, 25 repeated Linux race runs of the socket tests passed locally; scheduling is a plausible cause, not a proven runtime diagnosis.
+
+The test-only startup wait now allows five seconds, polls every 10 ms and fails immediately with the actual worker exit error. Production readiness and one-second shutdown assertions are unchanged. Thirty complete fileproc race repetitions with real media CLIs passed after the patch. Scoped Linux Golden reports zero issues. Fresh independent textual review found No actionable findings; the staged diff stayed empty during review.
