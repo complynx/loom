@@ -1,4 +1,4 @@
-// Package artifacts stores immutable upload content on a persistent volume.
+// Package artifacts stores immutable content temporarily on a disk volume.
 package artifacts
 
 import (
@@ -40,6 +40,7 @@ type Limits struct {
 	MaxUploadBytes, QuotaBytes int64
 	// MaxConcurrentUploads defaults to four, bounding transient upload storage.
 	MaxConcurrentUploads int
+	TTL                  time.Duration
 }
 
 // MetadataStore must enforce the quota atomically with insertion, including concurrent uploads.
@@ -59,6 +60,12 @@ type Service struct {
 }
 
 func New(path string, store MetadataStore, limits Limits) (*Service, error) {
+	if limits.TTL == 0 {
+		limits.TTL = domain.DefaultArtifactTTL
+	}
+	if limits.TTL < time.Second || limits.TTL > 7*24*time.Hour {
+		return nil, ErrInvalid
+	}
 	if limits.MaxConcurrentUploads == 0 {
 		limits.MaxConcurrentUploads = 4
 	}
@@ -177,6 +184,7 @@ func (s *Service) upload(
 		return domain.Artifact{}, directorySyncErr
 	}
 
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	a := domain.Artifact{
 		ID:                        id,
 		OwnerID:                   p.OwnerID,
@@ -184,9 +192,10 @@ func (s *Service) upload(
 		MIME:                      declaredMIME,
 		SHA256:                    hex.EncodeToString(hash.Sum(nil)),
 		Size:                      size,
-		CreatedAt:                 time.Now().UTC(),
+		CreatedAt:                 createdAt,
 		ExternalDisclosureAllowed: externalDisclosure,
 		SourceServiceID:           sourceServiceID,
+		ExpiresAt:                 createdAt.Add(s.limits.TTL),
 	}
 	return s.commitUpload(ctx, a, commit)
 }
@@ -249,12 +258,22 @@ func (s *Service) Metadata(ctx context.Context, p Principal, id string) (domain.
 	if p.OwnerID == "" || a.OwnerID != p.OwnerID || a.OrgID != p.OrgID {
 		return domain.Artifact{}, ErrForbidden
 	}
+	if !artifactExpiry(a).After(time.Now()) {
+		return domain.Artifact{}, ErrNotFound
+	}
 	storedID, valid := compactArtifactID(a.ID)
 	if !valid || storedID != id {
 		return domain.Artifact{}, ErrInvalid
 	}
 	a.ID = id
 	return a, nil
+}
+
+func artifactExpiry(a domain.Artifact) time.Time {
+	if a.ExpiresAt.IsZero() {
+		return a.CreatedAt.Add(domain.DefaultArtifactTTL)
+	}
+	return a.ExpiresAt
 }
 
 func (s *Service) Download(ctx context.Context, p Principal, id string) (domain.Artifact, io.ReadSeekCloser, error) {
@@ -274,7 +293,7 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (domain.
 		return domain.Artifact{}, nil, err
 	}
 	return a, &contextReadSeekCloser{
-		ctx: ctx, reader: f, closer: f, seeker: f,
+		ctx: ctx, reader: f, closer: f, seeker: f, expiresAt: artifactExpiry(a),
 	}, nil
 }
 
@@ -296,11 +315,15 @@ func AllowDisclosure(a domain.Artifact, p Principal, provider string, allowedPro
 }
 
 type contextReader struct {
-	ctx    context.Context
-	reader io.Reader
+	ctx       context.Context
+	reader    io.Reader
+	expiresAt time.Time
 }
 
 func (r *contextReader) Read(p []byte) (int, error) {
+	if !r.expiresAt.IsZero() && !r.expiresAt.After(time.Now()) {
+		return 0, ErrNotFound
+	}
 	if contextErr := r.ctx.Err(); contextErr != nil {
 		return 0, contextErr
 	}

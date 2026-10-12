@@ -24,7 +24,7 @@ func (s *Service) DeriveToChat(
 	if !ok {
 		return domain.Artifact{}, ErrInvalid
 	}
-	return s.upload(
+	item, err := s.upload(
 		ctx,
 		Principal{OwnerID: ownerID, OrgID: p.OrgID},
 		mimeType,
@@ -32,7 +32,14 @@ func (s *Service) DeriveToChat(
 		source.ExternalDisclosureAllowed,
 		source.SourceServiceID,
 		func(c context.Context, a domain.Artifact, quota int64) error {
+			if source.ExpiresAt.Before(a.ExpiresAt) && !source.ExpiresAt.IsZero() {
+				a.ExpiresAt = source.ExpiresAt
+			}
 			return repository.CommitChatArtifact(c, p, chatID, a, quota)
 		},
 	)
+	if !source.ExpiresAt.IsZero() && source.ExpiresAt.Before(item.ExpiresAt) {
+		item.ExpiresAt = source.ExpiresAt
+	}
+	return item, err
 }

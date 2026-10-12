@@ -19,10 +19,11 @@ import (
 // Descriptor identifies a blob at the same trusted service which returned it.
 // Path is a decoded absolute path; signed external URLs are deliberately excluded.
 type Descriptor struct {
-	Path   string `json:"path"`
-	MIME   string `json:"mime"`
-	SHA256 string `json:"sha256"`
-	Size   int64  `json:"size"`
+	ExternalID string `json:"external_id,omitempty"`
+	Path       string `json:"path"`
+	MIME       string `json:"mime"`
+	SHA256     string `json:"sha256"`
+	Size       int64  `json:"size"`
 }
 
 // Source is constructed by the host broker, never from model or module output.
@@ -78,7 +79,7 @@ func (s *Service) importWithCommit(
 	descriptor Descriptor,
 	commit func(context.Context, domain.Artifact, int64) error,
 ) (domain.Artifact, error) {
-	if source.ServiceID == "" {
+	if !validExternalSource(source.ServiceID, descriptor.ExternalID) {
 		return domain.Artifact{}, ErrInvalid
 	}
 	if source.Client == nil || source.Authorize == nil {
@@ -145,7 +146,13 @@ func (s *Service) importWithCommit(
 		hash:           sha256.New(),
 		authorize:      source.Authorize,
 	}
-	return s.upload(ctx, p, contentType, reader, source.ExternalDisclosureAllowed, source.ServiceID, commit)
+	item, err := s.upload(ctx, p, contentType, reader, source.ExternalDisclosureAllowed, source.ServiceID,
+		func(c context.Context, a domain.Artifact, quota int64) error {
+			a.SourceExternalID = descriptor.ExternalID
+			return commit(c, a, quota)
+		})
+	item.SourceExternalID = descriptor.ExternalID
+	return item, err
 }
 
 func safeBlobPath(path string) bool {
@@ -188,4 +195,8 @@ func (r *verifiedBlobReader) Read(p []byte) (int, error) {
 		}
 	}
 	return n, err
+}
+
+func validExternalSource(serviceID, externalID string) bool {
+	return serviceID != "" && len(externalID) <= 1024
 }

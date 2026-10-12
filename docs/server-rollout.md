@@ -68,7 +68,7 @@ CLX_IMAGE=complynx/loom@sha256:<approved-digest>
 CLX_PUBLIC_HOST=agent.complynx.net
 ```
 
-Record the previous digest before every update. Keep configuration paths stable; releases must not replace persistent artifacts or keys.
+Record the previous digest before every update. Keep configuration paths stable; releases must not reset temporary-file deadlines or replace encryption keys.
 
 Create the metrics network before starting either profile:
 
@@ -245,9 +245,9 @@ The existing server SSH workflow injects its own secrets. The profile uses host-
 
 ## 9. Back up and rehearse recovery before opening use
 
-Back up database, artifact directory and all encryption keys as one recovery set. Encrypt off-host backups and record release digest, schema version, settings revision and key IDs. Protect restored identity sessions; expiry and live permission checks still apply.
+Back up the database and all encryption keys as one recovery set. Exclude temporary artifact bytes from long-term backups; originals belong to source services. Record external IDs and plan refetch after restoration. Encrypt off-host backups and record release digest, schema version, settings revision and key IDs. Protect restored identity sessions; expiry and live permission checks still apply.
 
-For an initial consistent backup, block new ingress and stop the API (including its worker), leave PostgreSQL running, then take a logical dump and artifact snapshot:
+For an initial consistent backup, block new ingress and stop the API (including its worker), leave PostgreSQL running, then take a logical dump:
 
 ```sh
 cd /home/complynx/server_configs/configs/loom
@@ -256,9 +256,9 @@ umask 077
 docker exec postgres-postgres-1 pg_dump -U complynx -Fc loom > /secure-backup/loom.dump
 ```
 
-`/secure-backup` is an operator-created protected destination outside the repository. Copy the artifact tree while API is stopped, and store keys separately under equivalent protection. Check command exit status, nonempty dump, checksums and off-host upload. Restart API only after backup completes successfully. Stopping the worker does not roll back an external request already sent; preserve and inspect uncertainty records.
+`/secure-backup` is an operator-created protected destination outside the repository. Do not copy the temporary artifact tree into long-term backups. Store encryption keys separately under equivalent protection. Check command exit status, nonempty dump, checksums and off-host upload. Restart API only after backup completes successfully. Stopping the worker does not roll back an external request already sent; preserve and inspect uncertainty records.
 
-Rehearse `pg_restore` into a separate isolated database with the recorded owner roles, restore artifacts/keys and run read-only database checks before any API worker starts. Never test restore over the shared production PostgreSQL database. Never run destructive disk-full QA on the server's root or PostgreSQL volume.
+Rehearse `pg_restore` into a separate isolated database with the recorded owner roles, restore keys and run read-only database checks before any API worker starts. Never test restore over the shared production PostgreSQL database. Never run destructive disk-full QA on the server's root or PostgreSQL volume.
 
 Set `execution.recovery_mode: true` in the private YAML **before** starting restored API. Stop every ordinary-mode writer/replica first. Restore the complete service subject inventory since the backup into `identity.service_subjects`, including removed actors; newly observed recovery identities are only remembered for one process lifetime. Recovery starts HTTP/login/diagnostics while omitting providers, River workers and background mutations. `/readyz` returns 503 recovery_mode; use `/healthz` plus authenticated diagnostics for inspection. In `server_configs`, keep the normal production profile stopped and use an isolated recovery profile without the normal rollout hook/readiness check that expects 200.
 
@@ -281,7 +281,7 @@ Prove these observable paths against the approved production configuration:
 5. One read module and one approved write/status lookup work. Duplicate client requests return the same operation; no duplicate downstream effect occurs.
 6. API restart retains state. Expired or revoked sessions reach `waiting_auth`; queue restart does not bypass authorization, and fresh same-actor reauthorization resumes safely.
 7. Healthy shutdown meets the one-second target; failure paths stay within five seconds. Disk-full handling is proven on an isolated bounded QA filesystem and evidence is linked to the release; production receives monitoring and capacity checks, not intentional exhaustion.
-8. Artifact ownership, direct model attachment and client streaming enforce MIME, limits and disclosure policy. Bulk blob delivery bypasses JS; bounded `artifacts.read` remains available for script processing.
+8. Artifact ownership, direct model attachment and client streaming enforce MIME, limits and disclosure policy. Blob delivery bypasses JS; use bounded text/document tools for extracted text. Verify file expiry, quota release and `modules.artifacts.fetch` against the source service.
 9. Metrics/logs arrive in Grafana Cloud and at least one alert notification arrives. Backup/isolated restore and external-effect reconciliation procedure are accepted.
 
 Record actual evidence and failures. Local QA reports are inputs to this gate, not proof of the production client, network or notification setup. Widen grants and budgets only after pilot acceptance.
@@ -301,7 +301,7 @@ Read [the file-worker contract and license checklist](file-worker.md) and [tool 
 
 On `/home/complynx/server_configs`, add the private worker using the [compose overlay](../examples/file-worker.compose.yaml), adapting API service name `loom` to the actual profile. Keep `/run/loom-files` shared only between API (read-only mount) and file-worker. Give the worker no networks, host paths, database, Docker socket or secrets. Use the declared UID, memory/PID/CPU limits and bounded tmpfs. Do not add Traefik labels to the worker.
 
-Merge [the config fragment](../examples/file-worker.config.yaml) into `data/loom/config.yaml`; reuse the API OpenAI secret if transcription is enabled. Start with `file_tools.enabled: true`, `transcription.enabled: false`; check readiness, `file_processor` dependency, small PDF/image/text processing, artifact quota and denial cases. Enable transcription only after selecting its tariff, credit budget and minimal paid acceptance. Existing API/artifact recovery gates remain required. To roll back optional tools, disable both settings and restart the API before removing the worker/socket volume. Do not remove stored derived artifacts or transcription checkpoints.
+Merge [the config fragment](../examples/file-worker.config.yaml) into `data/loom/config.yaml`; reuse the API OpenAI secret if transcription is enabled. Start with `file_tools.enabled: true`, `transcription.enabled: false`; check readiness, `file_processor` dependency, small PDF/image/text processing, artifact quota and denial cases. Enable transcription only after selecting its tariff, credit budget and minimal paid acceptance. Existing API/artifact recovery gates remain required. To roll back optional tools, disable both settings and restart the API before removing the worker/socket volume. Keep transcription/financial checkpoints; temporary derived bytes expire independently.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk
@@ -309,3 +309,9 @@ on behalf of Daniel Drizhuk
 ## Optional OpenTelemetry rollout
 
 Use [the OTel configuration and private Alloy receiver](opentelemetry.md). The server currently has no OTLP receiver. Add the prepared stable snippet to configs/alloy/config.alloy, configure the trace backend and collector-side authentication, and keep port 4318 private. Join Loom to the existing clx-observability network, validate Alloy, then enable observability.otel in data/loom/config.yaml. Verify traces, operation metrics, correlated logs and collector-outage behavior before pilot acceptance. Existing clx_* scrape metrics remain active. No production collector changes have been applied.
+
+## Temporary-file policy upgrade
+
+Before upgrading from schema 00001, stop the API/queue worker. Apply migration 00002 once with the new release, then start the API. It assigns existing blobs `created_at + 24 hours`, including old files referenced by active runs. Newly created files use `artifacts.ttl_seconds: 86400` unless explicitly changed. The former `bootstrap_settings.artifact_retention` field is compatibility metadata and is ignored for file storage. Check expiry/collection metrics and actual disk removal in a private acceptance scope. Disable any existing artifact-volume backup job and expire its historical byte copies according to the operator's backup policy.
+
+Migration removes inline file copies from old compaction/tool checkpoints while preserving text, provenance and accounting. This cleanup is irreversible: schema downgrade does not restore bytes. Roll back to a release with the temporary-file policy; a pre-policy binary can expose bytes until collection and must not be used as an ordinary writer. Unknown paid operations still require evidence; expired files do not authorize a repeat charge. Missing initial attachments may require a fresh run after fetching from the source service.

@@ -1,0 +1,71 @@
+{
+  "test_ttl_seconds": 10,
+  "results": [
+    {
+      "scenario": "external_id_import_and_live_access",
+      "status": "PASS",
+      "run_id": "ecf4e04d-56b6-4f5f-8054-77236bac8dee",
+      "artifact_id": "24c1a65eae1847969675d36ef35d7521",
+      "source_external_id": "fixture-file",
+      "expires_at": "2026-10-12T18:30:23.517322Z",
+      "bytes": 51,
+      "binary_js_read": false
+    },
+    {
+      "scenario": "derived_file_inherits_deadline",
+      "status": "PASS",
+      "run_id": "8a38b9d9-d952-4841-acb1-21107aba0cd6",
+      "expires_at": "2026-10-12T18:30:23.89078Z"
+    },
+    {
+      "scenario": "restart_does_not_extend_deadline",
+      "status": "PASS",
+      "artifact_id": "04154042eb94a152ea968feb8ecef707",
+      "expires_at": "2026-10-12T18:30:24.617383Z"
+    },
+    {
+      "scenario": "expiry_denies_original_derived_and_handle",
+      "status": "PASS",
+      "http_status": 404
+    },
+    {
+      "scenario": "refetch_returns_new_internal_id",
+      "status": "PASS",
+      "run_id": "2de203b3-32f9-42c5-9757-65a565ac5d70",
+      "previous_artifact_id": "24c1a65eae1847969675d36ef35d7521",
+      "artifact_id": "ae5d63e310d8518c825fa9044316c5e7",
+      "checksum_unchanged": true
+    },
+    {
+      "scenario": "physical_collection_and_accounting",
+      "status": "PASS",
+      "bytes_removed": true,
+      "run_reservations": 0,
+      "wallet_reservations": 0
+    },
+    {
+      "scenario": "unknown_file_and_write_target_rejected_without_import",
+      "status": "PASS",
+      "checks": [
+        {
+          "method": "fetch_file",
+          "unknown_external_id": true,
+          "run_id": "5e41885d-24e9-4d8f-a869-476fc5c38c14",
+          "error": "tool_failed"
+        },
+        {
+          "method": "write",
+          "unknown_external_id": false,
+          "run_id": "4c0abc69-661f-4502-ab58-13b0d23cc679",
+          "error": "tool_failed"
+        }
+      ]
+    },
+    {
+      "scenario": "deployment_default_24_hours",
+      "status": "PASS",
+      "artifact_id": "33cc4f22eb2a1e06213ccd229771e712",
+      "ttl_seconds": 86400
+    }
+  ]
+}

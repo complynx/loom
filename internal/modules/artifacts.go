@@ -12,6 +12,7 @@ import (
 const maxModuleArtifacts = 16
 
 type ArtifactDescriptor struct {
+	ExternalID   string `json:"external_id,omitempty"`
 	DownloadPath string `json:"download_path"`
 	MIMEType     string `json:"mime_type"`
 	SizeBytes    int64  `json:"size_bytes"`

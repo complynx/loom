@@ -70,10 +70,14 @@ type Provider struct {
 	Endpoint   string `yaml:"endpoint"`
 	APIKey     string `yaml:"api_key"`
 }
+
+const defaultArtifactTTLSeconds = 86400
+
 type Artifacts struct {
 	Root              string `yaml:"root"`
 	MaxUploadBytes    int64  `yaml:"max_upload_bytes"`
 	QuotaPerUserBytes int64  `yaml:"quota_per_user_bytes"`
+	TTLSeconds        int    `yaml:"ttl_seconds"`
 }
 type Sandbox struct {
 	Socket                 string `yaml:"socket"`
@@ -135,28 +139,29 @@ type Retention struct {
 	Days int    `yaml:"days"`
 }
 type Settings struct {
-	InitialCredits            int64     `yaml:"initial_credits"`
-	MaxRunMicrocredits        int64     `yaml:"max_run_microcredits"`
-	DefaultEffort             string    `yaml:"default_effort"`
-	HistoryRecentLimit        int       `yaml:"history_recent_limit"`
-	MaxSteps                  int       `yaml:"max_steps"`
-	ModelCatalog              []Model   `yaml:"model_catalog"`
-	DefaultModelID            string    `yaml:"default_model_id"`
-	Tariffs                   []Tariff  `yaml:"tariffs"`
-	UserActiveRunLimit        int       `yaml:"user_active_run_limit"`
-	RunActiveTimeSeconds      int       `yaml:"run_active_time_seconds"`
-	RunLifetimeSeconds        int       `yaml:"run_lifetime_seconds"`
-	InputWaitSeconds          int       `yaml:"input_wait_seconds"`
-	ApprovalWaitSeconds       int       `yaml:"approval_wait_seconds"`
-	PausedWaitSeconds         int       `yaml:"paused_wait_seconds"`
-	ScriptTimeoutMS           int       `yaml:"script_timeout_ms"`
-	ParallelRPCLimit          int       `yaml:"parallel_rpc_limit"`
-	ContextInputTokenBudget   int       `yaml:"context_input_token_budget"`
-	OutputTokenLimit          int       `yaml:"output_token_limit"`
-	RegexPatternMaxChars      int       `yaml:"regex_pattern_max_chars"`
-	RegexScanMaxBytes         int64     `yaml:"regex_scan_max_bytes"`
-	RegexDeadlineMS           int       `yaml:"regex_deadline_ms"`
-	HistoryRetention          Retention `yaml:"history_retention"`
+	InitialCredits          int64     `yaml:"initial_credits"`
+	MaxRunMicrocredits      int64     `yaml:"max_run_microcredits"`
+	DefaultEffort           string    `yaml:"default_effort"`
+	HistoryRecentLimit      int       `yaml:"history_recent_limit"`
+	MaxSteps                int       `yaml:"max_steps"`
+	ModelCatalog            []Model   `yaml:"model_catalog"`
+	DefaultModelID          string    `yaml:"default_model_id"`
+	Tariffs                 []Tariff  `yaml:"tariffs"`
+	UserActiveRunLimit      int       `yaml:"user_active_run_limit"`
+	RunActiveTimeSeconds    int       `yaml:"run_active_time_seconds"`
+	RunLifetimeSeconds      int       `yaml:"run_lifetime_seconds"`
+	InputWaitSeconds        int       `yaml:"input_wait_seconds"`
+	ApprovalWaitSeconds     int       `yaml:"approval_wait_seconds"`
+	PausedWaitSeconds       int       `yaml:"paused_wait_seconds"`
+	ScriptTimeoutMS         int       `yaml:"script_timeout_ms"`
+	ParallelRPCLimit        int       `yaml:"parallel_rpc_limit"`
+	ContextInputTokenBudget int       `yaml:"context_input_token_budget"`
+	OutputTokenLimit        int       `yaml:"output_token_limit"`
+	RegexPatternMaxChars    int       `yaml:"regex_pattern_max_chars"`
+	RegexScanMaxBytes       int64     `yaml:"regex_scan_max_bytes"`
+	RegexDeadlineMS         int       `yaml:"regex_deadline_ms"`
+	HistoryRetention        Retention `yaml:"history_retention"`
+	// ArtifactRetention is legacy compatibility metadata. Files use Artifacts.TTLSeconds.
 	ArtifactRetention         Retention `yaml:"artifact_retention"`
 	TraceRetention            Retention `yaml:"trace_retention"`
 	ExternalDisclosureDefault bool      `yaml:"external_disclosure_default"`
@@ -234,6 +239,7 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	strict := yaml.NewDecoder(bytes.NewReader(expanded))
 	strict.KnownFields(true)
 	c := Config{
+		Artifacts:     Artifacts{TTLSeconds: defaultArtifactTTLSeconds},
 		Observability: Observability{OTel: OTel{SampleRatio: DefaultOTelSampleRatio}},
 		Execution: Execution{
 			SponsoredAttemptLimit:      defaultSponsoredAttemptLimit,
@@ -328,6 +334,9 @@ func validateSponsoredAttempts(limit int) error {
 }
 
 func (c Config) validateLimits() error {
+	if c.Artifacts.TTLSeconds < 0 || c.Artifacts.TTLSeconds > 604800 {
+		return errors.New("artifact TTL must be between 1 and 604800 seconds; zero uses 86400")
+	}
 	if c.Identity.EncryptionKeyFile == "" || c.Identity.EncryptionKeyID == "" {
 		return errors.New("identity encryption key file and ID required")
 	}

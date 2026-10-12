@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// DefaultArtifactTTL is the lifetime of temporary file bytes.
+const DefaultArtifactTTL = 24 * time.Hour
+
 type Principal struct {
 	Issuer, Subject, Actor, OrgID string
 	Permissions                   map[string]bool
@@ -330,6 +333,8 @@ type Operation struct {
 type Artifact struct {
 	ExternalDisclosureAllowed bool      `json:"external_disclosure_allowed"`
 	SourceServiceID           string    `json:"source_service_id,omitempty"`
+	SourceExternalID          string    `json:"source_external_id,omitempty"`
+	ExpiresAt                 time.Time `json:"expires_at"`
 	ID                        string    `json:"artifact_id"`
 	OwnerID                   string    `json:"owner_id"`
 	OrgID                     string    `json:"org_id"`

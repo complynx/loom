@@ -914,7 +914,8 @@ func (r *runtimeComponents) initAgent(
 	r.files, err = artifacts.New(
 		cfg.Artifacts.Root,
 		r.repository,
-		artifacts.Limits{MaxUploadBytes: cfg.Artifacts.MaxUploadBytes, QuotaBytes: cfg.Artifacts.QuotaPerUserBytes},
+		artifacts.Limits{MaxUploadBytes: cfg.Artifacts.MaxUploadBytes, QuotaBytes: cfg.Artifacts.QuotaPerUserBytes,
+			TTL: time.Duration(cfg.Artifacts.TTLSeconds) * time.Second},
 	)
 	if err != nil {
 		return errors.New("artifact volume unavailable")
@@ -985,7 +986,8 @@ func importModuleArtifact(
 		item, e := (*files).ImportToChat(
 			c,
 			domain.Principal{Issuer: p.Issuer, Subject: p.Subject, Actor: p.Actor, OrgID: p.Organization},
-			r.OwnerID, r.ChatID,
+			r.OwnerID,
+			r.ChatID,
 			artifacts.Source{
 				ServiceID:                 source.ServiceID,
 				ExternalDisclosureAllowed: source.ExternalDisclosure,
@@ -995,7 +997,13 @@ func importModuleArtifact(
 				AllowedMIMETypes:          source.AllowedMIMETypes,
 				Authorize:                 source.Authorize,
 			},
-			artifacts.Descriptor{Path: d.DownloadPath, MIME: d.MIMEType, Size: d.SizeBytes, SHA256: d.SHA256},
+			artifacts.Descriptor{
+				ExternalID: d.ExternalID,
+				Path:       d.DownloadPath,
+				MIME:       d.MIMEType,
+				Size:       d.SizeBytes,
+				SHA256:     d.SHA256,
+			},
 		)
 		if e != nil {
 			return nil, e

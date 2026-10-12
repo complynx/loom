@@ -226,6 +226,7 @@ func TestRetentionSnapshotsAndLiveArtifactProtection(t *testing.T) {
 		SHA256:    strings.Repeat("a", 64),
 		Size:      1,
 		CreatedAt: time.Now().Add(-48 * time.Hour),
+		ExpiresAt: time.Now().Add(time.Hour),
 	}
 	require.NoError(t, s.CommitArtifact(ctx, a, 100))
 	require.NoError(t, s.AttachChatArtifact(ctx, p, r.ChatID, a.ID))
@@ -238,11 +239,16 @@ func TestRetentionSnapshotsAndLiveArtifactProtection(t *testing.T) {
 	require.NoError(t, e)
 	r, e = s.ClaimRun(ctx, r.ID, "worker", time.Minute)
 	require.NoError(t, e)
+	_, e = s.Pool().Exec(ctx, "UPDATE artifacts SET expires_at=now()-interval '1 second' WHERE id=$1", a.ID)
+	require.NoError(t, e)
+	sweep, e = s.SweepLifecycle(ctx, 100)
+	require.NoError(t, e)
+	require.Equal(t, int64(1), sweep.Artifacts)
 	require.NoError(t, s.Transition(ctx, r.ID, "worker", r.Fence, domain.Completed, "", "done"))
 	sweep, e = s.SweepLifecycle(ctx, 100)
 	require.NoError(t, e)
 	require.Positive(t, sweep.HistoryEvents)
-	require.Equal(t, int64(1), sweep.Artifacts)
+	require.Zero(t, sweep.Artifacts)
 	_, e = s.GetArtifact(ctx, a.ID)
 	requireNotFound(t, e)
 	ids, e := s.ListArtifactIDs(ctx)
@@ -404,6 +410,7 @@ func TestProtectedArtifactsDoNotStarveRetentionBatch(t *testing.T) {
 			SHA256:    "hash",
 			Size:      1,
 			CreatedAt: time.Now().Add(-72 * time.Hour),
+			ExpiresAt: time.Now().Add(time.Hour),
 		}
 		require.NoError(t, s.CommitArtifact(ctx, a, 100))
 		require.NoError(t, s.AttachChatArtifact(ctx, p, chat.ID, a.ID))

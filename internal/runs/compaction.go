@@ -179,6 +179,7 @@ func (e *Engine) saveActiveCompaction(ctx context.Context, run domain.Run, model
 	if inferErr != nil || len(response.Output) == 0 {
 		response.ErrorCode = "compaction_failed"
 	}
+	response.Output = omitCompactedFileBytes(response.Output)
 	raw, err := json.Marshal(response)
 	if err != nil {
 		return false, err

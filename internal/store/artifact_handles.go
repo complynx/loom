@@ -34,7 +34,7 @@ func (s *Store) CreateArtifactHandle(
 	out.ContentPath = "/v1/artifact-handles/" + out.ID + "/content"
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		originalID := out.ID
-		query := `INSERT INTO artifact_handles(id,run_id,artifact_id,owner_id,org_id,actor_id,expires_at) SELECT $1,r.id,a.id,r.owner_id,r.org_id,r.actor_id,$4 FROM runs r JOIN chats c ON c.id=r.chat_id JOIN artifacts a ON a.id=$3 WHERE r.id=$2 AND r.owner_id=$5 AND r.org_id=$6 AND r.actor_id=$7 AND c.deleted_at IS NULL AND a.owner_id=r.owner_id AND a.org_id=r.org_id AND a.deleted_at IS NULL ON CONFLICT(run_id,artifact_id) DO UPDATE SET expires_at=EXCLUDED.expires_at RETURNING id::text,expires_at`
+		query := `INSERT INTO artifact_handles(id,run_id,artifact_id,owner_id,org_id,actor_id,expires_at) SELECT $1,r.id,a.id,r.owner_id,r.org_id,r.actor_id,LEAST($4,a.expires_at) FROM runs r JOIN chats c ON c.id=r.chat_id JOIN artifacts a ON a.id=$3 WHERE r.id=$2 AND r.owner_id=$5 AND r.org_id=$6 AND r.actor_id=$7 AND c.deleted_at IS NULL AND a.owner_id=r.owner_id AND a.org_id=r.org_id AND a.deleted_at IS NULL AND a.expires_at>now() ON CONFLICT(run_id,artifact_id) DO UPDATE SET expires_at=EXCLUDED.expires_at RETURNING id::text,expires_at`
 		if scanErr := tx.QueryRow(ctx, query, out.ID, rid, aid, out.ExpiresAt, uid, p.OrgID, actor(p)).
 			Scan(&out.ID, &out.ExpiresAt); scanErr != nil {
 			return mapError(scanErr)
@@ -64,7 +64,7 @@ func (s *Store) LoadArtifactHandle(ctx context.Context, p domain.Principal, hid 
 	if err != nil {
 		return out, err
 	}
-	err = s.pool.QueryRow(ctx, `SELECT h.id::text,h.run_id::text,replace(h.artifact_id::text,'-',''),h.expires_at FROM artifact_handles h JOIN runs r ON r.id=h.run_id JOIN chats c ON c.id=r.chat_id JOIN artifacts a ON a.id=h.artifact_id WHERE h.id=$1 AND h.owner_id=$2 AND h.org_id=$3 AND h.actor_id=$4 AND h.expires_at>now() AND c.deleted_at IS NULL AND a.deleted_at IS NULL`, hid, uid, p.OrgID, actor(p)).
+	err = s.pool.QueryRow(ctx, `SELECT h.id::text,h.run_id::text,replace(h.artifact_id::text,'-',''),h.expires_at FROM artifact_handles h JOIN runs r ON r.id=h.run_id JOIN chats c ON c.id=r.chat_id JOIN artifacts a ON a.id=h.artifact_id WHERE h.id=$1 AND h.owner_id=$2 AND h.org_id=$3 AND h.actor_id=$4 AND h.expires_at>now() AND c.deleted_at IS NULL AND a.deleted_at IS NULL AND a.expires_at>now()`, hid, uid, p.OrgID, actor(p)).
 		Scan(&out.ID, &out.RunID, &out.ArtifactID, &out.ExpiresAt)
 	if err != nil {
 		return out, mapError(err)

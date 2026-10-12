@@ -21,6 +21,18 @@ type Artifact struct {
 	ExternalDisclosureAllowed bool               `json:"external_disclosure_allowed"`
 	SourceServiceID           string             `json:"source_service_id"`
 	CollectedAt               pgtype.Timestamptz `json:"collected_at"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	SourceExternalID          string             `json:"source_external_id"`
+}
+
+type ArtifactHandle struct {
+	ID         pgtype.UUID        `json:"id"`
+	RunID      pgtype.UUID        `json:"run_id"`
+	ArtifactID pgtype.UUID        `json:"artifact_id"`
+	OwnerID    pgtype.UUID        `json:"owner_id"`
+	OrgID      string             `json:"org_id"`
+	ActorID    string             `json:"actor_id"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
 
 type AuditEvent struct {
@@ -104,6 +116,14 @@ type CreditLedger struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type EventEmbedding struct {
+	ChatID     pgtype.UUID `json:"chat_id"`
+	Seq        int64       `json:"seq"`
+	Model      string      `json:"model"`
+	Dimensions int32       `json:"dimensions"`
+	Embedding  []byte      `json:"embedding"`
+}
+
 type IdempotencyRecord struct {
 	Scope       string      `json:"scope"`
 	Key         string      `json:"key"`
@@ -123,6 +143,27 @@ type PassiveEventReceipt struct {
 	RequestHash   pgtype.Text `json:"request_hash"`
 	ChatID        pgtype.UUID `json:"chat_id"`
 	Seq           int64       `json:"seq"`
+}
+
+type PlatformProviderAttempt struct {
+	StepID           pgtype.UUID        `json:"step_id"`
+	RunID            pgtype.UUID        `json:"run_id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	OrgID            string             `json:"org_id"`
+	ModelSnapshot    []byte             `json:"model_snapshot"`
+	ClientRequestID  string             `json:"client_request_id"`
+	ReservedExposure int64              `json:"reserved_exposure"`
+	Status           string             `json:"status"`
+	Usage            []byte             `json:"usage"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type ProviderRetry struct {
+	RunID         pgtype.UUID        `json:"run_id"`
+	Attempts      int32              `json:"attempts"`
+	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
+	Deadline      pgtype.Timestamptz `json:"deadline"`
+	Code          string             `json:"code"`
 }
 
 type Run struct {
@@ -149,6 +190,15 @@ type Run struct {
 	ActiveElapsedMs      int64              `json:"active_elapsed_ms"`
 	ActiveStartedAt      pgtype.Timestamptz `json:"active_started_at"`
 	StateEnteredAt       pgtype.Timestamptz `json:"state_entered_at"`
+}
+
+type RunContext struct {
+	RunID       pgtype.UUID        `json:"run_id"`
+	ChatID      pgtype.UUID        `json:"chat_id"`
+	ThroughSeq  int64              `json:"through_seq"`
+	SourceCount int64              `json:"source_count"`
+	Items       []byte             `json:"items"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 }
 
 type RunEvent struct {
@@ -198,6 +248,28 @@ type User struct {
 	Issuer    string             `json:"issuer"`
 	Subject   string             `json:"subject"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type UserMemory struct {
+	OwnerID      pgtype.UUID `json:"owner_id"`
+	OrgID        string      `json:"org_id"`
+	Micro        string      `json:"micro"`
+	MicroVersion int64       `json:"micro_version"`
+	MemoryIndex  string      `json:"memory_index"`
+	IndexVersion int64       `json:"index_version"`
+	Revision     int64       `json:"revision"`
+}
+
+type UserMemoryEntry struct {
+	OwnerID   pgtype.UUID `json:"owner_id"`
+	OrgID     string      `json:"org_id"`
+	Key       string      `json:"key"`
+	Kind      string      `json:"kind"`
+	ParentKey string      `json:"parent_key"`
+	Title     string      `json:"title"`
+	Summary   string      `json:"summary"`
+	Body      string      `json:"body"`
+	Version   int64       `json:"version"`
 }
 
 type UserPolicy struct {

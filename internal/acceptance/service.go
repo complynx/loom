@@ -98,6 +98,7 @@ func (s *Service) Handler() http.Handler {
 		_, _ = w.Write(manifest)
 	})
 	mux.HandleFunc("POST /read", s.read)
+	mux.HandleFunc("POST /fetch-file", s.fetchFile)
 	mux.HandleFunc("POST /discover", s.discover)
 	mux.HandleFunc("GET /blob", s.blob)
 	mux.HandleFunc("POST /prepare", s.prepare)

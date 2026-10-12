@@ -53,7 +53,7 @@
 | POST | `/chats/{id}/history/read` | Bounded страницы событий или текста одного события |
 | POST | `/chats/{id}/history/embeddings` | Внешний вектор для события; route только при enabled, нужны `chat.embeddings.write` и `chat.read` |
 | POST | `/runs/{id}/artifacts/handles` | Временный handle из `{artifact_id}` |
-| GET | `/artifact-handles/{id}/content` | Авторизованный stream/ranges по handle, ID сам не является credential; TTL 15 минут |
+| GET | `/artifact-handles/{id}/content` | Авторизованный stream/ranges по handle, ID сам не является credential; TTL до 15 минут, не дольше срока файла |
 | HEAD | `/artifact-handles/{id}/content` | Headers действующего handle без body |
 
 ## Создание run
@@ -74,7 +74,7 @@
 }
 ```
 
-`previous_run_id` — необязательная ссылка на terminal run того же чата/владельца/org, а не команда возобновить его. Active previous run даёт `409 previous_run_active`. Совместимый completed run может дать сохранённый history prefix с TTL 15 минут; при несовместимости строится обычный контекст. Prefix не копирует tool effects и не гарантирует provider cache discount.
+`previous_run_id` — необязательная ссылка на terminal run того же чата/владельца/org, а не команда возобновить его. Active previous run даёт `409 previous_run_active`. Совместимый completed run может дать сохранённый history prefix с TTL до 15 минут, не дольше срока файла; при несовместимости строится обычный контекст. Prefix не копирует tool effects и не гарантирует provider cache discount.
 
 В v1 модель выбирается по пользовательским настройкам. Произвольного обхода через поле model в запросе нет. Бюджет запроса может только уменьшать разрешённый лимит. Плательщик проверяется отдельно; default — пользовательский аккаунт.
 
@@ -145,7 +145,7 @@ MVP доставляет сохранённые run events, а не поток t
 
 Оба content endpoint принимают `Range: bytes=offset-end`, открытый конец, suffix и multipart ranges. Ответ — 206 с `Content-Range`; обычное чтение — 200. HEAD возвращает полные headers без body и игнорирует Range/If-Range. `ETag` содержит SHA-256 исходных bytes; для возобновления используйте `If-Range`. При несовпадении `If-Range` сервер отдаёт полный 200, поэтому клиент обязан проверять status перед дописыванием файла. Совпадающий `If-None-Match` даёт 304, проваленный `If-Match` — 412, недоступный/невалидный диапазон — 416. Arbitrary MIME сохраняется; multipart использует `multipart/byteranges`.
 
-Владение, `artifacts.read` и TTL handle проверяются до conditional/range обработки. Чужой или истёкший handle не даёт 304 или раскрытие размера. Long transfer сохраняет периодическую reauthorization, cancellation и 30-second write deadline. Bytes идут из файла в HTTP напрямую, без JS и без полной загрузки blob в память. Structured API errors остаются JSON; стандартные HTTP range/precondition errors могут иметь text body.
+Владение, `artifacts.read`, `expires_at` файла и TTL handle проверяются до conditional/range обработки. Чужой или истёкший handle не даёт 304 или раскрытие размера. Long transfer сохраняет периодическую reauthorization, cancellation и 30-second write deadline. Bytes идут из файла в HTTP напрямую, без JS и без полной загрузки blob в память. Structured API errors остаются JSON; стандартные HTTP range/precondition errors могут иметь text body.
 
 ## Ошибки
 
@@ -167,3 +167,5 @@ on behalf of Daniel Drizhuk
 Ответ содержит `run_id`, `status`, `reason`, новый `fence`, `unresolved_steps`, `spent_microcredits` и `reserved_microcredits`. Запуск переходит из Running в reconciling; pending/unknown шаги, записи внешних эффектов и финансовые резервы сохраняются. Подготовка не делает inference и не ставит job в очередь. Diagnostics run теперь содержит `fence` для условной команды оператора.
 
 403 — нет права; 404 — запуск вне организации; 409 `lease_busy`, `recovery_fence_changed`, `run_not_running`, `run_not_uncertain`, `idempotency_conflict` или `recovery_mode_required`; 422 `invalid_recovery_evidence` — неверное основание/expected_fence. Совпадающий повтор с тем же ключом возвращает текущую квитанцию без нового перехода или аудита. После подготовки можно отменить запуск штатной owner-ручкой и отдельно сверить подтверждённый provider receipt.
+
+Файлы временные: по умолчанию 24 часа, deployment `artifacts.ttl_seconds`. Метаданные upload/import содержат `expires_at` и, для service imports, `source_service_id`/`source_external_id`. Истёкший файл недоступен до физической очистки. Для повторного получения используйте `modules.artifacts.fetch({module,method,external_id})`: авторизованный сервис возвращает blob descriptor, Loom потоково импортирует его и выдаёт новый временный `artifact_id`. См. [контракт файлов](file-tools.md#temporary-files-and-external-ids). Прямого arbitrary-URL download API нет.

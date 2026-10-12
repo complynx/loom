@@ -382,9 +382,12 @@ func commitArtifact(ctx context.Context, tx pgx.Tx, v domain.Artifact, quota int
 	if v.CreatedAt.IsZero() {
 		v.CreatedAt = time.Now().UTC()
 	}
+	if v.ExpiresAt.IsZero() {
+		v.ExpiresAt = v.CreatedAt.Add(domain.DefaultArtifactTTL)
+	}
 	_, e := tx.Exec(
 		ctx,
-		"INSERT INTO artifacts(id,owner_id,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+		"INSERT INTO artifacts(id,owner_id,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id,expires_at,source_external_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
 		v.ID,
 		v.OwnerID,
 		v.OrgID,
@@ -394,6 +397,8 @@ func commitArtifact(ctx context.Context, tx pgx.Tx, v domain.Artifact, quota int
 		v.CreatedAt,
 		v.ExternalDisclosureAllowed,
 		v.SourceServiceID,
+		v.ExpiresAt,
+		v.SourceExternalID,
 	)
 	return e
 }
@@ -413,6 +418,8 @@ func (s *Store) GetArtifact(ctx context.Context, aid string) (domain.Artifact, e
 		CreatedAt:                 v.CreatedAt.Time,
 		ExternalDisclosureAllowed: v.ExternalDisclosureAllowed,
 		SourceServiceID:           v.SourceServiceID,
+		ExpiresAt:                 v.ExpiresAt.Time,
+		SourceExternalID:          v.SourceExternalID,
 	}, mapError(
 		e,
 	)

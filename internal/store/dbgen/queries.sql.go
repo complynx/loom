@@ -28,7 +28,7 @@ func (q *Queries) FindUser(ctx context.Context, arg FindUserParams) (string, err
 }
 
 const listArtifactIDs = `-- name: ListArtifactIDs :many
-SELECT id::text FROM artifacts WHERE deleted_at IS NULL ORDER BY id
+SELECT id::text FROM artifacts WHERE deleted_at IS NULL AND expires_at>now() ORDER BY id
 `
 
 func (q *Queries) ListArtifactIDs(ctx context.Context) ([]string, error) {
@@ -52,7 +52,7 @@ func (q *Queries) ListArtifactIDs(ctx context.Context) ([]string, error) {
 }
 
 const readArtifact = `-- name: ReadArtifact :one
-SELECT id::text,owner_id::text,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id FROM artifacts WHERE id=$1 AND deleted_at IS NULL
+SELECT id::text,owner_id::text,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id,expires_at,source_external_id FROM artifacts WHERE id=$1 AND deleted_at IS NULL
 `
 
 type ReadArtifactRow struct {
@@ -65,6 +65,8 @@ type ReadArtifactRow struct {
 	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
 	ExternalDisclosureAllowed bool               `json:"external_disclosure_allowed"`
 	SourceServiceID           string             `json:"source_service_id"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	SourceExternalID          string             `json:"source_external_id"`
 }
 
 func (q *Queries) ReadArtifact(ctx context.Context, id pgtype.UUID) (ReadArtifactRow, error) {
@@ -80,6 +82,8 @@ func (q *Queries) ReadArtifact(ctx context.Context, id pgtype.UUID) (ReadArtifac
 		&i.CreatedAt,
 		&i.ExternalDisclosureAllowed,
 		&i.SourceServiceID,
+		&i.ExpiresAt,
+		&i.SourceExternalID,
 	)
 	return i, err
 }

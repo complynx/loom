@@ -102,6 +102,50 @@
           "external_disclosure": true,
           "status_path": "/status",
           "deduplication_window_seconds": 86400
+        },
+        {
+          "id": "fetch_file",
+          "description": "Fetch fixture file by external_id. Returns temporary Loom ID after streamed import.",
+          "permissions": [
+            "qa.read"
+          ],
+          "path": "/fetch-file",
+          "effect": "read",
+          "timeout_ms": 3000,
+          "max_result_bytes": 65536,
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "external_id": {
+                "type": "string",
+                "maxLength": 1024
+              }
+            },
+            "required": [
+              "external_id"
+            ],
+            "additionalProperties": false
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "idempotency": false,
+          "confirmation": {
+            "mode": "none"
+          },
+          "artifact_mime_types": [
+            "text/plain"
+          ],
+          "external_disclosure": true
         }
       ]
     },

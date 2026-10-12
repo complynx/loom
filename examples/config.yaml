@@ -43,6 +43,7 @@ providers:
     api_key: "${CLX_OPENAI_API_KEY}"
 
 artifacts:
+  ttl_seconds: 86400 # Temporary bytes only; derived files keep the source deadline.
   root: "/data/artifacts"
   max_upload_bytes: 20971520
   quota_per_user_bytes: 1073741824
@@ -91,7 +92,7 @@ bootstrap_settings:
   regex_scan_max_bytes: 1048576
   regex_deadline_ms: 500
   history_retention: {mode: "duration", days: 365}
-  artifact_retention: {mode: "duration", days: 365}
+  artifact_retention: {mode: "duration", days: 1} # Legacy compatibility field; files use artifacts.ttl_seconds.
   trace_retention: {mode: "forever"}
   external_disclosure_default: false
 

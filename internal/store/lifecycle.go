@@ -49,7 +49,7 @@ func (s *Store) AttachChatArtifact(ctx context.Context, p domain.Principal, cid,
 			return e
 		}
 		var valid bool
-		e = tx.QueryRow(ctx, "SELECT true FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL FOR SHARE", aid, uid, p.OrgID).
+		e = tx.QueryRow(ctx, "SELECT true FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL AND expires_at>now() FOR SHARE", aid, uid, p.OrgID).
 			Scan(&valid)
 		if e != nil {
 			return e
@@ -66,7 +66,7 @@ func (s *Store) AttachChatArtifact(ctx context.Context, p domain.Principal, cid,
 
 // SweepLifecycle expires durable deadlines and removes configured display data.
 // It does not dispatch inference, release uncertain funds, or delete recovery,
-// financial, credential, or audit records. A zero/unspecified retention is forever.
+// financial, credential, or audit records. Files always have a finite expiry.
 func (s *Store) SweepLifecycle(ctx context.Context, batch int) (LifecycleResult, error) {
 	if batch <= 0 || batch > 1000 {
 		batch = 100
@@ -218,30 +218,15 @@ func (s *Store) sweepLifecycle(ctx context.Context, tx pgx.Tx, batch int, out *L
 		return e
 	}
 	out.Summaries = tag.RowsAffected()
-	// Lock each candidate before rechecking live references. Admission takes a
-	// share lock on the artifact, so expiry and a new run cannot race ownership.
-	rows, e = tx.Query(
+	// Files expire independently of live chats and runs. Financial records stay intact.
+	tag, e = tx.Exec(
 		ctx,
-		`SELECT a.id::text FROM artifacts a WHERE a.deleted_at IS NULL AND a.retention_days>0 AND a.created_at<clock_timestamp()-make_interval(days=>a.retention_days) AND NOT EXISTS(SELECT 1 FROM chat_artifacts ca JOIN runs r ON r.chat_id=ca.chat_id WHERE ca.artifact_id=a.id AND r.state NOT IN('completed','cancelled','failed')) ORDER BY a.created_at LIMIT $1 FOR UPDATE OF a SKIP LOCKED`,
+		`UPDATE artifacts SET deleted_at=clock_timestamp() WHERE id IN(SELECT id FROM artifacts WHERE deleted_at IS NULL AND expires_at<=clock_timestamp() ORDER BY expires_at LIMIT $1 FOR UPDATE SKIP LOCKED)`,
 		batch,
 	)
 	if e != nil {
 		return e
 	}
-	aids, e := pgx.CollectRows(rows, pgx.RowTo[string])
-	if e != nil {
-		return e
-	}
-	for _, aid := range aids {
-		tag, e = tx.Exec(
-			ctx,
-			`UPDATE artifacts a SET deleted_at=clock_timestamp() WHERE a.id=$1 AND NOT EXISTS(SELECT 1 FROM chat_artifacts ca JOIN runs r ON r.chat_id=ca.chat_id WHERE ca.artifact_id=a.id AND r.state NOT IN('completed','cancelled','failed'))`,
-			aid,
-		)
-		if e != nil {
-			return e
-		}
-		out.Artifacts += tag.RowsAffected()
-	}
+	out.Artifacts = tag.RowsAffected()
 	return nil
 }

@@ -105,25 +105,33 @@ func TestRegistryDiscoversFiltersReadsAndImportsBlob(t *testing.T) {
 	principal.Permissions = []string{"qa.access", "qa.read"}
 	tools, err := registry.List(context.Background(), principal)
 	require.NoError(t, err)
-	require.Len(t, tools, 2)
-	methods := []string{tools[0].Method, tools[1].Method}
-	require.ElementsMatch(t, []string{"read", "lookup"}, methods)
+	require.Len(t, tools, 3)
+	methods := []string{tools[0].Method, tools[1].Method, tools[2].Method}
+	require.ElementsMatch(t, []string{"read", "lookup", "fetch_file"}, methods)
 	actions, err := registry.ListActions(context.Background(), principal)
 	require.NoError(t, err)
 	require.Empty(t, actions)
 	broker := registry.Broker(principal, "qa-run", nil)
 	for _, tool := range tools {
+		args := json.RawMessage(`{"query":"order"}`)
+		if tool.Method == "fetch_file" {
+			args = json.RawMessage(`{"external_id":"fixture-file"}`)
+		}
 		result, callErr := broker.Call(
 			context.Background(),
 			tool.Module,
 			tool.Method,
-			json.RawMessage(`{"query":"order"}`),
+			args,
 		)
 		require.NoError(t, callErr)
-		require.Contains(t, string(result), "Fixture read: order")
+		if tool.Method == "fetch_file" {
+			require.Contains(t, string(result), "fixture-file")
+		} else {
+			require.Contains(t, string(result), "Fixture read: order")
+		}
 		require.Contains(t, string(result), "qa-blob")
 	}
-	require.Equal(t, 2, imported)
+	require.Equal(t, 3, imported)
 	_, err = broker.Call(
 		context.Background(),
 		moduleFixture,

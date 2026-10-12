@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 	"time"
 
@@ -63,7 +62,7 @@ func (t runtimeTools) tools(
 		catalog,
 	) + ". Builtins: modules.history.search({mode:'literal'|'fulltext'|'regex',query,after_seq,before_seq,event_types,limit,max_bytes,snippet_chars}); literal is default, no regex escaping needed. Results include partial, reason, next_cursor, truncated_seqs and skipped_seqs. Use modules.history.read({after_seq,limit,max_bytes}) for bounded event pages. Await calls; return JSON. Never use external service writes in scripts."
 	if fresh.Has("artifacts.read") {
-		description += " Artifacts: modules.artifacts.read({artifact_id,offset,limit}) returns bounded base64 and next_offset; modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes."
+		description += " External files: modules.artifacts.fetch({module,method,external_id}) calls an authorized service read method with {external_id}; returns temporary artifact IDs, never bytes. Expired files: fetch again from source service. Artifacts: modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes."
 	}
 	if t.cfg.FileTools.Enabled && fresh.Has("artifacts.read") && fresh.Has("chat.read") {
 		description += fileToolDescription()
@@ -207,6 +206,9 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 			case <-c.Done():
 				return nil, c.Err()
 			}
+			if module == artifactsModule && method == "fetch" {
+				return t.fetchExternal(c, r, remote, raw)
+			}
 			if module != historyModule && module != artifactsModule && module != diagnosticsModule &&
 				module != memoryModule && module != filesModule {
 				rpcStarted := time.Now()
@@ -301,7 +303,7 @@ func scriptBindings(reads []modules.Tool, artifactAccess bool) ([]sandbox.Bindin
 		indexes[artifactsModule] = len(bindings)
 		bindings = append(
 			bindings,
-			sandbox.Binding{Module: artifactsModule, Methods: []string{builtinReadMethod, "open"}},
+			sandbox.Binding{Module: artifactsModule, Methods: []string{"open", "fetch"}},
 		)
 	}
 	for _, tool := range reads {
@@ -375,11 +377,6 @@ func (t runtimeTools) builtin(
 			return nil, domain.Forbidden()
 		}
 		return t.searchHistory(c, fresh, r.ChatID, raw)
-	case "artifacts.read":
-		if !fresh.Has("artifacts.read") {
-			return nil, domain.Forbidden()
-		}
-		return t.readArtifact(c, r, raw)
 	default:
 		return nil, errors.New("unknown builtin")
 	}
@@ -409,59 +406,6 @@ func (t runtimeTools) searchHistory(
 		return nil, e
 	}
 	return json.Marshal(result)
-}
-
-func (t runtimeTools) readArtifact(c context.Context, r domain.Run, raw json.RawMessage) (json.RawMessage, error) {
-	var input struct {
-		ID     string `json:"artifact_id"`
-		Offset int64  `json:"offset"`
-		Limit  int64  `json:"limit"`
-	}
-	if e := json.Unmarshal(raw, &input); e != nil {
-		return nil, e
-	}
-	meta, reader, e := t.files.Download(
-		c,
-		artifacts.Principal{OwnerID: r.OwnerID, OrgID: r.OrgID},
-		input.ID,
-	)
-	if e != nil {
-		return nil, e
-	}
-	defer func() { _ = reader.Close() }()
-	settings, policyErr := t.repository.GetSettings(c)
-	if policyErr != nil {
-		return nil, policyErr
-	}
-	if !settings.ExternalDisclosure || !r.SettingsSnapshot.ExternalDisclosure ||
-		!meta.ExternalDisclosureAllowed {
-		return nil, artifacts.ErrForbidden
-	}
-	const limit = int64(512 << 10)
-	if input.Offset < 0 || input.Offset > meta.Size {
-		return nil, artifacts.ErrInvalid
-	}
-	readLimit := input.Limit
-	if readLimit <= 0 || readLimit > limit {
-		readLimit = limit
-	}
-	if _, e = reader.Seek(input.Offset, io.SeekStart); e != nil {
-		return nil, e
-	}
-	data, e := io.ReadAll(io.LimitReader(reader, readLimit))
-	if e != nil {
-		return nil, e
-	}
-	return json.Marshal(
-		map[string]any{
-			"offset":      input.Offset,
-			"next_offset": input.Offset + int64(len(data)),
-			"partial":     input.Offset+int64(len(data)) < meta.Size,
-			"metadata":    meta,
-			"encoding":    "base64",
-			"data":        base64.StdEncoding.EncodeToString(data),
-		},
-	)
 }
 
 func (t runtimeTools) openArtifact(

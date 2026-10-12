@@ -541,7 +541,7 @@ func attachRunArtifacts(
 			}
 			seen[aid] = true
 			var found string
-			if e = tx.QueryRow(ctx, "SELECT id::text FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL FOR SHARE", aid, uid, p.OrgID).
+			if e = tx.QueryRow(ctx, "SELECT id::text FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL AND expires_at>now() FOR SHARE", aid, uid, p.OrgID).
 				Scan(&found); e != nil {
 				return domain.NotFound()
 			}

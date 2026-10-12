@@ -72,7 +72,7 @@ Summary обновляется при превышении бюджета све
 
 ## Retention и удаление
 
-Для истории, artifacts, технических trace и idempotency metadata задаётся duration либо `forever`. Deployment-пример: история/artifacts 365 дней. Отдельного persisted trace stream нет; duration для trace отклоняется, поддерживается forever/unspecified. Recovery и финансовые records сохраняются; operational Docker/Loki logs имеют отдельную deployment retention policy. `forever` всё равно подчиняется storage quota и явному удалению.
+Для истории и idempotency metadata задаётся duration либо `forever`. Deployment-пример: история 365 дней. Файлы временные: deployment `artifacts.ttl_seconds`, default 86400 (24 часа), finite ceiling 7 дней. Legacy `artifact_retention` сохраняется в settings для совместимости, но не управляет файлами. Их `expires_at` не продлевается активным run; сборщик удаляет байты после истечения. Отдельного persisted trace stream нет; duration для trace отклоняется, поддерживается forever/unspecified. Recovery и финансовые records сохраняются; operational Docker/Loki logs имеют отдельную deployment retention policy. `forever` всё равно подчиняется storage quota и явному удалению.
 
 Idempotency записи живут минимум максимального окна повторов/восстановления; после него сохраняются tombstones для запрета повторного исполнения использованных ключей. Принятые операции не исчезают раньше завершения reconciliation. Срок хранения backend deduplication проверяется отдельно от срока чата.
 
