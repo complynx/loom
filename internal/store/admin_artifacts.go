@@ -387,7 +387,7 @@ func commitArtifact(ctx context.Context, tx pgx.Tx, v domain.Artifact, quota int
 	}
 	_, e := tx.Exec(
 		ctx,
-		"INSERT INTO artifacts(id,owner_id,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id,expires_at,source_external_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+		"INSERT INTO artifacts(id,owner_id,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id,expires_at,source_external_id,source_module,source_method,source_fetch_method,source_reference_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULLIF($15,'')::uuid)",
 		v.ID,
 		v.OwnerID,
 		v.OrgID,
@@ -399,7 +399,19 @@ func commitArtifact(ctx context.Context, tx pgx.Tx, v domain.Artifact, quota int
 		v.SourceServiceID,
 		v.ExpiresAt,
 		v.SourceExternalID,
+		v.SourceModule,
+		v.SourceMethod,
+		v.SourceFetchMethod,
+		v.SourceReferenceID,
 	)
+	if e == nil && v.SourceReferenceID != "" {
+		_, e = tx.Exec(
+			ctx,
+			"INSERT INTO artifact_file_refs(id,current_artifact_id) VALUES($1,$2) ON CONFLICT(id) DO NOTHING",
+			v.SourceReferenceID,
+			v.ID,
+		)
+	}
 	return e
 }
 func (s *Store) GetArtifact(ctx context.Context, aid string) (domain.Artifact, error) {
@@ -420,6 +432,10 @@ func (s *Store) GetArtifact(ctx context.Context, aid string) (domain.Artifact, e
 		SourceServiceID:           v.SourceServiceID,
 		ExpiresAt:                 v.ExpiresAt.Time,
 		SourceExternalID:          v.SourceExternalID,
+		SourceModule:              v.SourceModule,
+		SourceMethod:              v.SourceMethod,
+		SourceFetchMethod:         v.SourceFetchMethod,
+		SourceReferenceID:         v.SourceReferenceID,
 	}, mapError(
 		e,
 	)

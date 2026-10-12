@@ -334,6 +334,10 @@ type Artifact struct {
 	ExternalDisclosureAllowed bool      `json:"external_disclosure_allowed"`
 	SourceServiceID           string    `json:"source_service_id,omitempty"`
 	SourceExternalID          string    `json:"source_external_id,omitempty"`
+	SourceModule              string    `json:"source_module,omitempty"`
+	SourceMethod              string    `json:"source_method,omitempty"`
+	SourceFetchMethod         string    `json:"source_fetch_method,omitempty"`
+	SourceReferenceID         string    `json:"reference_id,omitempty"`
 	ExpiresAt                 time.Time `json:"expires_at"`
 	ID                        string    `json:"artifact_id"`
 	OwnerID                   string    `json:"owner_id"`

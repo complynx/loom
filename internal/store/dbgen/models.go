@@ -23,6 +23,17 @@ type Artifact struct {
 	CollectedAt               pgtype.Timestamptz `json:"collected_at"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 	SourceExternalID          string             `json:"source_external_id"`
+	SourceModule              string             `json:"source_module"`
+	SourceMethod              string             `json:"source_method"`
+	SourceFetchMethod         string             `json:"source_fetch_method"`
+	SourceReferenceID         pgtype.UUID        `json:"source_reference_id"`
+}
+
+type ArtifactFileRef struct {
+	ID                pgtype.UUID        `json:"id"`
+	CurrentArtifactID pgtype.UUID        `json:"current_artifact_id"`
+	LeaseID           pgtype.UUID        `json:"lease_id"`
+	LeaseUntil        pgtype.Timestamptz `json:"lease_until"`
 }
 
 type ArtifactHandle struct {

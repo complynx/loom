@@ -318,11 +318,7 @@ func (t runtimeTools) authorizeAudioSource(ctx context.Context, r domain.Run, pr
 	if !p.Has("artifacts.read") || !p.Has("chat.read") {
 		return domain.Forbidden()
 	}
-	source, err := t.files.Metadata(
-		ctx,
-		artifacts.Principal{OwnerID: r.OwnerID, OrgID: r.OrgID},
-		prepared.SourceArtifactID,
-	)
+	source, err := t.resolveArtifact(ctx, r, p, prepared.SourceArtifactID)
 	if err != nil {
 		return err
 	}

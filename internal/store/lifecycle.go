@@ -203,7 +203,7 @@ func (s *Store) sweepLifecycle(ctx context.Context, tx pgx.Tx, batch int, out *L
 	}
 	if _, e = tx.Exec(
 		ctx,
-		`DELETE FROM artifact_handles WHERE id IN(SELECT id FROM artifact_handles WHERE expires_at<=now() LIMIT $1)`,
+		`DELETE FROM artifact_handles WHERE id IN(SELECT h.id FROM artifact_handles h JOIN runs r ON r.id=h.run_id WHERE h.expires_at<=now() AND r.state IN('completed','cancelled','failed') LIMIT $1)`,
 		batch,
 	); e != nil {
 		return e

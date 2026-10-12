@@ -52,7 +52,7 @@ func (q *Queries) ListArtifactIDs(ctx context.Context) ([]string, error) {
 }
 
 const readArtifact = `-- name: ReadArtifact :one
-SELECT id::text,owner_id::text,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id,expires_at,source_external_id FROM artifacts WHERE id=$1 AND deleted_at IS NULL
+SELECT id::text,owner_id::text,org_id,mime,sha256,size,created_at,external_disclosure_allowed,source_service_id,expires_at,source_external_id,source_module,source_method,source_fetch_method,COALESCE(source_reference_id::text,'')::text AS source_reference_id FROM artifacts WHERE id=$1 AND deleted_at IS NULL
 `
 
 type ReadArtifactRow struct {
@@ -67,6 +67,10 @@ type ReadArtifactRow struct {
 	SourceServiceID           string             `json:"source_service_id"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 	SourceExternalID          string             `json:"source_external_id"`
+	SourceModule              string             `json:"source_module"`
+	SourceMethod              string             `json:"source_method"`
+	SourceFetchMethod         string             `json:"source_fetch_method"`
+	SourceReferenceID         string             `json:"source_reference_id"`
 }
 
 func (q *Queries) ReadArtifact(ctx context.Context, id pgtype.UUID) (ReadArtifactRow, error) {
@@ -84,6 +88,10 @@ func (q *Queries) ReadArtifact(ctx context.Context, id pgtype.UUID) (ReadArtifac
 		&i.SourceServiceID,
 		&i.ExpiresAt,
 		&i.SourceExternalID,
+		&i.SourceModule,
+		&i.SourceMethod,
+		&i.SourceFetchMethod,
+		&i.SourceReferenceID,
 	)
 	return i, err
 }

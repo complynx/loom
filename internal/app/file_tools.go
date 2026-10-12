@@ -89,16 +89,9 @@ func (t runtimeTools) fileSource(
 	if !p.Has("artifacts.read") || !p.Has("chat.read") {
 		return domain.Artifact{}, domain.Forbidden()
 	}
-	handle, err := t.repository.LoadArtifactHandle(ctx, p, hid)
+	source, err := t.resolveFileHandle(ctx, r, p, hid)
 	if err != nil {
 		return domain.Artifact{}, err
-	}
-	if handle.RunID != r.ID {
-		return domain.Artifact{}, domain.NotFound()
-	}
-	source, err := t.files.Metadata(ctx, artifacts.Principal{OwnerID: r.OwnerID, OrgID: r.OrgID}, handle.ArtifactID)
-	if err != nil {
-		return source, err
 	}
 	settings, err := t.repository.GetSettings(ctx)
 	if err != nil {

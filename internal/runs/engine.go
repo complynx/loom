@@ -279,7 +279,7 @@ func (e *Engine) executeAuthorizedTurn(
 		}
 		artifactItems, loadErr := e.opts.Artifacts(ctx, run)
 		if loadErr != nil {
-			return false, e.finish(ctx, run, domain.Paused, "artifact_disclosure_denied", "")
+			return false, e.finish(ctx, run, domain.Paused, artifactPauseReason(loadErr), "")
 		}
 		items = append(items, artifactItems...)
 	}
@@ -341,7 +341,7 @@ func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState
 		}
 		if e.opts.PaidToolReplay != nil {
 			if err = e.opts.PaidToolReplay(ctx, run, intent); err != nil {
-				return e.stopTurn(ctx, run, domain.Paused, "artifact_disclosure_denied")
+				return e.stopTurn(ctx, run, domain.Paused, artifactPauseReason(err))
 			}
 		}
 		turn.items = append(turn.items, step.Result)
@@ -1031,8 +1031,15 @@ func (e *Engine) replayAttachment(
 	}
 	images, err := e.opts.Attachment(ctx, run, marker.HandleID)
 	if err != nil {
-		return e.stopTurn(ctx, run, domain.Paused, "artifact_disclosure_denied")
+		return e.stopTurn(ctx, run, domain.Paused, artifactPauseReason(err))
 	}
 	turn.items = append(turn.items, images...)
 	return nil
+}
+
+func artifactPauseReason(err error) string {
+	if failure, ok := errors.AsType[*domain.Error](err); ok && failure.Code == "file_version_changed" {
+		return failure.Code
+	}
+	return "artifact_disclosure_denied"
 }

@@ -541,7 +541,7 @@ func attachRunArtifacts(
 			}
 			seen[aid] = true
 			var found string
-			if e = tx.QueryRow(ctx, "SELECT id::text FROM artifacts WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND deleted_at IS NULL AND expires_at>now() FOR SHARE", aid, uid, p.OrgID).
+			if e = tx.QueryRow(ctx, "SELECT a.id::text FROM artifacts a WHERE a.id=$1 AND a.owner_id=$2 AND a.org_id=$3 AND ((a.deleted_at IS NULL AND a.expires_at>now()) OR (a.source_reference_id IS NOT NULL AND EXISTS(SELECT 1 FROM chat_artifacts ca JOIN chats c ON c.id=ca.chat_id JOIN artifacts attached ON attached.id=ca.artifact_id WHERE attached.source_reference_id=a.source_reference_id AND c.deleted_at IS NULL))) FOR SHARE OF a", aid, uid, p.OrgID).
 				Scan(&found); e != nil {
 				return domain.NotFound()
 			}

@@ -983,14 +983,19 @@ func importModuleArtifact(
 		if p.UserID != r.OwnerID || p.Actor != r.ActorID || p.Organization != r.OrgID {
 			return nil, domain.Forbidden()
 		}
+		referenceID, disclosure, policyErr := refreshImportPolicy(c, source, d)
+		if policyErr != nil {
+			return nil, policyErr
+		}
 		item, e := (*files).ImportToChat(
 			c,
 			domain.Principal{Issuer: p.Issuer, Subject: p.Subject, Actor: p.Actor, OrgID: p.Organization},
 			r.OwnerID,
 			r.ChatID,
 			artifacts.Source{
-				ServiceID:                 source.ServiceID,
-				ExternalDisclosureAllowed: source.ExternalDisclosure,
+				ServiceID: source.ServiceID,
+				Module:    source.Module, Method: source.Method, ReferenceID: referenceID,
+				ExternalDisclosureAllowed: disclosure,
 				BaseURL:                   source.BaseURL,
 				Client:                    source.Client,
 				Headers:                   source.Headers,
@@ -998,11 +1003,11 @@ func importModuleArtifact(
 				Authorize:                 source.Authorize,
 			},
 			artifacts.Descriptor{
-				ExternalID: d.ExternalID,
-				Path:       d.DownloadPath,
-				MIME:       d.MIMEType,
-				Size:       d.SizeBytes,
-				SHA256:     d.SHA256,
+				ExternalID: d.ExternalID, FetchMethod: d.FetchMethod,
+				Path:   d.DownloadPath,
+				MIME:   d.MIMEType,
+				Size:   d.SizeBytes,
+				SHA256: d.SHA256,
 			},
 		)
 		if e != nil {

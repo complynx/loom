@@ -3,12 +3,16 @@ package sandbox
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/dop251/goja"
 )
+
+//go:embed file_helper.js
+var fileHelper string
 
 const MaxFrameBytes = 1 << 20
 const (
@@ -69,6 +73,9 @@ func (Inline) Execute(ctx context.Context, source string, bindings []Binding, br
 		return goja.Undefined()
 	})
 	installBindings(ctx, vm, bindings, broker, tasks)
+	if _, err := vm.RunString(fileHelper); err != nil {
+		return nil, err
+	}
 	_, err := vm.RunString(
 		"(async function(){\n" + source + "\n})().then(v=>__finish(JSON.stringify(v===undefined?null:v)),e=>__fail(String(e)));",
 	)

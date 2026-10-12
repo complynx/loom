@@ -19,11 +19,12 @@ import (
 // Descriptor identifies a blob at the same trusted service which returned it.
 // Path is a decoded absolute path; signed external URLs are deliberately excluded.
 type Descriptor struct {
-	ExternalID string `json:"external_id,omitempty"`
-	Path       string `json:"path"`
-	MIME       string `json:"mime"`
-	SHA256     string `json:"sha256"`
-	Size       int64  `json:"size"`
+	ExternalID  string `json:"external_id,omitempty"`
+	FetchMethod string `json:"fetch_method,omitempty"`
+	Path        string `json:"path"`
+	MIME        string `json:"mime"`
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
 }
 
 // Source is constructed by the host broker, never from model or module output.
@@ -31,6 +32,9 @@ type Descriptor struct {
 // service registration, user delegation and method permissions.
 type Source struct {
 	ServiceID                 string
+	Module                    string
+	Method                    string
+	ReferenceID               string
 	ExternalDisclosureAllowed bool
 	BaseURL                   string
 	Client                    *http.Client
@@ -148,11 +152,10 @@ func (s *Service) importWithCommit(
 	}
 	item, err := s.upload(ctx, p, contentType, reader, source.ExternalDisclosureAllowed, source.ServiceID,
 		func(c context.Context, a domain.Artifact, quota int64) error {
-			a.SourceExternalID = descriptor.ExternalID
+			a = sourceMetadata(a, source, descriptor)
 			return commit(c, a, quota)
 		})
-	item.SourceExternalID = descriptor.ExternalID
-	return item, err
+	return sourceMetadata(item, source, descriptor), err
 }
 
 func safeBlobPath(path string) bool {
@@ -199,4 +202,20 @@ func (r *verifiedBlobReader) Read(p []byte) (int, error) {
 
 func validExternalSource(serviceID, externalID string) bool {
 	return serviceID != "" && len(externalID) <= 1024
+}
+
+func sourceMetadata(item domain.Artifact, source Source, descriptor Descriptor) domain.Artifact {
+	if item.ID == "" {
+		return domain.Artifact{}
+	}
+	item.SourceExternalID = descriptor.ExternalID
+	item.SourceModule = source.Module
+	item.SourceMethod = source.Method
+	item.SourceFetchMethod = descriptor.FetchMethod
+	item.SourceReferenceID = source.ReferenceID
+	if item.SourceReferenceID == "" && item.SourceExternalID != "" && item.SourceFetchMethod != "" &&
+		item.SourceModule != "" {
+		item.SourceReferenceID = item.ID
+	}
+	return item
 }

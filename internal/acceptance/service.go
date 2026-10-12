@@ -101,6 +101,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /fetch-file", s.fetchFile)
 	mux.HandleFunc("POST /discover", s.discover)
 	mux.HandleFunc("GET /blob", s.blob)
+	mux.HandleFunc("GET /fixture-image", s.fileImage)
 	mux.HandleFunc("POST /prepare", s.prepare)
 	mux.HandleFunc("POST /write", s.write)
 	mux.HandleFunc("POST /status", s.status)

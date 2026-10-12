@@ -1,6 +1,6 @@
 Temporary-file acceptance: [8 groups PASS](validation/2026-10-12-temporary-files/README.md); full Linux race and Golden lint PASS; 2-pass independent review closed.
 
-Temporary-file policy supersedes former long artifact retention. Default TTL is 24 hours; raw files are not included in long-term backups. Expiry denies access immediately; minute-based physical collection may be delayed by database/disk outages or recovery mode. Metadata, excerpts in chat history, and financial receipts remain independent of file bytes. Source services own durable originals and expose authorized external-ID read methods. Replacing an expired initial attachment within the same run is not implemented; use a fresh run after refetch. See [file contract](file-tools.md).
+Temporary-file policy supersedes former long artifact retention. Default TTL is 24 hours; raw files are not included in long-term backups. Expiry denies access immediately; minute-based physical collection may be delayed by database/disk outages or recovery mode. Metadata, excerpts in chat history, and financial receipts remain independent of file bytes. Source services own durable originals. Service-backed references with `fetch_method` recover the exact version for agent tools and initial attachments within the same run. Raw uploads, derived outputs without a refetch contract and legacy imports cannot recover automatically. See [file contract](file-tools.md).
 
 **File API acceptance, 12 October:** 21 local functional scenario groups PASS through API/River/Goja/worker: streaming and model attachment, ownership/handle isolation, real ENOSPC, quotas, cancellation, automatic worker restart and unknown transcription reconciliation without redispatch. No product code or production change; no paid calls. [Evidence and exact remaining boundaries](validation/2026-10-12-file-api-acceptance/README.md).
 
@@ -139,3 +139,5 @@ Temporary-file policy supersedes former long artifact retention. Default TTL is 
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk
+
+File refresh acceptance: [same-run TTL/restart, helper and initial image](validation/2026-10-12-file-refresh/README.md), two container groups PASS; Windows integration, Linux race/integration and Golden PASS. Two independent review passes; no unresolved findings. Real-service/target-server acceptance remains pending by scope.

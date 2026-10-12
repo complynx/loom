@@ -13,15 +13,19 @@ const maxModuleArtifacts = 16
 
 type ArtifactDescriptor struct {
 	ExternalID   string `json:"external_id,omitempty"`
+	FetchMethod  string `json:"fetch_method,omitempty"`
 	DownloadPath string `json:"download_path"`
 	MIMEType     string `json:"mime_type"`
 	SizeBytes    int64  `json:"size_bytes"`
 	SHA256       string `json:"sha256"`
 }
 type ArtifactSource struct {
+	ArtifactCount      int
 	BaseURL            string
 	RunID              string
 	ServiceID          string
+	Module             string
+	Method             string
 	ExternalDisclosure bool
 	Client             *http.Client
 	Headers            http.Header
@@ -81,8 +85,11 @@ func (r *Registry) importArtifacts(
 		principal: principal,
 	}
 	source := ArtifactSource{
+		ArtifactCount:      len(descriptors),
 		RunID:              runID,
 		ServiceID:          s.manifest.ServiceID,
+		Module:             moduleName,
+		Method:             m.ID,
 		ExternalDisclosure: m.ExternalDisclosure,
 		BaseURL:            origin.String(),
 		Client:             s.client,

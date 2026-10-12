@@ -62,7 +62,7 @@ func (t runtimeTools) tools(
 		catalog,
 	) + ". Builtins: modules.history.search({mode:'literal'|'fulltext'|'regex',query,after_seq,before_seq,event_types,limit,max_bytes,snippet_chars}); literal is default, no regex escaping needed. Results include partial, reason, next_cursor, truncated_seqs and skipped_seqs. Use modules.history.read({after_seq,limit,max_bytes}) for bounded event pages. Await calls; return JSON. Never use external service writes in scripts."
 	if fresh.Has("artifacts.read") {
-		description += " External files: modules.artifacts.fetch({module,method,external_id}) calls an authorized service read method with {external_id}; returns temporary artifact IDs, never bytes. Expired files: fetch again from source service. Artifacts: modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes."
+		description += " File helper: const f=modules.artifacts.file({module,method,external_id}) or file({artifact_id}); await f.handle(), await f.call(method,options), JSON.stringify(f) keeps source reference. Exact version refresh after TTL, current rights checked. External files: modules.artifacts.fetch({module,method,external_id}) calls an authorized service read method with {external_id}; returns temporary artifact IDs, never bytes. Expired files: fetch again from source service. Artifacts: modules.artifacts.open({artifact_id}) returns a temporary handle, never bytes."
 	}
 	if t.cfg.FileTools.Enabled && fresh.Has("artifacts.read") && fresh.Has("chat.read") {
 		description += fileToolDescription()
@@ -251,7 +251,7 @@ func (t runtimeTools) modelArtifacts(ctx context.Context, r domain.Run) ([]provi
 	content := []map[string]string{}
 	var totalBytes int64
 	for _, id := range r.Input.ArtifactIDs {
-		meta, e := t.files.Metadata(ctx, artifacts.Principal{OwnerID: r.OwnerID, OrgID: r.OrgID}, id)
+		meta, e := t.resolveArtifact(ctx, r, fresh, id)
 		if e != nil {
 			return nil, e
 		}
@@ -266,7 +266,7 @@ func (t runtimeTools) modelArtifacts(ctx context.Context, r domain.Run) ([]provi
 		image, e := t.files.ForModel(
 			ctx,
 			artifacts.Principal{OwnerID: r.OwnerID, OrgID: r.OrgID},
-			id,
+			meta.ID,
 			providerID,
 			[]string{providerID},
 			model.SupportsImages,
@@ -420,7 +420,11 @@ func (t runtimeTools) openArtifact(
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return nil, err
 	}
-	handle, err := t.repository.CreateArtifactHandle(ctx, p, r.ID, input.ID)
+	file, err := t.resolveArtifact(ctx, r, p, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := t.repository.CreateArtifactHandle(ctx, p, r.ID, file.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -433,14 +437,11 @@ func (t runtimeTools) attachArtifact(ctx context.Context, r domain.Run, hid stri
 	if err != nil {
 		return nil, err
 	}
-	handle, err := t.repository.LoadArtifactHandle(ctx, fresh, hid)
+	file, err := t.resolveFileHandle(ctx, r, fresh, hid)
 	if err != nil {
 		return nil, err
 	}
-	if handle.RunID != r.ID {
-		return nil, domain.Forbidden()
-	}
-	r.Input.ArtifactIDs = []string{handle.ArtifactID}
+	r.Input.ArtifactIDs = []string{file.ID}
 	return t.modelArtifacts(ctx, r)
 }
 
