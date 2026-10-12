@@ -86,17 +86,18 @@ type Sandbox struct {
 	CleanupMS              int    `yaml:"cleanup_ms"`
 }
 type Execution struct {
-	ProviderRetryAttemptLimit  int `yaml:"provider_retry_attempt_limit"`
-	ProviderRetryWindowSeconds int `yaml:"provider_retry_window_seconds"`
-	ProviderRetryShortLimit    int `yaml:"provider_retry_short_limit"`
-	ProviderRetryShortBudgetMS int `yaml:"provider_retry_short_budget_ms"`
-	SponsoredAttemptLimit      int `yaml:"sponsored_attempt_limit"`
-	LeaseSeconds               int `yaml:"lease_seconds"`
-	HeartbeatSeconds           int `yaml:"heartbeat_seconds"`
-	ShutdownTargetMS           int `yaml:"shutdown_target_ms"`
-	ShutdownDeadlineMS         int `yaml:"shutdown_deadline_ms"`
-	ActiveRunsPerUserCeiling   int `yaml:"active_runs_per_user_ceiling"`
-	ActiveRunsTotalCeiling     int `yaml:"active_runs_total_ceiling"`
+	RecoveryMode               bool `yaml:"recovery_mode"`
+	ProviderRetryAttemptLimit  int  `yaml:"provider_retry_attempt_limit"`
+	ProviderRetryWindowSeconds int  `yaml:"provider_retry_window_seconds"`
+	ProviderRetryShortLimit    int  `yaml:"provider_retry_short_limit"`
+	ProviderRetryShortBudgetMS int  `yaml:"provider_retry_short_budget_ms"`
+	SponsoredAttemptLimit      int  `yaml:"sponsored_attempt_limit"`
+	LeaseSeconds               int  `yaml:"lease_seconds"`
+	HeartbeatSeconds           int  `yaml:"heartbeat_seconds"`
+	ShutdownTargetMS           int  `yaml:"shutdown_target_ms"`
+	ShutdownDeadlineMS         int  `yaml:"shutdown_deadline_ms"`
+	ActiveRunsPerUserCeiling   int  `yaml:"active_runs_per_user_ceiling"`
+	ActiveRunsTotalCeiling     int  `yaml:"active_runs_total_ceiling"`
 }
 type Model struct {
 	InputTokenLimit           int64    `yaml:"input_token_limit"`

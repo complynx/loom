@@ -4,6 +4,7 @@ import "time"
 
 // DiagnosticsHealth reports cached observations, not a synchronous dependency probe.
 type DiagnosticsHealth struct {
+	RecoveryMode  bool            `json:"recovery_mode"`
 	SampledAt     time.Time       `json:"sampled_at"`
 	UptimeSeconds float64         `json:"uptime_seconds"`
 	Dependencies  map[string]bool `json:"dependencies"`

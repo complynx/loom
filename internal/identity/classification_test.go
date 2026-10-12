@@ -41,7 +41,7 @@ func TestDynamicServiceClassificationNeverDowngradesRemovedActor(t *testing.T) {
 		Audience:        "harness",
 		ClientID:        "client",
 		ClientSecret:    "secret",
-		RolePermissions: map[string][]string{"member": {"chat.read"}},
+		RolePermissions: map[string][]string{"member": {"chat.read", "diagnostics.read"}},
 	}
 	ready, registered := true, true
 	known := map[string]bool{"service": true}
@@ -76,6 +76,8 @@ func TestDynamicServiceClassificationNeverDowngradesRemovedActor(t *testing.T) {
 	if err != nil || p.Subject != "user" || p.Actor != "service" {
 		t.Fatalf("discovered caller without service_subjects: %v %+v", err, p)
 	}
+	require.True(t, p.Has("chat.read"))
+	require.False(t, p.Has("diagnostics.read"), "service cannot inherit harness diagnostics from delegated user")
 	registered = false
 	checkRemovedActor(t, []*identity.Authenticator{a, newAuth()}, request)
 	ready = false

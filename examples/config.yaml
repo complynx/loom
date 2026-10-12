@@ -51,12 +51,13 @@ sandbox:
   engine_candidate: "goja"
   max_workers: 4
   memory_ceiling_bytes: 134217728
-  pids_ceiling: 32
+  pids_ceiling: 128
   script_timeout_ceiling_ms: 30000
   parallel_rpc_ceiling: 8
   cleanup_ms: 100
 
 execution:
+  recovery_mode: false
   provider_retry_attempt_limit: 6
   provider_retry_window_seconds: 300
   provider_retry_short_limit: 2

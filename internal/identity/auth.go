@@ -382,7 +382,7 @@ func delegatedPermissions(user, actor, binding map[string]bool) map[string]bool 
 	return out
 }
 func harnessPermission(p string) bool {
-	for _, prefix := range []string{"runs.", "chat.", "artifacts.", "preferences.", "users.", "settings.", "billing.", "operations.", "auth.", "sessions."} {
+	for _, prefix := range []string{"runs.", "chat.", "artifacts.", "preferences.", "users.", "settings.", "billing.", "operations.", "auth.", "sessions.", "diagnostics."} {
 		if strings.HasPrefix(p, prefix) {
 			return true
 		}

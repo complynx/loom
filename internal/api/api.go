@@ -26,6 +26,7 @@ type Authenticator interface {
 	Authenticate(context.Context, *http.Request) (domain.Principal, error)
 }
 type Options struct {
+	RecoveryMode                                    bool
 	OperatorLogin                                   *OperatorLogin
 	DiagnosticsHealth                               func() domain.DiagnosticsHealth
 	DebugRequest                                    func(context.Context, *http.Request, domain.Principal)
@@ -129,6 +130,10 @@ func (s *server) registerHealth(mux *http.ServeMux) {
 		},
 	)
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if s.options.RecoveryMode {
+			fail(w, http.StatusServiceUnavailable, "recovery_mode", "Restore review is required", false)
+			return
+		}
 		if s.options.Ready == nil {
 			fail(w, http.StatusServiceUnavailable, "dependency_unavailable", "Readiness is unavailable", true)
 			return
@@ -184,6 +189,7 @@ func (s *server) registerRoutes(mux *http.ServeMux) {
 }
 func (s *server) route(mux *http.ServeMux, pattern, permission string, handler endpoint) {
 	documentOperation(s.docs, pattern, permission)
+	handler = s.recoveryEndpoint(pattern, handler)
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -216,6 +222,32 @@ func (s *server) route(mux *http.ServeMux, pattern, permission string, handler e
 			s.error(w, handlerErr)
 		}
 	})
+}
+
+// recoveryEndpoint runs after authentication and route permission checks.
+func (s *server) recoveryEndpoint(pattern string, handler endpoint) endpoint {
+	if !s.options.RecoveryMode || recoveryRoute(pattern) {
+		return handler
+	}
+	return func(http.ResponseWriter, *http.Request, domain.Principal) error {
+		return apiError(http.StatusServiceUnavailable, "recovery_mode", "Restore review is required")
+	}
+}
+
+// recoveryRoute allows only read-only diagnostics and explicit repair operations.
+func recoveryRoute(pattern string) bool {
+	switch pattern {
+	case "GET /v1/admin/diagnostics",
+		"GET /v1/admin/diagnostics/health",
+		"GET /v1/admin/diagnostics/runs",
+		"GET /v1/admin/diagnostics/runs/{id}",
+		"GET /v1/admin/settings",
+		"POST /v1/admin/runs/{id}/steps/{step}/reconcile",
+		"POST /v1/runs/{id}/cancel":
+		return true
+	default:
+		return false
+	}
 }
 func (s *server) decode(w http.ResponseWriter, r *http.Request, value any) error {
 	controller := http.NewResponseController(w)
@@ -610,7 +642,11 @@ func (s *server) control(command string) endpoint {
 				return decodeErr
 			}
 		}
-		v, err := s.store.Control(r.Context(), p, r.PathValue("id"), k, command)
+		control := s.store.Control
+		if s.options.RecoveryMode {
+			control = s.store.ControlExistingUser
+		}
+		v, err := control(r.Context(), p, r.PathValue("id"), k, command)
 		if err == nil {
 			write(w, http.StatusOK, mutationReceipt(v))
 		}

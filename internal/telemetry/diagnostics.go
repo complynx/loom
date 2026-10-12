@@ -13,6 +13,7 @@ func (t *Telemetry) DiagnosticsHealth() domain.DiagnosticsHealth {
 	defer t.mu.Unlock()
 	dependencies := maps.Clone(t.dependencies)
 	return domain.DiagnosticsHealth{
+		RecoveryMode:  t.recoveryMode,
 		SampledAt:     t.sampled,
 		UptimeSeconds: time.Since(t.started).Seconds(),
 		Dependencies:  dependencies,

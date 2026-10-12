@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "repair_run_id": "3138aaf3-33b5-49d2-bcab-2640aafc7e91",
+  "claim_uncertainty_guard": "Developer one-shot called existing Store.ClaimRun after expired lease; it quarantined pending step without provider construction. No shipped operator API for this transition.",
+  "owner_cancel_after_quarantine": "cancelled",
+  "unauthorized_reconcile": 403,
+  "duplicate_receipt_calls": 2,
+  "credit_ledger_entries_added": 1,
+  "settled_microcredits": 110,
+  "remaining_reserve": 0,
+  "provider_calls_during_repair_or_exit": 0,
+  "runnable_runs_before_exit": 0,
+  "recovery_mode_after_restart": false,
+  "ready_after_exit": 200,
+  "fresh_run_id": "a199c482-7685-4368-85e6-b7fd3b227a2b",
+  "fresh_spent": 110,
+  "fresh_reserve": 0,
+  "image": "sha256:b8ee206cfa227fc1af93492832bf6284ed54b22d421bacf26fdf5c145a071fc2"
+}

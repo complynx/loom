@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "scenario": "SIGKILL supervisor during paid script, then supervisor and API/River restart",
+  "run_id": "ef2fb920-f28c-4f23-8224-a77c98cefcfa",
+  "active_script_observed": true,
+  "status_after_kill": "completed",
+  "spent_after_kill": 220,
+  "reserve_after_kill": 0,
+  "readiness_without_supervisor": 503,
+  "paid_calls_before_restart": 2,
+  "paid_calls_after_restart": 2,
+  "tool_steps_after_restart": 1,
+  "script_operations_after_restart": 1,
+  "spent_after_restart": 220,
+  "reserve_after_restart": 0,
+  "healthy_run": "cbba7952-a0bd-4c37-a1b2-e0f2761052fa",
+  "healthy_status": "completed",
+  "elapsed_seconds": 2.953,
+  "image": "sha256:8760177546942b0b4948004b82dd510769c269c9acaf1718ebd368154b086641"
+}

@@ -1,0 +1,5 @@
+{
+  "status": "FAIL",
+  "stage": "QA driver assertion",
+  "detail": "DiagnosticStep exposes state, not status; original snapshot, confirmed write and restore succeeded before KeyError. Resume same snapshot."
+}

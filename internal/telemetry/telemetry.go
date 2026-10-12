@@ -45,6 +45,7 @@ type sample struct {
 type HTTPKey struct{ Route, Method, Status string }
 type CallKey struct{ Component, Outcome string }
 type Telemetry struct {
+	recoveryMode bool
 	logPayloads  bool
 	mu           sync.Mutex
 	logger       *slog.Logger
@@ -67,6 +68,13 @@ func New(logger *slog.Logger) *Telemetry {
 		calls:        map[CallKey]sample{},
 		dependencies: map[string]bool{},
 	}
+}
+
+// SetRecoveryMode records the deployment dispatch barrier independently of sampled metrics.
+func (t *Telemetry) SetRecoveryMode(enabled bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.recoveryMode = enabled
 }
 func observe(s sample, elapsed time.Duration) sample {
 	seconds := elapsed.Seconds()
@@ -256,7 +264,7 @@ func (t *Telemetry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gauge := func(name, help string, value float64) {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s %g\n", name, help, name, name, value)
 	}
-	gauge("clx_process_start_time_seconds", "Unix process start time.", float64(t.started.Unix()))
+	t.processGauges(gauge)
 	gauge("clx_http_in_flight", "HTTP requests currently served.", float64(t.inFlight))
 	timestamp := float64(0)
 	if !t.sampled.IsZero() {
@@ -366,4 +374,17 @@ func histogram(b *strings.Builder, name, labels string, s sample) {
 		labels,
 		s.Count,
 	)
+}
+
+// recoveryGauge is called while the telemetry lock is held.
+func (t *Telemetry) recoveryGauge() float64 {
+	if t.recoveryMode {
+		return 1
+	}
+	return 0
+}
+
+func (t *Telemetry) processGauges(gauge func(string, string, float64)) {
+	gauge("clx_recovery_mode", "Restore dispatch barrier enabled.", t.recoveryGauge())
+	gauge("clx_process_start_time_seconds", "Unix process start time.", float64(t.started.Unix()))
 }

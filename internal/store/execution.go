@@ -345,12 +345,33 @@ func (s *Store) MarkInputsApplied(ctx context.Context, rid, owner string, fence 
 	})
 }
 func (s *Store) Control(ctx context.Context, p domain.Principal, rid, key, command string) (domain.Run, error) {
+	return s.controlUser(ctx, p, rid, key, command, false)
+}
+
+// ControlExistingUser repairs restored runs without creating identity or billing records.
+func (s *Store) ControlExistingUser(
+	ctx context.Context,
+	p domain.Principal,
+	rid, key, command string,
+) (domain.Run, error) {
+	if command != "cancel" {
+		return domain.Run{}, domain.Forbidden()
+	}
+	return s.controlUser(ctx, p, rid, key, command, true)
+}
+
+func (s *Store) controlUser(
+	ctx context.Context,
+	p domain.Principal,
+	rid, key, command string,
+	existingOnly bool,
+) (domain.Run, error) {
 	var r domain.Run
 	if !p.Has("runs.control") {
 		return r, domain.Forbidden()
 	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		return s.control(ctx, tx, p, rid, key, command, &r)
+		return s.control(ctx, tx, p, rid, key, command, existingOnly, &r)
 	})
 	return mutationReceipt(p, r), err
 }
@@ -717,9 +738,17 @@ func (s *Store) control(
 	tx pgx.Tx,
 	p domain.Principal,
 	rid, key, command string,
+	existingOnly bool,
 	r *domain.Run,
 ) error {
-	uid, e := s.ensureUser(ctx, tx, p)
+	var uid string
+	var e error
+	if existingOnly {
+		e = tx.QueryRow(ctx, "SELECT id::text FROM users WHERE issuer=$1 AND subject=$2", p.Issuer, p.Subject).
+			Scan(&uid)
+	} else {
+		uid, e = s.ensureUser(ctx, tx, p)
+	}
 	if e != nil {
 		return e
 	}

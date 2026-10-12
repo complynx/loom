@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -33,6 +34,8 @@ import (
 	"github.com/complynx/loom/internal/store"
 	"github.com/complynx/loom/internal/telemetry"
 )
+
+const zitadelCallerType = "zitadel"
 
 type executeRun struct {
 	RunID string `json:"run_id"`
@@ -162,15 +165,19 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	queue := resources.queue
-	if err = queue.Start(runtimeCtx); err != nil {
-		return errors.New("queue unavailable")
+	if queue != nil {
+		if err = queue.Start(runtimeCtx); err != nil {
+			return errors.New("queue unavailable")
+		}
 	}
 	go resources.registry.Run(runtimeCtx)
-	sweeper := lifecycle.New(resources.repository, time.Minute)
-	sweeper.Logger = logger
-	go sweeper.Run(runtimeCtx)
-	go recoverExhaustedQueue(runtimeCtx, resources.repository, logger)
-	go reconcileArtifacts(runtimeCtx, resources.files, logger)
+	if !cfg.Execution.RecoveryMode {
+		sweeper := lifecycle.New(resources.repository, time.Minute)
+		sweeper.Logger = logger
+		go sweeper.Run(runtimeCtx)
+		go recoverExhaustedQueue(runtimeCtx, resources.repository, logger)
+		go reconcileArtifacts(runtimeCtx, resources.files, logger)
+	}
 	var draining atomic.Bool
 	ready := runtimeReadiness(&draining, resources.registry, resources.pool, resources.executor)
 	operatorLogin, err := api.NewOperatorLogin(cfg.Identity.Issuer, cfg.Identity.Audience, cfg.Operator)
@@ -209,6 +216,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 	go func() { serveResult <- server.Serve(listener) }()
 	logger.InfoContext(ctx,
 		"runtime started",
+		"recovery_mode", cfg.Execution.RecoveryMode,
 		"metrics_enabled",
 		metricsServer != nil,
 		"workers",
@@ -248,7 +256,8 @@ func callerBinding(
 	count := 0
 	binding := identity.Binding{}
 	for _, caller := range registry.CallerBindings() {
-		if caller.Auth.Type != "zitadel" || caller.Auth.Issuer != p.Issuer || caller.Auth.Subject != p.Subject ||
+		if caller.Auth.Type != zitadelCallerType || caller.Auth.Issuer != p.Issuer ||
+			caller.Auth.Subject != p.Subject ||
 			caller.Auth.Audience != c.Audience {
 			continue
 		}
@@ -315,6 +324,7 @@ func runtimeRegistry(
 	cfg config.Config,
 	repository *store.Store,
 	files **artifacts.Service,
+	observedServices *sync.Map,
 	logger *slog.Logger,
 ) (*modules.Registry, error) {
 	sources := deploymentSource{}
@@ -329,11 +339,28 @@ func runtimeRegistry(
 		}
 		sources = append(sources, source)
 	}
+	bindings := rememberCallerBindings(cfg.Identity, repository)
+	importArtifact := importModuleArtifact(repository, files)
+	if cfg.Execution.RecoveryMode {
+		bindings = func(_ context.Context, callers []modules.CallerBinding) error {
+			for _, caller := range callers {
+				if caller.Auth.Type == zitadelCallerType && caller.Auth.Issuer == cfg.Identity.Issuer &&
+					caller.Auth.Audience == cfg.Identity.Audience {
+					observedServices.Store(
+						serviceIdentity{caller.Auth.Issuer, caller.Auth.Subject, caller.Auth.Audience},
+						true,
+					)
+				}
+			}
+			return nil
+		}
+		importArtifact = nil
+	}
 	registry, err := modules.NewRegistry(
 		sources,
 		modules.Options{
-			OnCallerBindings:    rememberCallerBindings(cfg.Identity, repository),
-			ImportArtifact:      importModuleArtifact(repository, files),
+			OnCallerBindings:    bindings,
+			ImportArtifact:      importArtifact,
 			RequestTimeout:      time.Duration(cfg.Discovery.RequestTimeoutMS) * time.Millisecond,
 			DynamicCacheCeiling: time.Duration(cfg.Discovery.DynamicCacheCeilingSeconds) * time.Second,
 			FreshTTL:            time.Duration(cfg.Discovery.FreshnessTTLSeconds) * time.Second,
@@ -360,6 +387,7 @@ func runtimeAuthenticator(
 	registry *modules.Registry,
 	cipher *identity.SessionCipher,
 	checkService func(context.Context, domain.Principal) (identity.Binding, error),
+	observedServices *sync.Map,
 ) (*identity.Authenticator, error) {
 	auth, err := identity.New(
 		cfg.Identity,
@@ -376,6 +404,9 @@ func runtimeAuthenticator(
 			return false, identity.ErrUnavailable
 		}
 
+		if _, known := observedServices.Load(serviceIdentity{p.Issuer, p.Subject, cfg.Identity.Audience}); known {
+			return true, nil
+		}
 		return repository.IsKnownServiceIdentity(c, p.Issuer, p.Subject, cfg.Identity.Audience)
 	})
 	if err != nil {
@@ -550,6 +581,7 @@ func runtimeHandler(
 		repository,
 		measuredAuth{auth: auth, observer: observer},
 		api.Options{
+			RecoveryMode:      cfg.Execution.RecoveryMode,
 			OperatorLogin:     operatorLogin,
 			DiagnosticsHealth: observer.DiagnosticsHealth,
 			DebugRequest:      observer.DebugRequest,
@@ -597,7 +629,9 @@ func runtimeServers(
 	if err != nil {
 		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 		defer cancel()
-		_ = queue.Stop(stopCtx)
+		if queue != nil {
+			_ = queue.Stop(stopCtx)
+		}
 		return nil, nil, nil, errors.New("HTTP listener unavailable")
 	}
 	var metricsServer *http.Server
@@ -607,7 +641,9 @@ func runtimeServers(
 			_ = listener.Close()
 			stopCtx, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 			defer stopCancel()
-			_ = queue.Stop(stopCtx)
+			if queue != nil {
+				_ = queue.Stop(stopCtx)
+			}
 			return nil, nil, nil, errors.New("metrics listener unavailable")
 		}
 		metricsServer = &http.Server{
@@ -630,7 +666,7 @@ func runtimeServers(
 			repository,
 			observer,
 			registry.TrustReady,
-			func(c context.Context) bool { return executor.Health(c) == nil },
+			func(c context.Context) bool { return !cfg.Execution.RecoveryMode && executor.Health(c) == nil },
 			cfg.Artifacts.Root,
 		)
 	}
@@ -649,7 +685,13 @@ func shutdownRuntime(
 	logger *slog.Logger,
 ) {
 	shutdownStarted := time.Now()
-	stops := []func(context.Context) error{engine.Stop, queue.Stop, server.Shutdown}
+	stops := []func(context.Context) error{server.Shutdown}
+	if engine != nil {
+		stops = append(stops, engine.Stop)
+	}
+	if queue != nil {
+		stops = append(stops, queue.Stop)
+	}
 	if metricsServer != nil {
 		stops = append(stops, metricsServer.Shutdown)
 	}
@@ -664,7 +706,12 @@ func shutdownRuntime(
 	complete := lifecycle.Shutdown(ctx,
 		time.Duration(cfg.Execution.ShutdownDeadlineMS)*time.Millisecond,
 		components,
-		func() { _ = files.Close(); pool.Close() },
+		func() {
+			if files != nil {
+				_ = files.Close()
+			}
+			pool.Close()
+		},
 	)
 	if !complete {
 		// Forced HTTP closure must not extend the process exit budget.
@@ -722,22 +769,27 @@ func runtimeObserver(cfg config.Config) (*slog.Logger, *telemetry.Telemetry, err
 		With("service", "loom")
 	observer := telemetry.New(logger)
 	observer.EnablePayloads(cfg.Observability.LogPayloads)
+	observer.SetRecoveryMode(cfg.Execution.RecoveryMode)
 
 	return logger, observer, nil
 }
 
+// serviceIdentity preserves observed caller classification through recovery discovery removals.
+type serviceIdentity struct{ issuer, subject, audience string }
+
 type runtimeComponents struct {
-	pool       *pgxpool.Pool
-	repository *store.Store
-	cipher     *identity.SessionCipher
-	registry   *modules.Registry
-	files      *artifacts.Service
-	auth       *identity.Authenticator
-	authorize  RunAuthorizer
-	engine     *runs.Engine
-	executor   sandbox.Client
-	queue      *river.Client[pgx.Tx]
-	maxWorkers int
+	observedServices sync.Map
+	pool             *pgxpool.Pool
+	repository       *store.Store
+	cipher           *identity.SessionCipher
+	registry         *modules.Registry
+	files            *artifacts.Service
+	auth             *identity.Authenticator
+	authorize        RunAuthorizer
+	engine           *runs.Engine
+	executor         sandbox.Client
+	queue            *river.Client[pgx.Tx]
+	maxWorkers       int
 }
 
 func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) error {
@@ -763,12 +815,18 @@ func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) 
 		aliases = append(aliases, alias)
 	}
 	r.repository.SetAllowedProviders(aliases)
-	settings, err := bootstrapSettings(cfg)
-	if err != nil {
-		return err
-	}
-	if err = r.repository.Bootstrap(ctx, settings); err != nil {
-		return errors.New("settings unavailable; run migrations first")
+	if cfg.Execution.RecoveryMode {
+		if _, err = r.repository.GetSettings(ctx); err != nil {
+			return errors.New("restored settings unavailable")
+		}
+	} else {
+		settings, settingsErr := bootstrapSettings(cfg)
+		if settingsErr != nil {
+			return settingsErr
+		}
+		if err = r.repository.Bootstrap(ctx, settings); err != nil {
+			return errors.New("settings unavailable; run migrations first")
+		}
 	}
 	r.cipher, err = loadSessionCipher(cfg.Identity)
 	if err != nil {
@@ -788,16 +846,19 @@ func (r *runtimeComponents) initAgent(
 	observer *telemetry.Telemetry,
 ) error {
 	var err error
-	r.registry, err = runtimeRegistry(ctx, cfg, r.repository, &r.files, logger)
+	r.registry, err = runtimeRegistry(ctx, cfg, r.repository, &r.files, &r.observedServices, logger)
 	if err != nil {
 		return err
 	}
 	checkService := func(c context.Context, p domain.Principal) (identity.Binding, error) {
 		return callerBinding(c, r.registry, cfg.Identity, p)
 	}
-	r.auth, err = runtimeAuthenticator(cfg, r.repository, r.registry, r.cipher, checkService)
+	r.auth, err = runtimeAuthenticator(cfg, r.repository, r.registry, r.cipher, checkService, &r.observedServices)
 	if err != nil {
 		return err
+	}
+	if cfg.Execution.RecoveryMode {
+		return nil
 	}
 	r.authorize = executionAuthorizer(r.repository, r.auth, r.cipher, checkService, observer)
 	r.files, err = artifacts.New(
@@ -840,7 +901,7 @@ func rememberCallerBindings(
 ) func(context.Context, []modules.CallerBinding) error {
 	return func(c context.Context, callers []modules.CallerBinding) error {
 		for _, caller := range callers {
-			if caller.Auth.Type == "zitadel" && caller.Auth.Issuer == cfg.Issuer &&
+			if caller.Auth.Type == zitadelCallerType && caller.Auth.Issuer == cfg.Issuer &&
 				caller.Auth.Audience == cfg.Audience {
 				if e := repository.RememberServiceIdentity(
 					c,

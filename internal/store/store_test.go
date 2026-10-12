@@ -1158,3 +1158,26 @@ func checkControlWinsInteraction(t *testing.T, kind, command string) {
 		}
 	}
 }
+
+func TestRecoveryCancelDoesNotBootstrapOwner(t *testing.T) {
+	t.Parallel()
+	s := testStore(t)
+	p := domain.Principal{
+		Issuer:      "https://recovery.example",
+		Subject:     "missing",
+		OrgID:       "org-a",
+		Permissions: map[string]bool{"runs.control": true},
+	}
+	_, err := s.ControlExistingUser(t.Context(), p, uuid.NewString(), "cancel-existing", "cancel")
+	require.Error(t, err)
+	var count int
+	require.NoError(
+		t,
+		s.Pool().
+			QueryRow(t.Context(), "SELECT count(*) FROM users WHERE issuer=$1 AND subject=$2", p.Issuer, p.Subject).
+			Scan(&count),
+	)
+	require.Zero(t, count)
+	_, err = s.ControlExistingUser(t.Context(), p, uuid.NewString(), "resume-denied", "resume")
+	require.Error(t, err)
+}

@@ -1,5 +1,7 @@
 # Ограничения MVP
 
+**Дополнение 12 октября — fault/recovery:** [SIGKILL и три OOM атакующих](validation/2026-10-12-supervisor-fault-qa/README.md) приняты локально без повторного вызова/списания. Реализован `execution.recovery_mode`: dispatch и фоновые изменения выключены, доступны диагностика и ограниченная сверка. [Restore PG/blobs/keyring](validation/2026-10-12-restore-recovery-qa/README.md), защита нового/удалённого service caller, идемпотентная сверка и контролируемый выход приняты на fixture. **Не сделано:** операторская подготовка expired uncertain Running run (QA использовал developer one-shot), автоматическое восстановление потерянных после snapshot effects, PITR/off-host backup. После restart recovery нужен полный `identity.service_subjects` inventory, включая сервисы после точки backup. Production restore и произвольная OOM isolation не проверены.
+
 **Обновление 12 октября:** текущая браузерная приёмка fixture теперь PASS после установки Daniel тестового CA и перезапуска Codex: login, фильтры, detail, refresh и Disconnect. [Follow-up](validation/2026-10-12-browser-qa/README.md). Упоминания TLS BLOCKED ниже описывают сохранённый результат 11 октября; production/real issuer и остальные открытые gates этим не закрыты.
 
 Состояние рабочего дерева на 11 октября 2026 года: базовый MVP `25e3850` и последующие незакоммиченные изменения. После всех memory/scope/retry исправлений полные Windows integration и Linux/Docker race gates PASS, Golden 0 findings PASS. Шестой свежий retry review завершён без actionable findings; всего шесть review passes, найденные ошибки исправлены. Три выявленных дефекта исправлены и локально приняты: cancellation checkpoint, shutdown при PG outage и health IPC capacity handshake. Исходные FAIL сохранены; свежие review чистые после исправлений, финальные общие Windows/Linux race/Golden gates PASS. [Исправления и доказательства](validation/2026-10-11-fault-fixes/README.md). На текущем reviewed image вручную проверены artifact/PG ENOSPC, DB read-only и восстановление; readiness остаётся connectivity-only. [Текущая приёмка](validation/2026-10-11-full-manual-qa/README.md). 171 commit pin, 362 notices, govulncheck и 10 promtool rules PASS. [Расширенный статус](validation/2026-10-11-extended-qa/README.md), [дальнейший трек](development-track.md). Production-приёмка не выполнена.
@@ -121,7 +123,7 @@
 
 - Полный аудит transitive/native зависимостей development tools остаётся отдельной работой. Завершённый аудит лицензий и vulnerabilities относится к используемому приложением графу; whitelist и явно разрешённое исключение для линтера сохраняются.
 
-- **Production backup/restore и multi-host infrastructure не поставлены.** Runbook, Compose template и PG leases не заменяют серверные backup jobs/restore rehearsal, shared blob storage или distributed subscriber tracking. Restore не проверен; полноценная HA-схема отсутствует. C02/E04.
+- **Production backup/restore и multi-host infrastructure не поставлены.** Runbook, Compose template и PG leases не заменяют серверные backup jobs/restore rehearsal, shared blob storage или distributed subscriber tracking. Локальный ограниченный restore проверен; серверный restore/PITR и полноценная HA-схема отсутствуют. C02/E04.
 
 ## Принятые границы продукта
 
