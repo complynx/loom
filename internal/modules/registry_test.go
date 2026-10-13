@@ -636,7 +636,6 @@ func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
 	manifest.Modules = manifest.Modules[:1]
 	manifest.Modules[0].Methods = manifest.Modules[0].Methods[:1]
 	manifest.Modules[0].Methods[0].TimeoutMS = 1000
-	var cancelled atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/manifest" {
 			_ = json.NewEncoder(w).Encode(manifest)
@@ -650,7 +649,6 @@ func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
 		}
 		select {
 		case <-r.Context().Done():
-			cancelled.Add(1)
 			return
 		case <-time.After(250 * time.Millisecond):
 		}
@@ -680,7 +678,68 @@ func TestMethodDeadlineIsIndependentOfManifestDeadline(t *testing.T) {
 	require.NoError(t, registry.Refresh(context.Background()))
 	_, err = broker.Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Eventually(t, func() bool { return cancelled.Load() == 1 }, time.Second, time.Millisecond)
+}
+
+func TestMethodCallPropagatesCancellationAfterDelivery(t *testing.T) {
+	t.Parallel()
+	ctx, stop := context.WithTimeout(t.Context(), 5*time.Second)
+	defer stop()
+	manifest := example(t)
+	manifest.Modules = manifest.Modules[:1]
+	manifest.Modules[0].Methods = manifest.Modules[0].Methods[:1]
+	manifest.Modules[0].Methods[0].TimeoutMS = 10000
+	started, cancelled := make(chan struct{}), make(chan struct{})
+	stopHandler := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest" {
+			_ = json.NewEncoder(w).Encode(manifest)
+			return
+		}
+		_, bodyErr := io.Copy(io.Discard, r.Body)
+		if !assert.NoError(t, bodyErr) {
+			return
+		}
+		close(started)
+		select {
+		case <-r.Context().Done():
+			close(cancelled)
+		case <-stopHandler:
+		}
+	}))
+	defer func() {
+		close(stopHandler)
+		server.Close()
+	}()
+	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
+		return []modules.Endpoint{endpoint(t, server.URL, "one")}, nil
+	}), modules.Options{})
+	require.NoError(t, err)
+	require.NoError(t, registry.Refresh(ctx))
+	broker := registry.Broker(principal(), "run-one", nil)
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, callErr := broker.Call(callCtx, "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
+		result <- callErr
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("method request did not reach server")
+	}
+	cancel()
+	select {
+	case err = <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-ctx.Done():
+		t.Fatal("method call did not stop after cancellation")
+	}
+	select {
+	case <-cancelled:
+	case <-ctx.Done():
+		t.Fatal("server did not observe request cancellation")
+	}
 }
 
 func checkRetiredArtifactDestination(t *testing.T, change string) {
