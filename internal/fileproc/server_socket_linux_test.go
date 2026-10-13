@@ -4,9 +4,9 @@ package fileproc_test
 
 import (
 	"context"
-	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -34,16 +34,18 @@ func waitWorker(t *testing.T, client fileproc.Client, stopped <-chan error) {
 func TestWorkerReclaimsStaleSocket(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "worker.sock")
-	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", path)
+	// Do not listen: concurrent media-process starts can inherit a listening FD
+	// until exec, keeping it active briefly after this test closes its own copy.
+	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unixListener, ok := listener.(*net.UnixListener)
-	if !ok {
-		t.Fatal("Unix listener required")
+	bindErr := syscall.Bind(fd, &syscall.SockaddrUnix{Name: path})
+	err = syscall.Close(fd)
+	if bindErr != nil {
+		t.Fatal(bindErr)
 	}
-	unixListener.SetUnlinkOnClose(false)
-	if err = listener.Close(); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
