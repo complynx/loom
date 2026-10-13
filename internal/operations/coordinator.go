@@ -58,11 +58,28 @@ func newID() (string, error) {
 	return id.String(), nil
 }
 
-func seal(op Operation) string {
+// JSONB can reorder object keys, including nested RawMessage values. Normalize
+// only those values so existing seals retain their original struct encoding.
+func seal(op Operation) (string, error) {
+	var err error
+	op.Arguments, err = canonical(op.Arguments)
+	if err != nil {
+		return "", err
+	}
+	op.Preparation.Arguments, err = canonical(op.Preparation.Arguments)
+	if err != nil {
+		return "", err
+	}
+	if len(op.Preparation.Preconditions) > 0 {
+		op.Preparation.Preconditions, err = canonical(op.Preparation.Preconditions)
+		if err != nil {
+			return "", err
+		}
+	}
 	return digest(struct {
 		Request     Request
 		Preparation Preparation
-	}{op.Request, op.Preparation})
+	}{op.Request, op.Preparation}), nil
 }
 
 // Prepare deduplicates the stable call identity. A changed argument or authority
@@ -125,7 +142,10 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 	if req.Mode == "none" {
 		op.State = stateApproved
 	}
-	op.BindingHash = seal(op)
+	op.BindingHash, err = seal(op)
+	if err != nil {
+		return Operation{}, err
+	}
 	if err = c.save(ctx, op, statePreparing); err != nil {
 		return Operation{}, err
 	}
@@ -195,7 +215,8 @@ func (c *Coordinator) ApproveTx(ctx context.Context, tx pgx.Tx, id string, a App
 	if err != nil {
 		return Operation{}, err
 	}
-	if op.Binding != a.Binding || op.BindingHash != a.BindingHash || op.BindingHash != seal(op) {
+	bindingHash, sealErr := seal(op)
+	if sealErr != nil || op.Binding != a.Binding || op.BindingHash != a.BindingHash || op.BindingHash != bindingHash {
 		return Operation{}, ErrBinding
 	}
 	if (op.State == stateApproved && a.Approve) || (op.State == stateRejected && !a.Approve) {
@@ -289,7 +310,8 @@ func (c *Coordinator) Dispatch(
 	if op.State != stateApproved {
 		return op, nil
 	}
-	if op.BindingHash != seal(op) {
+	bindingHash, sealErr := seal(op)
+	if sealErr != nil || op.BindingHash != bindingHash {
 		return op, ErrBinding
 	}
 	if !op.Preparation.ExpiresAt.After(time.Now()) {
@@ -511,6 +533,11 @@ func (c *Coordinator) priorPreparation(ctx context.Context, req Request) (Operat
 	if err := json.Unmarshal(raw, &prior); err != nil {
 		return Operation{}, err
 	}
+	args, err := canonical(prior.Arguments)
+	if err != nil {
+		return Operation{}, ErrBinding
+	}
+	prior.Arguments = args
 	if digest(prior.Request) != digest(req) {
 		return Operation{}, ErrBinding
 	}

@@ -20,6 +20,7 @@ import (
 )
 
 type backend struct {
+	preparation    *operations.Preparation
 	writes         atomic.Int32
 	failAfterWrite bool
 	cancel         context.CancelFunc
@@ -28,6 +29,9 @@ type backend struct {
 }
 
 func (b *backend) Prepare(context.Context, operations.Operation) (operations.Preparation, error) {
+	if b.preparation != nil {
+		return *b.preparation, nil
+	}
 	return operations.Preparation{
 		Token:         "confirmation",
 		Preconditions: json.RawMessage(`{"version":7}`),
@@ -112,6 +116,83 @@ func fixture(t *testing.T) (*operations.Coordinator, operations.Request) {
 func allow(context.Context, operations.Operation) error { return nil }
 func approval(op operations.Operation) operations.Approval {
 	return operations.Approval{Binding: op.Binding, BindingHash: op.BindingHash, Approve: true}
+}
+
+func TestJSONBRoundTripPreservesWriteIntent(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"none", "service_id", "exact_parameters"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			c, req := fixture(t)
+			ctx := context.Background()
+			req.Mode = mode
+			req.Arguments = json.RawMessage(`{
+				"event_id":"event","role":"leader",
+				"nested":{"long_key":9007199254740993,"x":[{"long_key":2,"a":1}]}
+			}`)
+			b := &backend{preparation: &operations.Preparation{
+				Token:         "confirmation",
+				Arguments:     req.Arguments,
+				Preconditions: json.RawMessage(`{"version":9007199254740993,"x":{"long_key":2,"a":1}}`),
+			}}
+			op, err := c.Prepare(ctx, req, b)
+			require.NoError(t, err)
+			loaded, err := c.Get(ctx, op.ID)
+			require.NoError(t, err)
+			require.NotEqual(t, string(op.Arguments), string(loaded.Arguments), "JSONB must reorder the fixture keys")
+			again, err := c.Prepare(ctx, req, b)
+			require.NoError(t, err)
+			require.Equal(t, op.ID, again.ID)
+			changed := req
+			changed.Arguments = json.RawMessage(`{
+				"event_id":"event","role":"leader",
+				"nested":{"long_key":9007199254740992,"x":[{"long_key":2,"a":1}]}
+			}`)
+			_, err = c.Prepare(ctx, changed, b)
+			require.ErrorIs(t, err, operations.ErrBinding)
+			if mode != "none" {
+				_, err = c.Approve(ctx, op.ID, approval(op))
+				require.NoError(t, err)
+			}
+			result, err := c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, allow, b)
+			require.NoError(t, err)
+			require.Equal(t, "succeeded", result.State)
+			_, err = c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, allow, b)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, b.writes.Load())
+		})
+	}
+}
+
+func TestChangedPersistedWriteIntentIsRejected(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"{arguments,order}", "{preparation,normalized_arguments,order}", "{preparation,preconditions,version}"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			c, req := fixture(t)
+			ctx := context.Background()
+			b := &backend{}
+			op, err := c.Prepare(ctx, req, b)
+			require.NoError(t, err)
+			_, err = c.Pool.Exec(
+				ctx,
+				`UPDATE write_operations SET doc=jsonb_set(doc,$2::text[],'99'::jsonb) WHERE id=$1`,
+				op.ID, path,
+			)
+			require.NoError(t, err)
+			_, err = c.Approve(ctx, op.ID, approval(op))
+			require.ErrorIs(t, err, operations.ErrBinding)
+			_, err = c.Pool.Exec(
+				ctx,
+				`UPDATE write_operations SET state='approved',doc=jsonb_set(doc,'{state}','"approved"'::jsonb) WHERE id=$1`,
+				op.ID,
+			)
+			require.NoError(t, err)
+			_, err = c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, allow, b)
+			require.ErrorIs(t, err, operations.ErrBinding)
+			require.Zero(t, b.writes.Load())
+		})
+	}
 }
 
 func TestWriteRequiresExactApprovalAndIsDispatchedOnce(t *testing.T) {
