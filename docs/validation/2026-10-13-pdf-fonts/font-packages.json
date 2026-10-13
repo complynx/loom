@@ -1,0 +1,27 @@
+[
+  {
+    "name": "font-roboto",
+    "version": "3.005-r0",
+    "license": "Apache-2.0",
+    "origin": "font-roboto",
+    "commit": "3e06c838a39fcefde664d281ea53a6963ffaa41c"
+  }, {
+    "name": "font-roboto-mono",
+    "version": "3.000-r0",
+    "license": "Apache-2.0",
+    "origin": "font-roboto-mono",
+    "commit": "a379e7d80e81e502178c190657a807a6f0938ef6"
+  }, {
+    "name": "libfontenc",
+    "version": "1.1.9-r0",
+    "license": "MIT",
+    "origin": "libfontenc",
+    "commit": "9667f1121e207bb3819d91ab6734375f7698e5a7"
+  }, {
+    "name": "mkfontscale",
+    "version": "1.2.4-r0",
+    "license": "MIT",
+    "origin": "mkfontscale",
+    "commit": "e4301c788920ece9e1cd96dfa9d0ea6e7875e755"
+  }
+]

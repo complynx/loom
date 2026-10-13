@@ -34,7 +34,7 @@ jobs:
           docker run --rm --network host -v "$PWD:/src" -w /src
           -e CLX_TEST_DATABASE_DSN
           golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
-          sh -c 'apk add --no-cache gcc musl-dev ffmpeg=8.1.2-r0 poppler-utils=25.12.0-r1 >/dev/null && CGO_ENABLED=1 go test -race -parallel=4 -tags=integration ./internal/fileproc ./internal/app ./integration'
+          sh -c 'apk add --no-cache gcc musl-dev ffmpeg=8.1.2-r0 poppler-utils=25.12.0-r1 font-roboto=3.005-r0 font-roboto-mono=3.000-r0 >/dev/null && CGO_ENABLED=1 go test -race -parallel=4 -tags=integration ./internal/fileproc ./internal/app ./integration'
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/loom
       - run: sh scripts/install-tools.sh
       - run: bin/golangci-lint config verify

@@ -13,6 +13,18 @@ docker build --target file-worker -t loom:file-worker .
 
 The worker contains Poppler 25.12.0-r1 and FFmpeg 8.1.2-r0. The pinned Alpine image
 and `examples/file-worker.packages` fix the complete runtime package set.
+The runtime includes Roboto 3.005-r0 and Roboto Mono 3.000-r0 (Apache-2.0)
+for unembedded PDF text. Fontconfig substitutes these installed fonts; this
+preserves visible text but does not promise the original font's exact metrics.
+This is a bounded fallback set, not complete CJK, emoji or specialist-font
+coverage. Embed required fonts when exact appearance matters.
+Fontconfig writes any runtime cache under `/tmp/loom-font-cache`, inside the
+worker's bounded temporary filesystem; it does not require a writable rootfs.
+
+`pdf.render` rejects Poppler's unresolved-font diagnostic even when the CLI exits
+zero. A missing-font result produces no derived artifact. Actually blank and
+image-only pages remain valid. CI decodes a synthetic Helvetica PDF's PNG and
+checks glyph pixels, rather than only checking PNG/MIME metadata.
 FFmpeg's Alpine build enables GPL and version-3 components. Do not describe this
 image as LGPL-only. The API image remains separate and contains no media CLI.
 

@@ -43,6 +43,10 @@ func command(ctx context.Context, name string, args ...string) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("%s failed: %w", name, err)
 	}
+	// Poppler can exit successfully after dropping text with unresolved fonts.
+	if name == "pdftoppm" && bytes.Contains(stderr.Bytes(), []byte("Couldn't find a font")) {
+		return nil, errors.New("PDF rendering failed: a required font is unavailable")
+	}
 	return stdout.Bytes(), nil
 }
 

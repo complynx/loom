@@ -7,6 +7,7 @@ COPY . .
 RUN go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/loom ./cmd/loom
 RUN mkdir -p /out/run/clx-sandbox /out/data/artifacts && chmod 0770 /out/run/clx-sandbox /out/data/artifacts
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS file-runtime
+ENV XDG_CACHE_HOME=/tmp/loom-font-cache
 COPY examples/file-worker.packages /licenses/runtime/packages.lock
 RUN tr -d '\r' </licenses/runtime/packages.lock >/tmp/packages.lock \
     && apk add --no-cache $(cat /tmp/packages.lock) \

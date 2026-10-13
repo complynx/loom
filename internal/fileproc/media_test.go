@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +87,7 @@ func TestPDFCLIHappyPaths(t *testing.T) {
 				if len(result.Outputs) != 1 {
 					t.Fatal("missing page")
 				}
+				assertPDFTextVisible(t, result.Outputs[0].Path)
 			} else if operation != "pdf.info" && !strings.Contains(string(result.Data), "agent") {
 				t.Fatal("missing text")
 			}
@@ -101,6 +103,54 @@ func TestPDFCLIHappyPaths(t *testing.T) {
 		t.Fatalf("partial=%+v err=%v", result, err)
 	}
 }
+func assertPDFTextVisible(t *testing.T, path string) {
+	t.Helper()
+	page, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	img, err := png.Decode(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ink int
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			if r < 0xe000 && g < 0xe000 && b < 0xe000 {
+				ink++
+			}
+		}
+	}
+	if ink < 100 {
+		t.Fatalf("PDF text is blank or incomplete: %d dark pixels", ink)
+	}
+}
+func TestPDFRenderRejectsUnresolvedFont(t *testing.T) {
+	needCommands(t, "pdftoppm")
+	dir := t.TempDir()
+	config := filepath.Join(dir, "fonts.conf")
+	if err := os.WriteFile(config, []byte(`<fontconfig></fontconfig>`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FONTCONFIG_FILE", config)
+	input := filepath.Join(dir, "input.pdf")
+	writePDF(t, input)
+	result, err := fileproc.Process(t.Context(), fileproc.Request{Operation: "pdf.render"}, input, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "required font is unavailable") || len(result.Outputs) != 0 {
+		t.Fatalf("unresolved font must not produce a usable artifact: result=%+v err=%v", result, err)
+	}
+	// An actually blank page is valid; only a renderer's missing-font diagnostic
+	// is rejected, rather than a blanket check for white output pixels.
+	writePDFContent(t, input, false, "")
+	result, err = fileproc.Process(t.Context(), fileproc.Request{Operation: "pdf.render"}, input, t.TempDir())
+	if err != nil || len(result.Outputs) != 1 {
+		t.Fatalf("valid blank page rejected: result=%+v err=%v", result, err)
+	}
+}
+
 func TestGIFCLIPagesAndFrame(t *testing.T) {
 	t.Parallel()
 	needCommands(t, "ffprobe", "ffmpeg")
