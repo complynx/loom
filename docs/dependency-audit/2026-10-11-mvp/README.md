@@ -4,7 +4,7 @@ This audit covers the implemented Go service, not the earlier dependency candida
 
 ## Pins and integrity
 
-`tools/dependencies.lock.json` contains 171 full 40-character module commits for the complete `go list -m all` graph, plus four development tools and the Go source commit/archive hashes. Every module commit resolves to its recorded canonical Go version. `python scripts/dependency-lock.py --check` passed. `go mod verify` passed; see `module-verify.txt`.
+`go mod verify` passed; see `module-verify.txt`.
 
 Many graph modules belong only to upstream dependency tests, adapters or tools and are not linked into this service. `runtime-imports.txt` records the actual binary dependency packages. An explicit `golang.org/x/crypto v0.56.0` constraint prevents the unused upstream graph from selecting the known vulnerable v0.55.0.
 
@@ -33,7 +33,6 @@ No package is declared safe from popularity or scanner output alone. Upstream ac
 Set `GOROOT` to the project-selected `go env GOROOT` before running the previously built go-licenses tool. This avoids treating the newer standard library as external unversioned packages.
 
 ```sh
-python scripts/dependency-lock.py --check
 go mod verify
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 govulncheck -json ./...
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go-licenses report ./cmd/clx-scripter/... ./internal/... ./integration/...

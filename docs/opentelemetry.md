@@ -31,7 +31,7 @@ Check that a request produces a route-pattern trace and correlated JSON log. Che
 
 ## Dependency provenance and validation
 
-The official Go SDK/exporters are v1.47.0, released on 2026-10-02. Full canonical VCS commits are recorded in `tools/dependencies.lock.json`. Exact license notices for new/upgraded graph modules are in `docs/dependency-audit/2026-10-12-otel/`. Notices were inspected: Apache-2.0, MIT, and BSD licenses meet the project's allowed list. The upstream project is maintained by OpenTelemetry/CNCF; no separate third-party tracing wrapper is used.
+The official Go SDK/exporters are v1.47.0, released on 2026-10-02. Selected versions are recorded in `go.mod`, with checksums in `go.sum`. Exact license notices for new/upgraded graph modules are in `docs/dependency-audit/2026-10-12-otel/`. Notices were inspected: Apache-2.0, MIT, and BSD licenses meet the project's allowed list. The upstream project is maintained by OpenTelemetry/CNCF; no separate third-party tracing wrapper is used.
 
 Behavioral tests use a local fake OTLP collector to check trace/metric export, route privacy, inbound parent propagation, nested log correlation, outgoing trace injection without mutating original headers, exporter outage, bounded queue, and shutdown. A real local Alloy v1.20.1 accepted synthetic HTTP/operation spans and metrics; the production receiver snippet also passed validation. [Current acceptance and remaining gates](validation/2026-10-12-files-otel/README.md). No live remote backend or production server acceptance is implied.
 

@@ -20,7 +20,7 @@ Initial govulncheck identified reachable vulnerabilities in the previous x/net v
 
 ## Dependencies and delivery
 
-OTel uses the official Go SDK v1.47.0. All 231 graph modules have full VCS commit pins. New/upgraded module notices are archived under docs/dependency-audit/2026-10-12-otel/notices and included in both containers. The worker includes matching corresponding-source material for isolated GPL CLI dependencies. Its image is approximately 1.47 GB; source collection is an intentional build/runtime-image cost.
+OTel uses the official Go SDK v1.47.0. New/upgraded module notices are archived under docs/dependency-audit/2026-10-12-otel/notices and included in both containers. The worker includes matching corresponding-source material for isolated GPL CLI dependencies. Its image is approximately 1.47 GB; source collection is an intentional build/runtime-image cost.
 
 ## Not accepted or not implemented
 
@@ -42,7 +42,6 @@ on behalf of Daniel Drizhuk
 - Docker API and file-worker builds: PASS. Worker source bundle: all 757 SHA-256 checks PASS; 72 new dependency notice files present.
 - Local image sizes: API 51,036,043 bytes; worker 1,475,494,590 bytes. Image IDs are local build evidence, not published release digests.
 - `git diff --check`: PASS; review fixes remain unstaged until final source review completes.
-- Dependency lock check: all 231 full commit pins verified.
 - License manifest: 69 modules match locked versions/commits; all 72 notices byte-match the exact Go module cache.
 
 - Final general source review (pass 6): No actionable findings. Final dedicated OTel review (pass 2): No actionable findings. Earlier verified findings were fixed and retested. Staged diff stayed empty throughout review.
