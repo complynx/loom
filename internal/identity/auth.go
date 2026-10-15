@@ -38,6 +38,7 @@ type BindingResolver func(context.Context, *http.Request, domain.Principal) (Bin
 // ServiceClassifier uses fresh trusted deployment registration and durable service-identity markers.
 type ServiceClassifier func(context.Context, domain.Principal) (bool, error)
 type Authenticator struct {
+	assertionSigner     jose.Signer
 	cache               *permissionsCache
 	serviceClassifier   ServiceClassifier
 	discoveryFetchMu    sync.Mutex
@@ -87,10 +88,16 @@ func (a *audience) UnmarshalJSON(b []byte) error {
 	return nil
 }
 func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Authenticator, error) {
+	var err error
+	cfg, err = cfg.ResolveCredentials()
+	if err != nil {
+		return nil, err
+	}
 	if cfg.PermissionsCacheTTLSeconds < 0 || cfg.PermissionsCacheTTLSeconds > 300 {
 		return nil, errors.New("permissions cache TTL must be between 0 and 300 seconds")
 	}
-	if cfg.Issuer == "" || cfg.Audience == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
+	if cfg.Issuer == "" || cfg.Audience == "" || cfg.ClientID == "" ||
+		(cfg.ClientSecret == "" && cfg.ClientPrivateKey == nil) {
 		return nil, errors.New("identity trust root and introspection credentials required")
 	}
 	if validateIdentityURLErr := config.ValidateIdentityURL(cfg.Issuer); validateIdentityURLErr != nil {
@@ -105,8 +112,16 @@ func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Au
 	bounded := *client
 	bounded.Timeout = identityRequestTimeout
 	bounded.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Authenticator{cfg: cfg, client: &bounded, binding: binding,
-		cache: newPermissionsCache(time.Duration(cfg.PermissionsCacheTTLSeconds) * time.Second)}, nil
+	a := &Authenticator{cfg: cfg, client: &bounded, binding: binding,
+		cache: newPermissionsCache(time.Duration(cfg.PermissionsCacheTTLSeconds) * time.Second)}
+	if cfg.ClientPrivateKey != nil {
+		a.assertionSigner, err = jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: cfg.ClientPrivateKey},
+			(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", cfg.ClientKeyID))
+		if err != nil {
+			return nil, errors.New("cannot initialize introspection signer")
+		}
+	}
+	return a, nil
 }
 func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (domain.Principal, error) {
 	token, err := bearer(r.Header.Get("Authorization"))
@@ -209,6 +224,9 @@ func (a *Authenticator) introspectToken(ctx context.Context, token string) (toke
 		return tokenInfo{}, err
 	}
 	form := url.Values{"token": {token}, "token_type_hint": {"access_token"}}
+	if err = a.addClientAssertion(form); err != nil {
+		return tokenInfo{}, err
+	}
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
@@ -218,7 +236,9 @@ func (a *Authenticator) introspectToken(ctx context.Context, token string) (toke
 	if err != nil {
 		return tokenInfo{}, ErrUnavailable
 	}
-	req.SetBasicAuth(a.cfg.ClientID, a.cfg.ClientSecret)
+	if a.assertionSigner == nil {
+		req.SetBasicAuth(a.cfg.ClientID, a.cfg.ClientSecret)
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	var info tokenInfo
 	if fetchErr := a.fetch(req, &info); fetchErr != nil {

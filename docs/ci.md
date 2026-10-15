@@ -1,6 +1,6 @@
 # CI publication and server deployment trigger
 
-Repository rename: use the coordinated [Loom receiver/Alloy patch](validation/2026-10-12-loom-rename-server.patch). Historical QA patches preserve their original names. Deploy the updated receiver before enabling `updated-loom` dispatch.
+Deployment receiver and collector configuration are maintained outside this repository. The receiver must accept `updated-loom`.
 
 The existing CI runs tests, dependency verification, lint and vulnerability checks
 on pushes and pull requests. Once these pass, a push to `main` builds and publishes
@@ -12,6 +12,7 @@ Published tags:
 
 - `complynx/loom:latest`
 - `complynx/loom:sha-<full Git commit SHA>`
+- `complynx/loom:file-worker-latest` and `complynx/loom:file-worker-sha-<full Git commit SHA>`
 
 Publishing jobs share a concurrency group and do not cancel a running publication.
 Before publishing, the job checks the current remote `main` head; an older run is
@@ -38,18 +39,7 @@ has the scoped write permissions described below.
 
 After the image push succeeds, CI sends `updated-loom` to
 `complynx/server_configs`, following the existing `zns-chatbot` pattern. The payload
-contains the source SHA, immutable commit tag and published image digest. The local
-server receiver maps this event to `loom` and invokes its existing rollout
-script. That script uses the Compose profile's configured image; it does not consume
-the payload digest or commit tag to select an image.
-
-The receiver change must reach `server_configs`' default branch before GitHub
-accepts this event type. Server rollout also requires `configs/loom` to be
-configured on the server with its Compose files, production settings, secrets,
-volumes, migrations and networks. That profile does not yet exist in the local
-server repository. The CI trigger alone does not create it or establish production
-readiness. The monitoring network from `docs/observability.md` is another deployment
-prerequisite. No dispatch or production deployment was executed during this change.
+contains the source SHA, latest image tags and informational published digests. The receiver selects latest from its own operator-managed Compose profile. Both images are published before dispatch. See [startup](startup.md) for serialized rollout and schema requirements. The receiver workflow and production configuration are maintained outside this repository. The trigger does not provision infrastructure or prove readiness.
 
 A successful sender job proves that GitHub accepted the event. Deployment success
 must be checked in the receiving server workflow and application readiness. If

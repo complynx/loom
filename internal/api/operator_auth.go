@@ -81,7 +81,10 @@ func (s *server) registerOperatorLogin(mux *http.ServeMux) {
 	l := s.options.OperatorLogin
 	mux.HandleFunc("GET /admin/login/config", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		write(w, http.StatusOK, map[string]bool{"enabled": l != nil})
+		write(w, http.StatusOK, map[string]any{
+			"enabled": l != nil || s.options.OperatorProxyOrigin != "",
+			"proxy":   s.options.OperatorProxyOrigin != "",
+		})
 	})
 	mux.HandleFunc("GET /admin/login", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

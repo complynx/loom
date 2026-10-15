@@ -50,7 +50,7 @@ server's configured image policy.
 
 ## Deployment boundary
 
-[Server configuration patch](server-configs.patch) records the local scrape target,
+The server configuration patch (retained in operator-local files) records the local scrape target,
 monitoring network attachment and `sys.env` compatibility change. No production
 network, container, alert, notification route or Grafana dashboard was created.
 Creating the external monitoring network and applying these changes are deployment

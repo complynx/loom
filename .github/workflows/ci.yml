@@ -131,4 +131,4 @@ jobs:
           repository: complynx/server_configs
           event-type: updated-loom
           client-payload: >-
-            {"sha":"${{ github.sha }}","image":"complynx/loom:sha-${{ github.sha }}","digest":"${{ steps.image.outputs.digest }}","file_worker_image":"complynx/loom:file-worker-sha-${{ github.sha }}","file_worker_digest":"${{ steps.file-worker.outputs.digest }}"}
+            {"sha":"${{ github.sha }}","image":"complynx/loom:latest","digest":"${{ steps.image.outputs.digest }}","file_worker_image":"complynx/loom:file-worker-latest","file_worker_digest":"${{ steps.file-worker.outputs.digest }}"}

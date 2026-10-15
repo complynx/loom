@@ -68,14 +68,14 @@ func TestRuntimeRunsQueuedRequestAndShutsDown(t *testing.T) {
 	query := dbURL.Query()
 	query.Set("search_path", schema)
 	dbURL.RawQuery = query.Encode()
-	require.NoError(t, app.Migrate(ctx, config.Config{Database: config.Database{DSN: dbURL.String()}}))
+	// The normal serve entry point owns migrations and initial key creation.
 	issuer := testRuntimeIssuer()
 	defer issuer.Close()
 	model, modelState := testRuntimeModel(t)
 	defer model.Close()
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "key")
-	require.NoError(t, os.WriteFile(keyPath, []byte(strings.Repeat("k", 32)), 0600))
+	require.NoFileExists(t, keyPath)
 	socket := filepath.Join(dir, "sandbox.sock")
 	listener, err := net.Listen("unix", socket)
 	require.NoError(t, err)
@@ -98,6 +98,7 @@ func TestRuntimeRunsQueuedRequestAndShutsDown(t *testing.T) {
 			DisconnectGraceMS: 100,
 		},
 		Database: config.Database{
+			MigrateOnStart:     true,
 			DSN:                dbURL.String(),
 			MaxConnections:     20,
 			StatementTimeoutMS: 2000,

@@ -1,11 +1,10 @@
-# Observability for complynx.net
+# Observability
 
 Identity-cache counters, claim-age histogram, purge event and operational limits are described in the [cache contract](identity-cache.md).
 
-Repository rename: use the coordinated [Loom receiver/Alloy patch](validation/2026-10-12-loom-rename-server.patch). Historical QA patches preserve their original names. Deploy the updated receiver before enabling `updated-loom` dispatch.
+Deployment receiver and collector configuration are maintained outside this repository. The receiver must accept `updated-loom`.
 
-The server uses Grafana Alloy with Grafana Cloud Prometheus remote_write and Loki
-Docker log ingestion. The application adds no push credentials or telemetry SDK.
+Loom exposes Prometheus metrics and JSON logs. Collect them with your private collector. Optional OpenTelemetry export is described in [OTel](opentelemetry.md).
 A fixed Prometheus 0.0.4 exporter uses standard Go; there is no general registry,
 untrusted metric registration or new Go dependency.
 
@@ -43,12 +42,8 @@ written into free text; do not use debug payload mode for unrestricted secrets.
    harness profile, preserving any existing application networks. Only Alloy and
    the API need this metrics network. No host port or Traefik route exposes 9090.
    Port 8080 serves the authenticated API; `/metrics` is absent there.
-3. Local `server_configs/configs/alloy/config.alloy` now has the scrape target
-   `loom:9090`, job `integrations/loom`, instance `complynx.net`.
-   The existing remote_write credentials/receiver are reused. Deprecated `env`
-   calls were updated to Alloy `sys.env`; the target and original pipeline were
-   validated together. Alloy Compose joins the dedicated external network.
-4. Existing Docker log ingestion already collects JSON stdout. Do not add a
+3. Configure your collector to scrape `loom:9090` over the private network.
+4. Collect JSON stdout through Docker log ingestion. Do not add a
    second log source. Query JSON fields at read time instead of indexing run,
    operation, request or user IDs as Loki labels.
 5. Import [alert rules](../deploy/observability/alerts.yaml) into the existing
@@ -89,9 +84,9 @@ outcome are persisted in the final JSON log, since the metrics process then exit
 Example Loki queries:
 
 ```logql
-{job="integrations/docker",instance="complynx.net"} | json | service="loom" | level="ERROR"
-{job="integrations/docker",instance="complynx.net"} | json | run_id="<run UUID>"
-{job="integrations/docker",instance="complynx.net"} | json | event="sandbox.worker_killed"
+{job="integrations/docker",instance="your-host"} | json | service="loom" | level="ERROR"
+{job="integrations/docker",instance="your-host"} | json | run_id="<run UUID>"
+{job="integrations/docker",instance="your-host"} | json | event="sandbox.worker_killed"
 ```
 
 [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/)

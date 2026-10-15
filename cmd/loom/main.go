@@ -22,6 +22,7 @@ const (
 	commandMigrate           = "migrate"
 	commandRotateSessionKeys = "rotate-session-keys"
 	defaultMaxWorkers        = 4
+	defaultRuntimeUID        = 10001
 	defaultCleanupTimeout    = 100 * time.Millisecond
 	socketProbeTimeout       = 200 * time.Millisecond
 	defaultRotationBatch     = 100
@@ -37,12 +38,16 @@ func main() {
 func run(args []string) error {
 	if len(args) == 0 {
 		return errors.New(
-			"expected serve, migrate, rotate-session-keys, sandbox-supervisor, sandbox-worker, file-worker or docker-proxy",
+			"expected serve, migrate, rotate-session-keys, sandbox-supervisor, sandbox-worker, file-worker, healthcheck, prepare-data or docker-proxy",
 		)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	switch args[0] {
+	case "healthcheck":
+		return runHealthcheck(ctx, args)
+	case "prepare-data":
+		return runPrepareData(args)
 	case "file-worker":
 		return runFileWorker(ctx, args)
 	case "docker-proxy":
@@ -59,6 +64,20 @@ func run(args []string) error {
 	default:
 		return errors.New("unknown command")
 	}
+}
+
+func runPrepareData(args []string) error {
+	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	root := flags.String("root", "/data", "persistent data directory")
+	uid := flags.Int("uid", defaultRuntimeUID, "runtime UID")
+	gid := flags.Int("gid", defaultRuntimeUID, "runtime GID")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("prepare-data takes only named options")
+	}
+	return app.PrepareData(*root, *uid, *gid)
 }
 
 func runDockerProxy(ctx context.Context, args []string) error {

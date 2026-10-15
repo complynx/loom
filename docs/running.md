@@ -54,7 +54,7 @@ curl -H "Authorization: Bearer $USER_TOKEN" \
 
 ## Дополнительные возможности
 
-[Личная память](user-memory.md) доступна каждому авторизованному пользователю без отдельных ролей. Micro-профиль добавляется в каждый inference; три уровня остальной памяти читаются по необходимости. [API](api.md) описывает bounded history search/read, previous-run cache hints и temporary artifact handles. `search.semantic_enabled: false` полностью скрывает vector tool и отключает indexing route; включённый режим требует pgvector и готовых векторов, без embeddings-сервиса. Для сервера используйте [подробный rollout](server-rollout.md).
+[Личная память](user-memory.md) доступна каждому авторизованному пользователю без отдельных ролей. Micro-профиль добавляется в каждый inference; три уровня остальной памяти читаются по необходимости. [API](api.md) описывает bounded history search/read, previous-run cache hints и temporary artifact handles. `search.semantic_enabled: false` полностью скрывает vector tool и отключает indexing route; включённый режим требует pgvector и готовых векторов, без embeddings-сервиса. Автоматические миграции и ключи описаны в [startup](startup.md).
 
 ## Восстановление
 

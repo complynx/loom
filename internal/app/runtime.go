@@ -162,6 +162,9 @@ func Serve(ctx context.Context, cfg config.Config) error {
 			flushTelemetry(ctx, stopTelemetry)
 		}
 	}()
+	if err = migrateOnStartup(ctx, cfg, logger); err != nil {
+		return err
+	}
 	if err = resources.initStorage(ctx, cfg); err != nil {
 		return err
 	}
@@ -627,11 +630,12 @@ func runtimeHandler(
 				}
 				return epoch, err
 			},
-			RecoveryMode:      cfg.Execution.RecoveryMode,
-			OperatorLogin:     operatorLogin,
-			DiagnosticsHealth: observer.DiagnosticsHealth,
-			DebugRequest:      observer.DebugRequest,
-			DebugPayload:      observer.DebugPayload,
+			RecoveryMode:        cfg.Execution.RecoveryMode,
+			OperatorLogin:       operatorLogin,
+			OperatorProxyOrigin: cfg.Operator.ProxyOrigin,
+			DiagnosticsHealth:   observer.DiagnosticsHealth,
+			DebugRequest:        observer.DebugRequest,
+			DebugPayload:        observer.DebugPayload,
 			RunCreated: func(c context.Context, id string) {
 				observer.Event(c, "run admitted", "request_id", telemetry.RequestID(c), "run_id", id)
 			},
@@ -892,6 +896,9 @@ func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) 
 		if err = r.repository.Bootstrap(ctx, settings); err != nil {
 			return errors.New("settings unavailable; run migrations first")
 		}
+	}
+	if err = ensureSessionKey(ctx, r.pool, cfg.Identity, cfg.Execution.RecoveryMode); err != nil {
+		return err
 	}
 	r.cipher, err = loadSessionCipher(cfg.Identity)
 	if err != nil {

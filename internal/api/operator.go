@@ -11,6 +11,9 @@ var operatorAssets embed.FS
 // The public shell contains no data. Every API call requires fresh bearer authorization.
 func (s *server) registerOperatorPanel(mux *http.ServeMux) {
 	s.registerOperatorLogin(mux)
+	if s.options.OperatorProxyOrigin != "" {
+		mux.Handle("/admin/api/", s.operatorProxy(mux))
+	}
 	for _, asset := range []struct{ path, file, media string }{
 		{operatorPanelPath, "operator.html", "text/html; charset=utf-8"},
 		{"/admin/operator.js", "operator.js", "text/javascript; charset=utf-8"},

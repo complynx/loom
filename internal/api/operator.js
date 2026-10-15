@@ -1,17 +1,21 @@
 "use strict";
 const element = id => document.getElementById(id);
+let proxyMode = false, proxyConnected = false;
+function connected() { return proxyConnected || token !== ""; }
 let token = "", cursor = "", currentAfterID = "", busy = false, timer = null, expiry = null, generation = 0;
 function notice(text, error = false) { element("notice").textContent = text; element("notice").className = error ? "error" : ""; }
 function clearData() { for (const id of ["overview", "runs"]) element(id).tBodies[0].replaceChildren(); element("detail").hidden = true; element("more").disabled = true; cursor = ""; currentAfterID = ""; }
-function disconnect() { token = ""; generation++; clearInterval(timer); timer = null; clearTimeout(expiry); expiry = null; element("refresh").disabled = true; element("state").disabled = false; clearData(); notice("Disconnected."); }
+function disconnect() { token = ""; proxyConnected = false; generation++; clearInterval(timer); timer = null; clearTimeout(expiry); expiry = null; element("refresh").disabled = true; element("state").disabled = false; clearData(); notice("Disconnected."); }
 async function api(path) {
   const expected = generation;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(path, {headers:{Authorization:"Bearer " + token}, cache:"no-store", credentials:"omit", signal:controller.signal});
+    const endpoint = proxyMode ? "/admin/api" + path.slice("/v1/admin".length) : path;
+    const response = await fetch(endpoint, {headers:proxyMode ? {} : {Authorization:"Bearer " + token}, cache:"no-store", credentials:proxyMode ? "same-origin" : "omit", redirect:"manual", signal:controller.signal});
     if (expected !== generation) throw new Error("Session changed");
-    if (response.status === 401 || response.status === 403) { disconnect(); throw new Error("Authorization denied. Sign in again with diagnostics.read."); }
+    if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) { const message = "SSO sign-in required. Reconnect to continue."; disconnect(); notice(message, true); throw new Error(message); }
+    if (response.status === 401 || response.status === 403) { const message = "Authorization denied. Sign in again with diagnostics.read."; disconnect(); notice(message, true); throw new Error(message); }
     if (!response.ok) throw new Error("Request failed: HTTP " + response.status + " · request " + (response.headers.get("X-Request-ID") || "unavailable"));
     const value = await response.json();
     if (expected !== generation) throw new Error("Session changed");
@@ -31,7 +35,8 @@ async function loadRuns(after = "") {
   cursor = page.next_cursor || ""; element("more").disabled = !cursor;
 }
 async function refresh(after = currentAfterID) {
-  if (!token || busy) return;
+  if (!connected() || busy) return;
+  const expected = generation;
   busy = true; element("refresh").disabled = true; element("state").disabled = true;
   try {
     const snapshot = await api("/v1/admin/diagnostics"); const tbody = element("overview").tBodies[0]; tbody.replaceChildren();
@@ -39,10 +44,10 @@ async function refresh(after = currentAfterID) {
     row(tbody,["runtime.sampled_at",snapshot.runtime.sampled_at]);
     for (const [name,up] of Object.entries(snapshot.runtime.dependencies || {})) row(tbody,[name,up ? "available" : "unavailable"]);
     await loadRuns(after); currentAfterID = after; notice("Updated " + new Date().toLocaleTimeString() + ". Refreshes every 15 seconds; no prompt or credential contents.");
-  } catch (error) { notice(error.message, true); }
-  finally { busy = false; element("refresh").disabled = !token; element("state").disabled = false; }
+  } catch (error) { if (expected === generation) notice(error.message, true); }
+  finally { busy = false; element("refresh").disabled = !connected(); element("state").disabled = false; }
 }
-element("login").addEventListener("click", () => { window.location.assign("/admin/login"); });
+element("login").addEventListener("click", () => { window.location.assign(proxyMode ? "/admin" : "/admin/login"); });
 async function initializeLogin() {
   const expected = generation;
   const callback = new URLSearchParams(window.location.search);
@@ -55,6 +60,11 @@ async function initializeLogin() {
     element("login").disabled = !settings.enabled;
     if (expected !== generation) return;
     if (!settings.enabled) { notice("Zitadel login is not configured."); return; }
+    if (settings.proxy) {
+      proxyMode = true; proxyConnected = true; element("login").textContent = "Reconnect";
+      await refresh(); if (proxyConnected) timer = setInterval(() => refresh(), 15000);
+      return;
+    }
     if (denied) throw new Error("Sign-in was denied. Try again.");
     if (!code && !state) { notice("Sign in to inspect diagnostics for your organization."); return; }
     if (!code || !state) throw new Error("Invalid sign-in callback. Try again.");

@@ -8,7 +8,7 @@
 
 На 2026-10-10 в соседнем `server_configs` проверены локальные файлы: Traefik Docker provider с `exposedByDefault: false`, PostgreSQL 17 с pgvector, Zitadel с указанным образом v4.16.3. `zitadeltg` обеспечивает Telegram login; Touchzouk использует Go/OIDC. Это сведения из репозиториев, а не проверка запущенного сервера. Секреты и соседние сервисы не изменялись.
 
-Текущий реализованный срез и границы QA описаны в [ограничениях](mvp-limitations.md). Ниже архитектурные решения; детали wire/schema задают migrations и OpenAPI. Production-настройки и проверенный read-only server snapshot находятся в [rollout](server-rollout.md).
+Текущий реализованный срез и границы QA описаны в [ограничениях](mvp-limitations.md). Ниже архитектурные решения; детали wire/schema задают migrations и OpenAPI. Порядок старта, миграции и ключи описаны в [startup](startup.md).
 
 ## Компоненты
 

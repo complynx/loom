@@ -29,6 +29,7 @@ type Options struct {
 	ClearIdentityCache                              func(context.Context) (int64, error)
 	RecoveryMode                                    bool
 	OperatorLogin                                   *OperatorLogin
+	OperatorProxyOrigin                             string
 	DiagnosticsHealth                               func() domain.DiagnosticsHealth
 	DebugRequest                                    func(context.Context, *http.Request, domain.Principal)
 	DebugPayload                                    func(context.Context, string, any)
@@ -203,7 +204,7 @@ func (s *server) route(mux *http.ServeMux, pattern, permission string, handler e
 		if freshAuthorization(pattern) {
 			r = r.WithContext(identity.RequireFresh(r.Context()))
 		}
-		p, err := s.auth.Authenticate(r.Context(), r)
+		p, err := s.authenticate(r)
 		if err != nil {
 			s.error(w, err)
 			return
