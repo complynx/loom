@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -288,4 +289,41 @@ func TestIdentityCacheDelegationRechecksBindingAndBothTokens(t *testing.T) {
 	r.Header.Set("X-Subject-Token", "different-token")
 	_, err = a.Authenticate(context.Background(), r)
 	require.ErrorIs(t, err, identity.ErrUnavailable)
+}
+
+func TestIdentityCachePurgeDoesNotBypassFillLimit(t *testing.T) {
+	t.Parallel()
+	f := newCachedIAM(t)
+	f.block, f.entered = make(chan struct{}), make(chan struct{}, 1)
+	a := f.auth(t, 120)
+	const capacity = 64
+	started := make(chan struct{}, capacity)
+	a.UseCacheControl(nil, nil, func(_ context.Context, event string, _ time.Duration) {
+		if event == "miss" {
+			started <- struct{}{}
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, capacity)
+	for i := range capacity {
+		go func() { _, err := cachedAuthenticate(ctx, a, "token-"+strconv.Itoa(i)); done <- err }()
+	}
+	for range capacity {
+		select {
+		case <-started:
+		case <-ctx.Done():
+			t.Fatal("fills did not start")
+		}
+	}
+	_, err := a.ClearPermissionsCache(ctx)
+	require.NoError(t, err)
+	_, err = cachedAuthenticate(ctx, a, "new-token")
+	require.ErrorIs(t, err, identity.ErrUnavailable, "invalidated fills must still occupy capacity")
+	close(f.block)
+	for range capacity {
+		require.ErrorIs(t, <-done, identity.ErrUnavailable)
+	}
+	_, err = cachedAuthenticate(ctx, a, "new-token")
+	require.NoError(t, err, "completed fills must release capacity")
 }

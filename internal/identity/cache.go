@@ -34,6 +34,7 @@ type permissionsCache struct {
 	mu                    sync.Mutex
 	ttl                   time.Duration
 	epoch                 int64
+	active                int
 	entries               map[[32]byte]*list.Element
 	order                 *list.List
 	flights               map[[32]byte]*cacheFlight
@@ -141,13 +142,14 @@ func (c *permissionsCache) load(
 	f := c.flights[key]
 	event := "joined"
 	if f == nil {
-		if len(c.flights) >= permissionCacheFlights {
+		if c.active >= permissionCacheFlights {
 			c.mu.Unlock()
 			c.event(ctx, "error", 0)
 			return tokenInfo{}, ErrUnavailable
 		}
 		f = &cacheFlight{done: make(chan struct{})}
 		c.flights[key] = f
+		c.active++
 		event = "miss"
 		go c.fill(context.WithoutCancel(ctx), token, key, epoch, f, fetch)
 	}
@@ -189,6 +191,7 @@ func (c *permissionsCache) fill(
 	latest, epochErr := c.generation(ctx)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.active--
 	if epochErr != nil || latest != epoch || c.epoch != epoch || f.invalid {
 		err = ErrUnavailable
 	}
