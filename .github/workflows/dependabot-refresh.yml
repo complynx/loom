@@ -28,7 +28,6 @@ jobs:
       GOTOOLCHAIN: local
       GOWORK: 'off'
       GOENV: 'off'
-      GO_LICENSES_BINARY: ${{ runner.temp }}/loom-audit-bin/go-licenses
     steps:
       # Always execute reviewed base scripts. Never check out the PR's code.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,6 +48,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/dependabot-refresh.py prepare
       - name: Refresh and verify pins and licenses
+        env:
+          GO_LICENSES_BINARY: ${{ runner.temp }}/loom-audit-bin/go-licenses
         run: |
           python3 scripts/dependency-lock.py --update
           python3 scripts/dependency-lock.py --check
