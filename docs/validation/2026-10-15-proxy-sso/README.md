@@ -52,3 +52,14 @@ reported no actionable findings. Do not interpret isolated repeats as a fix for
 the queue test.
 The second full Linux race/integration run, forced uncached with `-count=1`, passed
 all packages. The queue-recovery finding remains open until its cause is proven.
+
+## Production runtime wrapper regression
+
+The first production proxy request returned 503 before contacting Zitadel:
+`runtimeHandler` passed `measuredAuth`, which did not forward the optional
+`AuthenticateOperator` method. API-only identity fixtures bypassed this wrapper.
+The fix forwards both authentication paths through the same tracing/metrics helper.
+A new runtimeHandler HTTP regression reproduced 503 before the fix and checks
+admin success, missing/revoked/service-token rejection, missing-role denial,
+ordinary API organization requirements and retained authorization metrics.
+Production acceptance of this fix is pending publication and rollout.

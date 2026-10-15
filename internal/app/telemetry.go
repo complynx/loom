@@ -106,6 +106,18 @@ type measuredAuth struct {
 }
 
 func (a measuredAuth) Authenticate(ctx context.Context, r *http.Request) (domain.Principal, error) {
+	return a.measure(ctx, r, a.auth.Authenticate)
+}
+
+func (a measuredAuth) AuthenticateOperator(ctx context.Context, r *http.Request) (domain.Principal, error) {
+	return a.measure(ctx, r, a.auth.AuthenticateOperator)
+}
+
+func (a measuredAuth) measure(
+	ctx context.Context,
+	r *http.Request,
+	authenticate func(context.Context, *http.Request) (domain.Principal, error),
+) (domain.Principal, error) {
 	ctx, finishTrace := a.observer.Start(ctx, "authorization", telemetry.RunID(ctx))
 	started := time.Now()
 	var err error
@@ -113,7 +125,7 @@ func (a measuredAuth) Authenticate(ctx context.Context, r *http.Request) (domain
 	defer func() {
 		a.observer.Operation(ctx, "authorization", operationOutcome(err), telemetry.RunID(ctx), started)
 	}()
-	principal, err := a.auth.Authenticate(ctx, r)
+	principal, err := authenticate(ctx, r)
 	return principal, err
 }
 
