@@ -28,8 +28,8 @@
     },
     {
       "module": "cloud.google.com/go/auth",
-      "version": "v0.18.2",
-      "commit": "75e6b63c37d2b97010a2ccaa20239cae237e5d10",
+      "version": "v0.20.0",
+      "commit": "9886dcff5240f37ff21e26c7462325f3c1cfafc8",
       "repository": "https://github.com/googleapis/google-cloud-go",
       "indirect": true
     },
@@ -49,8 +49,8 @@
     },
     {
       "module": "github.com/Azure/azure-sdk-for-go/sdk/azcore",
-      "version": "v1.23.1",
-      "commit": "d86ae78bd655d233689866cf78930f3c5fd42c35",
+      "version": "v1.23.3",
+      "commit": "b0d63acae6d73aadd7aa0722d96c69ad71f3dd75",
       "repository": "https://github.com/Azure/azure-sdk-for-go",
       "indirect": true
     },
@@ -63,15 +63,15 @@
     },
     {
       "module": "github.com/Azure/azure-sdk-for-go/sdk/internal",
-      "version": "v1.12.0",
-      "commit": "923e9ab9f2a22b972491f548aa1d7e3d07729408",
+      "version": "v1.13.0",
+      "commit": "ecc67742c7b634664a919211339115878d29cb7a",
       "repository": "https://github.com/Azure/azure-sdk-for-go",
       "indirect": true
     },
     {
       "module": "github.com/AzureAD/microsoft-authentication-library-for-go",
-      "version": "v1.9.0",
-      "commit": "247817fb0a8fe54d23a57debd9f32e96d53dc9bd",
+      "version": "v1.10.1",
+      "commit": "637b540f84c3557318bdb473c353c86e5b2220fd",
       "repository": "https://github.com/AzureAD/microsoft-authentication-library-for-go",
       "indirect": true
     },
@@ -84,15 +84,15 @@
     },
     {
       "module": "github.com/ClickHouse/clickhouse-go/v2",
-      "version": "v2.48.0",
-      "commit": "69b5195a9b2e04a999f9c130a7a9dc1248288689",
+      "version": "v2.49.0",
+      "commit": "41a8511e1c24281caa667ab31e28314cd17664e7",
       "repository": "https://github.com/ClickHouse/clickhouse-go",
       "indirect": true
     },
     {
       "module": "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp",
-      "version": "v1.33.0",
-      "commit": "059f723244364dd67f86051b38d67c66094651bd",
+      "version": "v1.34.0",
+      "commit": "53b33be6921d6552613c3f985deb68187b7c210d",
       "repository": "https://github.com/GoogleCloudPlatform/opentelemetry-operations-go",
       "indirect": true
     },
@@ -105,15 +105,15 @@
     },
     {
       "module": "github.com/Microsoft/go-winio",
-      "version": "v0.6.2",
-      "commit": "3c9576c9346a1892dee136329e7e15309e82fb4f",
+      "version": "v0.6.3",
+      "commit": "24302489fec12f61829dacaa7e472aa71e19ffed",
       "repository": "https://github.com/Microsoft/go-winio",
       "indirect": true
     },
     {
       "module": "github.com/andybalholm/brotli",
-      "version": "v1.2.3",
-      "commit": "6b8aef6ece266fa87b925ce3a913bc30dc4b7b70",
+      "version": "v1.2.6",
+      "commit": "451b9eb6fcc1f329d548f888b9ae2bc372ef434b",
       "repository": "https://github.com/andybalholm/brotli",
       "indirect": true
     },
@@ -266,8 +266,8 @@
     },
     {
       "module": "github.com/docker/go-connections",
-      "version": "v0.8.1",
-      "commit": "9c9e2db764937383effc099843914897c8838056",
+      "version": "v0.8.2",
+      "commit": "5032217322413e51c6939ae07daff44462c928aa",
       "repository": "https://github.com/docker/go-connections",
       "indirect": true
     },
@@ -294,8 +294,8 @@
     },
     {
       "module": "github.com/dustin/go-humanize",
-      "version": "v1.0.1",
-      "commit": "9ec74ab2f7a7161664182fd4e5e292fccffbc75f",
+      "version": "v1.1.0",
+      "commit": "40736da3e8ed16369b5e6f109548f243d43a7e34",
       "repository": "https://github.com/dustin/go-humanize",
       "indirect": true
     },
@@ -406,8 +406,8 @@
     },
     {
       "module": "github.com/go-jose/go-jose/v4",
-      "version": "v4.1.4",
-      "commit": "0e59876635f3dbf46d7b5e97b52bb75a3f96e7d9",
+      "version": "v4.1.5",
+      "commit": "b10771e937ddcce419e30fc0c2b9e38464a333d0",
       "repository": "https://github.com/go-jose/go-jose",
       "indirect": false
     },
@@ -609,8 +609,8 @@
     },
     {
       "module": "github.com/go-sql-driver/mysql",
-      "version": "v1.10.0",
-      "commit": "a065b60ab6d0c8e15468e7709c7f76acf4431647",
+      "version": "v1.10.1",
+      "commit": "7ca26e801d130be8be84c1e265be71784f6f70c1",
       "repository": "https://github.com/go-sql-driver/mysql",
       "indirect": true
     },
@@ -735,15 +735,15 @@
     },
     {
       "module": "github.com/googleapis/enterprise-certificate-proxy",
-      "version": "v0.3.11",
-      "commit": "84fe33f9b5f729c5596077f469ad19751a239a42",
+      "version": "v0.3.15",
+      "commit": "6964da16bfdce018ff1041134b2508988e0d994d",
       "repository": "https://github.com/googleapis/enterprise-certificate-proxy",
       "indirect": true
     },
     {
       "module": "github.com/googleapis/gax-go/v2",
-      "version": "v2.17.0",
-      "commit": "f3fb23db5cd85c402dac650b2357356245711508",
+      "version": "v2.22.0",
+      "commit": "1cdb1c1716745c77ec8538923d1c5b9ff0c1a02c",
       "repository": "https://github.com/googleapis/gax-go",
       "indirect": true
     },
@@ -805,8 +805,8 @@
     },
     {
       "module": "github.com/jackc/puddle/v2",
-      "version": "v2.2.2",
-      "commit": "bd09d14bd4018b6d65a9d7770e2f3ddf8b00af1c",
+      "version": "v2.2.3",
+      "commit": "917e9342490a0ce3c9fc0af8f97bca07e89dcfbd",
       "repository": "https://github.com/jackc/puddle",
       "indirect": true
     },
@@ -840,8 +840,8 @@
     },
     {
       "module": "github.com/klauspost/compress",
-      "version": "v1.19.2",
-      "commit": "c3b3439a48196b5082c63252bfb8633d0a2faad4",
+      "version": "v1.20.1",
+      "commit": "5d880f230c38a0fc806b9ca1613103a44feff0ac",
       "repository": "https://github.com/klauspost/compress",
       "indirect": true
     },
@@ -931,8 +931,8 @@
     },
     {
       "module": "github.com/microsoft/go-mssqldb",
-      "version": "v1.11.0",
-      "commit": "ecf85606f8cfedae0be026042581596a92642edd",
+      "version": "v1.11.2",
+      "commit": "25101949abc460a9fe03b60c5cca87c1a5529a8c",
       "repository": "https://github.com/microsoft/go-mssqldb",
       "indirect": true
     },
@@ -945,15 +945,15 @@
     },
     {
       "module": "github.com/moby/moby/api",
-      "version": "v1.55.0",
-      "commit": "b6c53c270450e3a0fd47c276ce1008f525e76884",
+      "version": "v1.56.1",
+      "commit": "14ebc602124e280ef4ae3e1a8e688dac1255baa6",
       "repository": "https://github.com/moby/moby",
       "indirect": true
     },
     {
       "module": "github.com/moby/moby/client",
-      "version": "v0.5.1",
-      "commit": "455591864a6e1b24d490f37b7041e730bfe03387",
+      "version": "v0.6.2",
+      "commit": "21a2258cf01135bdd0f2b06f3e2de538f00dc29f",
       "repository": "https://github.com/moby/moby",
       "indirect": true
     },
@@ -973,8 +973,8 @@
     },
     {
       "module": "github.com/ncruces/go-strftime",
-      "version": "v1.0.0",
-      "commit": "7be8eef566cc7f1ae99e76af8f8208913758a28d",
+      "version": "v1.1.0",
+      "commit": "fa91ab7a1dcba7937c8d408d1a4477d2a348581d",
       "repository": "https://github.com/ncruces/go-strftime",
       "indirect": true
     },
@@ -1029,8 +1029,8 @@
     },
     {
       "module": "github.com/pierrec/lz4/v4",
-      "version": "v4.1.29",
-      "commit": "8708173b9f0183548f741b46661c61627d2ac28b",
+      "version": "v4.1.33",
+      "commit": "b3ae24d689a8c0020f1567fc424c53bde9dfc4f7",
       "repository": "https://github.com/pierrec/lz4",
       "indirect": true
     },
@@ -1057,8 +1057,8 @@
     },
     {
       "module": "github.com/pressly/goose/v3",
-      "version": "v3.28.0",
-      "commit": "43d2d9c819ed6c9ba2b67a86bdf9fc08562495b7",
+      "version": "v3.29.0",
+      "commit": "8b457ba3778983bec89012cd3bf6ab07a61ac0e4",
       "repository": "https://github.com/pressly/goose",
       "indirect": false
     },
@@ -1162,15 +1162,15 @@
     },
     {
       "module": "github.com/sethvargo/go-retry",
-      "version": "v0.4.0",
-      "commit": "d3eb50afd37a09a9c0606c218d0dbe06e29d1544",
+      "version": "v0.5.0",
+      "commit": "d1f41d014d8cfd95ff722375d97a6f39103cc4f3",
       "repository": "https://github.com/sethvargo/go-retry",
       "indirect": true
     },
     {
       "module": "github.com/shopspring/decimal",
-      "version": "v1.4.0",
-      "commit": "a1bdfc355e9c71119322b748c95f7d6b82566e30",
+      "version": "v1.5.0",
+      "commit": "f658fbf1eb94abc869558633a0b9b239300899f4",
       "repository": "https://github.com/shopspring/decimal",
       "indirect": true
     },
@@ -1190,8 +1190,8 @@
     },
     {
       "module": "github.com/spiffe/go-spiffe/v2",
-      "version": "v2.7.0",
-      "commit": "76b14bd4140aac9bef74b27a77c81333c47feee1",
+      "version": "v2.8.1",
+      "commit": "e9973f6314a3fa0e36eb1f00fbfe37bdc1554b96",
       "repository": "https://github.com/spiffe/go-spiffe",
       "indirect": true
     },
@@ -1315,6 +1315,13 @@
       "indirect": true
     },
     {
+      "module": "github.com/yandex-cloud/go-genproto",
+      "version": "v0.126.0",
+      "commit": "5506938b2a0373f4a39684ece41a280801b36166",
+      "repository": "https://github.com/yandex-cloud/go-genproto",
+      "indirect": true
+    },
+    {
       "module": "github.com/ydb-platform/ydb-go-genproto",
       "version": "v0.0.0-20260810123728-f0c151ab31b9",
       "commit": "f0c151ab31b93f2d9955b54492067c65eb7c4a7c",
@@ -1322,10 +1329,31 @@
       "indirect": true
     },
     {
+      "module": "github.com/ydb-platform/ydb-go-sdk-auth-environ",
+      "version": "v0.5.3",
+      "commit": "e2e30b376d271b37ab9acb7026f8baa0ba444a24",
+      "repository": "https://github.com/ydb-platform/ydb-go-sdk-auth-environ",
+      "indirect": true
+    },
+    {
       "module": "github.com/ydb-platform/ydb-go-sdk/v3",
-      "version": "v3.151.1",
-      "commit": "a998ffdb23e984d1e0354430f55afe00c71c9fd4",
+      "version": "v3.155.1",
+      "commit": "229af32f876ca3e96ab962436cd670cb2e174872",
       "repository": "https://github.com/ydb-platform/ydb-go-sdk",
+      "indirect": true
+    },
+    {
+      "module": "github.com/ydb-platform/ydb-go-yc",
+      "version": "v0.12.5",
+      "commit": "5ae435776332f379b3ce3eb3647462901d2e7188",
+      "repository": "https://github.com/ydb-platform/ydb-go-yc",
+      "indirect": true
+    },
+    {
+      "module": "github.com/ydb-platform/ydb-go-yc-metadata",
+      "version": "v0.6.2",
+      "commit": "0cd99f2a6d926f86e363b31df8f3453fe6c58e86",
+      "repository": "https://github.com/ydb-platform/ydb-go-yc-metadata",
       "indirect": true
     },
     {
@@ -1365,8 +1393,8 @@
     },
     {
       "module": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
-      "version": "v0.71.0",
-      "commit": "c4c6248ec2289133b6a51f554ca9367ece1de8e7",
+      "version": "v0.72.0",
+      "commit": "0c76f6137a2ceea80984d55e3de165924d823f71",
       "repository": "https://github.com/open-telemetry/opentelemetry-go-contrib",
       "indirect": true
     },
@@ -1452,7 +1480,7 @@
       "version": "v1.11.0",
       "commit": "bc625d6e040020737ab65c675c87e03bc841fd60",
       "repository": "https://github.com/open-telemetry/opentelemetry-proto-go",
-      "indirect": true
+      "indirect": false
     },
     {
       "module": "go.uber.org/goleak",
@@ -1491,8 +1519,8 @@
     },
     {
       "module": "golang.org/x/exp",
-      "version": "v0.0.0-20260824195058-e88cd73687aa",
-      "commit": "e88cd73687aa969fbec16261e6c467ab22a053f2",
+      "version": "v0.0.0-20261011100332-faecfb24eb49",
+      "commit": "faecfb24eb49257c532cd7c17aa050b826e67db7",
       "repository": "https://go.googlesource.com/exp",
       "indirect": true
     },
@@ -1560,23 +1588,30 @@
       "indirect": true
     },
     {
+      "module": "google.golang.org/api",
+      "version": "v0.278.0",
+      "commit": "07c758daacbc24e32753c3f1b537c7f6cce626f0",
+      "repository": "https://github.com/googleapis/google-api-go-client",
+      "indirect": true
+    },
+    {
       "module": "google.golang.org/genproto/googleapis/api",
-      "version": "v0.0.0-20260928230214-8a89bd6388cc",
-      "commit": "8a89bd6388cc9f960fc7076f7e2a43f96ad592e9",
+      "version": "v0.0.0-20261005182115-fad411399dd8",
+      "commit": "fad411399dd8951d28b4bb3e7dc6d6d64925688f",
       "repository": "https://github.com/googleapis/go-genproto",
       "indirect": true
     },
     {
       "module": "google.golang.org/genproto/googleapis/rpc",
-      "version": "v0.0.0-20260928230214-8a89bd6388cc",
-      "commit": "8a89bd6388cc9f960fc7076f7e2a43f96ad592e9",
+      "version": "v0.0.0-20261005182115-fad411399dd8",
+      "commit": "fad411399dd8951d28b4bb3e7dc6d6d64925688f",
       "repository": "https://github.com/googleapis/go-genproto",
       "indirect": true
     },
     {
       "module": "google.golang.org/grpc",
-      "version": "v1.83.2",
-      "commit": "030ee8becb20ce4315d6bf2dfa26bdd876169dc4",
+      "version": "v1.84.0",
+      "commit": "e84aa5ab15d1d2b29d54f838312ad490cb7551a8",
       "repository": "https://github.com/grpc/grpc-go",
       "indirect": true
     },
@@ -1585,7 +1620,7 @@
       "version": "v1.36.12",
       "commit": "cdd4c5f7406e82462949c7a65defa9f3029c162d",
       "repository": "https://go.googlesource.com/protobuf",
-      "indirect": true
+      "indirect": false
     },
     {
       "module": "gopkg.in/check.v1",
@@ -1610,8 +1645,8 @@
     },
     {
       "module": "modernc.org/libc",
-      "version": "v1.75.6",
-      "commit": "f4e070f67594be56f29655f63ab2c1862345a8be",
+      "version": "v1.78.0",
+      "commit": "405a2b1754c74f76ae4fb4b7ca6ce0d3f805959e",
       "repository": "https://gitlab.com/cznic/libc",
       "indirect": true
     },
@@ -1631,8 +1666,8 @@
     },
     {
       "module": "modernc.org/sqlite",
-      "version": "v1.57.0",
-      "commit": "6e86ac4a89e3f36359d1947e36355c469b18430c",
+      "version": "v1.60.1",
+      "commit": "b122d0417c01508beb55158faedeb64a0c5bfd8a",
       "repository": "https://gitlab.com/cznic/sqlite",
       "indirect": true
     }

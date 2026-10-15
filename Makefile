@@ -1,4 +1,4 @@
-.PHONY: test race integration build lint fmt lock-check lock-update
+.PHONY: test race integration build lint fmt lock-check lock-update audit-check audit-update
 test:
 	go test ./...
 race:
@@ -16,3 +16,7 @@ lock-check:
 	python3 scripts/dependency-lock.py --check
 lock-update:
 	python3 scripts/dependency-lock.py --update
+audit-check:
+	python3 scripts/dependency-audit.py --check
+audit-update:
+	python3 scripts/dependency-audit.py --update
