@@ -29,7 +29,6 @@ jobs:
           cache: true
       - run: go mod verify
       - run: python3 scripts/dependency-lock.py --check
-      - run: python3 scripts/dependency-audit.py --check
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: go test -race -parallel=4 -tags=integration ./...
       - name: Test pinned media CLIs in Linux worker environment

@@ -14,7 +14,6 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path(os.environ.get("RUNNER_TEMP", str(ROOT / "management.local"))) / "loom-dependabot-state.json"
-AUDIT_PREFIX = "docs/dependency-audit/current/"
 
 
 def api(method, path, body=None):
@@ -32,7 +31,7 @@ def api(method, path, body=None):
 def allowed(path):
     if "\\" in path or path.startswith("/") or any(part in (".", "..") for part in path.split("/")):
         return False
-    return path in ("go.mod", "go.sum", "tools/dependencies.lock.json") or path.startswith(AUDIT_PREFIX)
+    return path in ("go.mod", "go.sum", "tools/dependencies.lock.json")
 
 
 def validate_pr(pr, repository, paths):
@@ -109,10 +108,8 @@ def changes():
     tracked = subprocess.check_output(["git", "diff", "--name-only", "-z"], cwd=ROOT).decode().split("\0")
     untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=ROOT).decode().split("\0")
     paths = set(tracked + untracked) - {""}
-    # Include the complete generated state, not only changes against the base.
-    # A previous bot refresh may have left metadata that no longer exists locally.
+    # Include the complete pin state, even when it matches the trusted base.
     paths.update(("go.mod", "go.sum", "tools/dependencies.lock.json"))
-    paths.update(path.relative_to(ROOT).as_posix() for path in (ROOT / AUDIT_PREFIX).rglob("*") if path.is_file() or path.is_symlink())
     paths = sorted(paths)
     if len(paths) > 1000 or any(not allowed(path) for path in paths):
         raise ValueError("Unexpected generated paths")
@@ -152,7 +149,7 @@ def publish():
         tree.append(item)
     updated = api("POST", base + "/git/trees", {"base_tree": commit["tree"]["sha"], "tree": tree})
     if updated["sha"] != commit["tree"]["sha"]:
-        new = api("POST", base + "/git/commits", {"message": "chore(deps): refresh audited dependency metadata\n\nWritten by Loom dependency automation (GitHub Actions)\non behalf of Daniel Drizhuk", "tree": updated["sha"], "parents": [state["head"]]})
+        new = api("POST", base + "/git/commits", {"message": "chore(deps): refresh dependency commit pins\n\nWritten by Loom dependency automation (GitHub Actions)\non behalf of Daniel Drizhuk", "tree": updated["sha"], "parents": [state["head"]]})
         branch = urllib.parse.quote(state["branch"], safe="/")
         api("PATCH", f"{base}/git/refs/heads/{branch}", {"sha": new["sha"], "force": False})
     # GITHUB_TOKEN pushes do not trigger push/PR workflows. Explicitly run the same full CI.

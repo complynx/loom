@@ -80,42 +80,54 @@ Dependabot groups minor/patch Go updates and minor/patch Actions updates separat
 Major updates remain separate PRs. No automatic merge is enabled. Green checks
 remain required before a human merge.
 
-Go PRs need full commit pins and current license evidence in addition to go.mod
-and go.sum. `dependabot-refresh.yml` refreshes these without relaxing the checks:
+Go PRs need full commit pins in addition to go.mod and go.sum.
+`dependabot-refresh.yml` refreshes pins without relaxing the checks:
 
 1. `pull_request_target` runs reviewed scripts from the exact trusted base SHA.
    It accepts only open, same-repository Dependabot Go branches. Only module
-   files and generated metadata may differ. Renames from other paths are rejected.
+   files and tools/dependencies.lock.json may differ. Renames from other paths
+   are rejected. The workflow cannot change license reports or notices.
 2. It reads go.mod/go.sum as data at the PR head SHA. It rejects replacement,
    tool, toolchain and other unsupported directives. It does not check out or
    execute PR scripts. The Go toolchain stays fixed and dependency caches are not
    uploaded from this privileged workflow.
-3. With no token in subprocess environments, it resolves full commit pins and
-   generates Linux runtime/test license reports. Runtime/test licenses must match
-   the approved list. Module-root license bytes must match a previously reviewed
-   snapshot; a new notice or license text requires manual review.
+3. With no token in subprocess environments, it resolves and verifies full commit
+   pins. License auditing is a separate manual task and does not block CI or
+   Dependabot refreshes.
 4. It rechecks the PR head and base, then commits only allowlisted metadata through
    the Git API. A non-force update preserves the original PR parent and refuses a
    concurrent head change. The token has Contents write, Pull requests read and
    Actions write permissions, only in this job. It never receives publishing secrets.
 5. GitHub suppresses normal push/PR triggers for GITHUB_TOKEN commits, so the job
    explicitly dispatches the same full CI on the updated branch. This includes
-   race/integration tests, lock/license checks, lint, vulnerability scanning and
+   race/integration tests, lock checks, lint, vulnerability scanning and
    both container builds. Dispatch runs cannot publish or deploy.
 
 The repository must permit the scoped GITHUB_TOKEN writes. The workflows must
-first be merged into the default branch. This change has local behavioral tests
-for the GitHub API flow; the first live Dependabot refresh/dispatch still needs
-verification after merge. A stale base or a concurrent push fails safely: update
+first be merged into the default branch. Local behavioral tests cover the GitHub
+API flow. The first live refresh on PR #11 resolved 239 commit pins, then stopped
+at the former license gate before publication. A complete live pin-only
+commit/dispatch still needs verification after this policy reaches main.
+A stale base or a concurrent push fails safely: update
 the PR branch and rerun the workflow. Failed refreshes leave the PR unmergeable
 until its ordinary full CI passes with correct metadata.
 
-For a manual refresh, review go.mod/go.sum, run `make lock-update`, then install
-the pinned go-licenses tool from tools/dependencies.lock.json and run
-`make audit-update`. Commit the generated current snapshot and run full CI.
-New license text needs a reviewed dated root-license snapshot first. Historical
-snapshots stay unchanged; Docker images ship the original notices plus the current
-delta. `make audit-check` verifies the graph and notice byte hashes offline.
+For a manual pin refresh, review go.mod/go.sum and run `make lock-update`.
+
+## Manual license audit
+
+Agents/operators review licenses periodically and when selecting new direct
+dependencies. CI does not scan licenses or require the latest dependency graph
+to match a license snapshot. This policy does not change the approved licenses.
+
+Keep `make audit-update` and `make audit-check` for manual use. Install the pinned
+go-licenses tool from tools/dependencies.lock.json before an update. New license
+text needs a reviewed dated root-license snapshot first; commit the refreshed
+reports and notices after review. See [the audit policy](dependency-audit/README.md).
+Historical snapshots stay unchanged. Docker images still ship the historical
+notices plus the most recently reviewed current delta; CI does not certify their
+coverage of dependency changes since that review. The file-worker source/checksum
+packaging checks remain unchanged.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk

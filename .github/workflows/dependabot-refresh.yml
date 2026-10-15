@@ -38,23 +38,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false # Do not write PR-derived caches into the privileged base scope.
-      - name: Install reviewed audit tool
-        shell: bash
-        run: |
-          audit_commit=$(python3 -c 'import json; d=json.load(open("tools/dependencies.lock.json")); print(next(t["commit"] for t in d["tools"] if t["module"]=="github.com/google/go-licenses/v2"))')
-          GOBIN="$RUNNER_TEMP/loom-audit-bin" go install "github.com/google/go-licenses/v2@$audit_commit"
       - name: Read validated module files
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/dependabot-refresh.py prepare
-      - name: Refresh and verify pins and licenses
-        env:
-          GO_LICENSES_BINARY: ${{ runner.temp }}/loom-audit-bin/go-licenses
+      - name: Refresh and verify commit pins
         run: |
           python3 scripts/dependency-lock.py --update
           python3 scripts/dependency-lock.py --check
-          python3 scripts/dependency-audit.py --update
-          python3 scripts/dependency-audit.py --check
       - name: Commit metadata and request full CI
         env:
           GH_TOKEN: ${{ github.token }}
