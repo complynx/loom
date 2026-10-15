@@ -1,0 +1,22 @@
+services:
+  acceptance-service:
+    profiles: [acceptance]
+    build:
+      context: .
+      dockerfile: examples/acceptance.Dockerfile
+    environment:
+      CLX_QA_STATE_PATH: /data/state.json
+      CLX_QA_READ_TOKEN: ${CLX_QA_READ_TOKEN:?Set isolated QA read token}
+      CLX_QA_WRITE_TOKEN: ${CLX_QA_WRITE_TOKEN:?Set isolated QA write token}
+    labels:
+      clx.harness.service: http://acceptance-service:8090/manifest
+    ports: ["127.0.0.1:8090:8090"]
+    volumes: ["acceptance-state:/data"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 64m
+    stop_grace_period: 5s
+volumes:
+  acceptance-state:

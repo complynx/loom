@@ -1,0 +1,20 @@
+param()
+$ErrorActionPreference='Stop'
+$repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+Set-Location $repo
+$buildDir=Join-Path ([IO.Path]::GetTempPath()) ('clx-openai-live-qa-peer-'+[Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $buildDir|Out-Null
+try{
+ $source=Join-Path $buildDir 'peers.go'
+ Copy-Item (Join-Path $PSScriptRoot 'peers.go.txt') $source
+ & go run $source init
+ if($LASTEXITCODE-ne0){throw 'Fixture key/certificate generation failed.'}
+ $oldOS=$env:GOOS;$oldArch=$env:GOARCH
+ try{$env:GOOS='linux';$env:GOARCH='amd64'; & go build -o (Join-Path $PSScriptRoot 'peers') $source;if($LASTEXITCODE-ne0){throw 'Linux fixture peer build failed.'}}finally{$env:GOOS=$oldOS;$env:GOARCH=$oldArch}
+}finally{
+ $resolvedBuild=[IO.Path]::GetFullPath($buildDir)
+ $tempRoot=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+ if(-not $resolvedBuild.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Temporary build cleanup path is outside the expected temp directory.'}
+ Remove-Item -LiteralPath $resolvedBuild -Recurse -Force
+}
+Write-Output 'Disposable TLS/auth files and Linux issuer helper prepared. User token config was not read or written.'

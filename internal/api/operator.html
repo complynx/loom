@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loom diagnostics</title><link rel="stylesheet" href="/admin/operator.css"><script src="/admin/operator.js" defer></script></head>
+<body><main><h1>Loom diagnostics</h1>
+<div class="toolbar"><button id="login" disabled>Sign in with Zitadel</button><button id="disconnect">Disconnect</button></div>
+<p id="notice" role="status" aria-live="polite">Checking login configuration.</p>
+<div class="toolbar"><button id="refresh" disabled>Refresh</button><label for="state">Run state</label><select id="state"><option value="">Active</option><option>reconciling</option><option>paused</option><option>waiting_auth</option><option>running</option><option>queued</option><option>waiting_approval</option><option>waiting_input</option><option>failed</option><option value="all">All</option></select></div>
+<h2>Overview</h2><table id="overview"><thead><tr><th>Measure</th><th>Value</th></tr></thead><tbody></tbody></table>
+<h2>Runs</h2><div class="scroll"><table id="runs"><thead><tr><th>Run</th><th>State</th><th>Created</th><th>Reserved</th><th>Spent</th><th>Control requested</th></tr></thead><tbody></tbody></table></div><button id="more" disabled>Next page</button>
+<section id="detail" hidden><h2>Run detail</h2><p id="detail-notice"></p><pre id="detail-json"></pre></section>
+</main></body></html>

@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "scenarios": [
+    "search and list paging",
+    "card paging + parameter/example help",
+    "read PDF using documented parameters",
+    "service input/output schemas",
+    "paid tool effect",
+    "missing artifact rights hide file help"
+  ],
+  "run_ids": [
+    "1d524203-4e43-4b77-89fd-fb970edea30f",
+    "3ead51e1-f6e4-4f34-8eb8-1dbc7f6bd1c9"
+  ],
+  "reserved_microcredits": [
+    0,
+    0
+  ]
+}

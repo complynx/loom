@@ -1,0 +1,13 @@
+// Append to server_configs/configs/alloy/config.alloy.
+// Existing metrics_service receiver already sends to the correct Grafana Cloud.
+// Alloy and API must both join the dedicated clx-observability Docker network.
+prometheus.scrape "loom" {
+    targets = [{"__address__" = "loom:9090", "instance" = "complynx.net"}]
+    job_name = "integrations/loom"
+    scrape_interval = "15s"
+    scrape_timeout = "5s"
+    forward_to = [prometheus.remote_write.metrics_service.receiver]
+}
+
+// Existing Docker discovery/source already collects application JSON stdout.
+// No second Docker log source: it would duplicate ingestion. Query with | json.

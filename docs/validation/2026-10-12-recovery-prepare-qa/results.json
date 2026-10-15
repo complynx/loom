@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "run_id": "3138aaf3-33b5-49d2-bcab-2640aafc7e91",
+  "snapshot_database": "prepare_recovery_20261012",
+  "live_lease_rejected": 409,
+  "unauthorized": 403,
+  "stale_fence_rejected": 409,
+  "concurrent_requests": 4,
+  "prepare_audit_entries": 1,
+  "fence_before": 1,
+  "fence_after": 2,
+  "reserve_preserved": 9997,
+  "pending_step_preserved": true,
+  "cancelled_after_prepare": true,
+  "settled_microcredits": 110,
+  "remaining_reserve": 0,
+  "receipt_calls": 2,
+  "settlement_entries": 1,
+  "provider_calls_added": 0,
+  "external_effect_state_unchanged": true,
+  "ordinary_mode_rejected": 409,
+  "image": "sha256:a10b35dc07ef0658fdd2b61da9920008cbfcc1b4b88c8ceb328fa36089341c23"
+}

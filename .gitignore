@@ -1,0 +1,14 @@
+/bin/
+/dist/
+/coverage.out
+/deploy/api.env
+/deploy/auth.key
+/.env
+*.test
+*.test.exe
+/deploy/config.yaml
+*.local
+*.local.*
+
+# Private QA stands, credentials and local preparation files.
+/management.local/

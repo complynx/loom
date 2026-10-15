@@ -1,0 +1,91 @@
+{"time":"2026-10-11T17:56:24.3207798Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:56:24.337687036Z","level":"INFO","msg":"runtime started","service":"clx-scripter","metrics_enabled":true,"workers":32,"log_payloads":false}
+{"time":"2026-10-11T17:56:24.350935131Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"database","available":true}
+{"time":"2026-10-11T17:56:24.3510393Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"artifact_volume","available":true}
+{"time":"2026-10-11T17:56:24.353378267Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"discovery","available":true}
+{"time":"2026-10-11T17:56:24.356408792Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"sandbox","available":true}
+{"time":"2026-10-11T17:56:25.239650765Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"f50a4e4a-b06d-4542-b31b-d66b98e40551","route":"GET /v1/users/me/credits","method":"GET","status":200,"duration_ms":32}
+{"time":"2026-10-11T17:56:25.26818626Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"56bebe78-7fb6-43e7-a359-be236b0c1cd1","route":"POST /v1/artifacts","method":"POST","status":201,"duration_ms":11}
+{"time":"2026-10-11T17:56:25.819445749Z","level":"ERROR","msg":"http request finished","service":"clx-scripter","request_id":"fae9b702-f7e0-44de-9701-b5893843cce9","route":"POST /v1/artifacts","method":"POST","status":500,"duration_ms":80}
+{"time":"2026-10-11T17:56:27.342130587Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"a4baf7a4-cce4-4543-9a6e-c00e5550a21f","route":"GET /v1/users/me/credits","method":"GET","status":200,"duration_ms":6}
+{"time":"2026-10-11T17:56:27.356120582Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"45b7d641-5b83-41fc-8f0e-1731d6da3365","route":"GET /v1/artifacts/{id}/content","method":"GET","status":200,"duration_ms":6}
+{"time":"2026-10-11T17:56:28.544019331Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"9356671f-1b51-49fe-969a-2c3d782bee5e","route":"POST /v1/artifacts","method":"POST","status":201,"duration_ms":11}
+{"time":"2026-10-11T17:56:31.055762434Z","level":"ERROR","msg":"http request finished","service":"clx-scripter","request_id":"69b13d8c-847f-4c9a-b692-6e745d498de7","route":"POST /v1/chats","method":"POST","status":500,"duration_ms":5}
+{"time":"2026-10-11T17:56:32.780355196Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"13dbd53a-40ff-4d12-9196-0cff7ff7dc9b","route":"GET /v1/artifacts/{id}/content","method":"GET","status":200,"duration_ms":5}
+{"time":"2026-10-11T17:56:32.791782577Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"c80776f8-a308-4caf-8dab-9f064cf88e05","route":"POST /v1/chats","method":"POST","status":201,"duration_ms":5}
+{"time":"2026-10-11T17:56:33.543937885Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:56:33.544437686Z","level":"INFO","msg":"runtime stopped","service":"clx-scripter","duration_ms":2,"deadline_exceeded":false}
+{"time":"2026-10-11T17:57:46.797476089Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:57:46.810797632Z","level":"INFO","msg":"runtime started","service":"clx-scripter","metrics_enabled":true,"workers":32,"log_payloads":false}
+{"time":"2026-10-11T17:57:46.82733059Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"database","available":true}
+{"time":"2026-10-11T17:57:46.827444688Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"artifact_volume","available":true}
+{"time":"2026-10-11T17:57:46.827464438Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"discovery","available":true}
+{"time":"2026-10-11T17:57:46.828266926Z","level":"INFO","msg":"dependency status changed","service":"clx-scripter","component":"sandbox","available":true}
+{"time":"2026-10-11T17:58:06.225964455Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"624d3ae7-b506-43c7-9906-ecbeaaf53539","route":"POST /v1/chats","method":"POST","status":201,"duration_ms":19}
+{"time":"2026-10-11T17:58:06.272379784Z","level":"INFO","msg":"run admitted","service":"clx-scripter","request_id":"2ec8ac9f-8ac4-4e1d-a7a1-354be8213a0e","run_id":"4a73b5d9-e99c-434b-ade1-5271cbaeff9f"}
+{"time":"2026-10-11T17:58:06.272486618Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"2ec8ac9f-8ac4-4e1d-a7a1-354be8213a0e","route":"POST /v1/runs","method":"POST","status":202,"duration_ms":23}
+{"time":"2026-10-11T17:58:06.273521474Z","level":"INFO","msg":"run execution started","service":"clx-scripter","run_id":"4a73b5d9-e99c-434b-ade1-5271cbaeff9f"}
+{"time":"2026-10-11T17:58:06.289487047Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"81973b3e-83d3-4beb-811b-f26f65593a71","route":"GET /v1/runs/{id}","method":"GET","status":200,"duration_ms":6}
+{"time":"2026-10-11T17:58:06.347773637Z","level":"INFO","msg":"run checkpoint","service":"clx-scripter","run_id":"4a73b5d9-e99c-434b-ade1-5271cbaeff9f","state":"completed"}
+{"time":"2026-10-11T17:58:06.408629766Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"445a4732-4fc7-4630-a8c4-cfab85b2e131","route":"GET /v1/runs/{id}","method":"GET","status":200,"duration_ms":3}
+{"time":"2026-10-11T17:58:06.795563315Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:58:07.409481894Z","level":"INFO","msg":"run admitted","service":"clx-scripter","request_id":"8b49102c-34ce-4815-8e4f-9db9da394cee","run_id":"09b77a2e-2159-47c6-babb-c5d72c53b0f9"}
+{"time":"2026-10-11T17:58:07.409571283Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"8b49102c-34ce-4815-8e4f-9db9da394cee","route":"POST /v1/runs","method":"POST","status":202,"duration_ms":13}
+{"time":"2026-10-11T17:58:07.410485063Z","level":"INFO","msg":"run execution started","service":"clx-scripter","run_id":"09b77a2e-2159-47c6-babb-c5d72c53b0f9"}
+{"time":"2026-10-11T17:58:07.493447013Z","level":"INFO","msg":"run checkpoint","service":"clx-scripter","run_id":"09b77a2e-2159-47c6-babb-c5d72c53b0f9","state":"completed"}
+{"time":"2026-10-11T17:58:11.795534804Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:01.123071339Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"9f24d65c-5bf2-42c7-9f1d-ce44782490d9","route":"GET /v1/runs/{id}","method":"GET","status":200,"duration_ms":8}
+{"time":"2026-10-11T17:59:01.699424084Z","level":"INFO","msg":"run admitted","service":"clx-scripter","request_id":"4e1244f3-339e-4062-9450-54bcba5715b1","run_id":"49b9fdcd-931d-4e85-bdce-c6131175c640"}
+{"time":"2026-10-11T17:59:01.700385919Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"4e1244f3-339e-4062-9450-54bcba5715b1","route":"POST /v1/runs","method":"POST","status":202,"duration_ms":94}
+{"time":"2026-10-11T17:59:01.702061684Z","level":"INFO","msg":"run execution started","service":"clx-scripter","run_id":"49b9fdcd-931d-4e85-bdce-c6131175c640"}
+{"time":"2026-10-11T17:59:01.792600162Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:01.875691469Z","level":"INFO","msg":"run checkpoint","service":"clx-scripter","run_id":"49b9fdcd-931d-4e85-bdce-c6131175c640","state":"paused"}
+{"time":"2026-10-11T17:59:06.792256512Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:50.562761114Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:50.5628781Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:50.562926316Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:50.800942931Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:50.982232356Z","level":"ERROR","msg":"http request finished","service":"clx-scripter","request_id":"d26069f6-1b5a-40bd-9a3a-49f7672a5d3d","route":"POST /v1/chats","method":"POST","status":500,"duration_ms":7}
+{"time":"2026-10-11T17:59:51.820761764Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:51.836505846Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:52.845576618Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:52.849852011Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:52.857933444Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:53.911929098Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:54.765061847Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:54.941546675Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:56.025505956Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:57.076022123Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:57.853609851Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:58.114577567Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:58.440353136Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:59.213802379Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T17:59:59.478082722Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:00.23838638Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:00.828320509Z","level":"WARN","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:00.8308872Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:01.263765193Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:01.736357388Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:02.323250805Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:02.853016481Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:03.417843744Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:03.633050663Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:04.504193065Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:05.581836751Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:06.592165787Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:07.59609429Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:07.635277459Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:08.59922779Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:08.730557553Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:09.619411876Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:09.956692058Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:09.956765846Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:09.956788511Z","level":"ERROR","msg":"queue event","service":"clx-scripter","component":"queue"}
+{"time":"2026-10-11T18:00:10.409735683Z","level":"ERROR","msg":"operation stopped","service":"clx-scripter","component":"authorization","outcome":"error","duration_ms":1}
+{"time":"2026-10-11T18:00:10.409841405Z","level":"ERROR","msg":"http request finished","service":"clx-scripter","request_id":"f71a11b7-a7d6-44a2-9f6d-b62d44a6e123","route":"POST /v1/chats","method":"POST","status":500,"duration_ms":1}
+{"time":"2026-10-11T18:01:13.945260039Z","level":"WARN","msg":"http request finished","service":"clx-scripter","request_id":"c6dcc2d4-dc71-476c-b6ac-a6b58ae7790b","route":"POST /v1/runs/{id}/resume","method":"POST","status":422,"duration_ms":3}
+{"time":"2026-10-11T18:01:37.257204649Z","level":"WARN","msg":"http request finished","service":"clx-scripter","request_id":"5557b7c5-a883-42b3-a2e6-e19d52414194","route":"POST /v1/runs/{id}/resume","method":"POST","status":422,"duration_ms":4}
+{"time":"2026-10-11T18:01:52.02459319Z","level":"INFO","msg":"http request finished","service":"clx-scripter","request_id":"6d9b072a-29db-47c2-9983-a471b7ec94aa","route":"POST /v1/runs/{id}/resume","method":"POST","status":200,"duration_ms":26}
+{"time":"2026-10-11T18:01:52.025987857Z","level":"INFO","msg":"run execution started","service":"clx-scripter","run_id":"49b9fdcd-931d-4e85-bdce-c6131175c640"}
+{"time":"2026-10-11T18:01:52.098235233Z","level":"INFO","msg":"run checkpoint","service":"clx-scripter","run_id":"49b9fdcd-931d-4e85-bdce-c6131175c640","state":"paused"}
+{"time":"2026-10-11T18:01:56.779401441Z","level":"INFO","msg":"queue event","service":"clx-scripter","component":"queue"}

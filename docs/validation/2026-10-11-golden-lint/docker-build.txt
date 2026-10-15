@@ -1,0 +1,70 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 982B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 161B done
+#3 DONE 0.0s
+
+#4 [build 1/7] FROM docker.io/library/golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#4 resolve docker.io/library/golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 126.99kB 0.0s done
+#5 DONE 0.1s
+
+#6 [build 2/7] WORKDIR /src
+#6 CACHED
+
+#7 [build 3/7] COPY go.mod go.sum ./
+#7 CACHED
+
+#8 [build 4/7] RUN go mod download && go mod verify
+#8 CACHED
+
+#9 [build 5/7] COPY . .
+#9 DONE 0.1s
+
+#10 [build 6/7] RUN go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/clx-scripter ./cmd/clx-scripter
+#10 DONE 9.0s
+
+#11 [build 7/7] RUN mkdir -p /out/run/clx-sandbox /out/data/artifacts && chmod 0770 /out/run/clx-sandbox /out/data/artifacts
+#11 DONE 0.3s
+
+#12 [stage-1 1/6] COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+#12 CACHED
+
+#13 [stage-1 2/6] COPY --from=build /out/clx-scripter /usr/local/bin/clx-scripter
+#13 DONE 0.1s
+
+#14 [stage-1 3/6] COPY --chown=10001:10001 --from=build /out/run/ /run/
+#14 DONE 0.0s
+
+#15 [stage-1 4/6] COPY --chown=10001:10001 --from=build /out/data/ /data/
+#15 DONE 0.0s
+
+#16 [stage-1 5/6] COPY docs/dependency-audit/2026-10-11-mvp/notices /licenses/dependencies/
+#16 DONE 0.1s
+
+#17 [stage-1 6/6] COPY LICENSE /licenses/clx-scripter/LICENSE
+#17 DONE 0.0s
+
+#18 exporting to image
+#18 exporting layers
+#18 exporting layers 0.7s done
+#18 exporting manifest sha256:3e44a77e4511843f1305ba54e2bb88c9ae8873096c8707fb2b0f6c3445f6a121 0.0s done
+#18 exporting config sha256:ca9d1be02077aae6b3b74b02941adb1214bf11348101fdba7d6fde63bf7e8cdd 0.0s done
+#18 exporting attestation manifest sha256:a39bc056dfa72391390c9c0e30a63a7b164a703b16ed29a307a374fa479b2756 0.0s done
+#18 exporting manifest list sha256:258979390d664a019fe0998c6c500b5cbe0211a6a3e81fb4c0fd277879b81e69 0.0s done
+#18 naming to docker.io/library/clx-scripter:ci-local done
+#18 unpacking to docker.io/library/clx-scripter:ci-local
+#18 unpacking to docker.io/library/clx-scripter:ci-local 0.3s done
+#18 DONE 1.1s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/qy6ehf26k3181ox09q5rwrpfy

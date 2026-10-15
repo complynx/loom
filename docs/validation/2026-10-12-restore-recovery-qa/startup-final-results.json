@@ -1,0 +1,12 @@
+{
+  "missing-key": {
+    "exit_code": 1,
+    "output": "loom: session encryption key unavailable"
+  },
+  "empty-db": {
+    "exit_code": 1,
+    "output": "loom: restored settings unavailable"
+  },
+  "status": "PASS",
+  "final_image": "sha256:b8ee206cfa227fc1af93492832bf6284ed54b22d421bacf26fdf5c145a071fc2"
+}

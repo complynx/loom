@@ -1,0 +1,8 @@
+# Merge with server_configs/configs/alloy/docker-compose.prod.yml.
+services:
+  alloy:
+    networks: [traefik-net, clx-observability]
+networks:
+  clx-observability:
+    external: true
+    name: clx-observability

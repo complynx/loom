@@ -1,0 +1,12 @@
+.git
+.github
+.env*
+coverage*
+bin/
+dist/
+*.exe
+*.test
+management.local/
+deploy/*.env
+/deploy/auth.key
+/deploy/config.yaml

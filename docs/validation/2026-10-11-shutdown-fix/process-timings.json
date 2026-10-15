@@ -1,0 +1,74 @@
+[
+  {
+    "scenario": "original-outage-before-fix",
+    "signal_to_process_exit_ms": 5011.452269,
+    "signal_to_die_event_ms": 5854.645376,
+    "process_exit_to_die_event_ms": 843.193107,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "healthy",
+    "signal_to_process_exit_ms": 7.109736,
+    "signal_to_die_event_ms": 327.275727,
+    "process_exit_to_die_event_ms": 320.165991,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "pg-paused-1",
+    "signal_to_process_exit_ms": 4005.52763,
+    "signal_to_die_event_ms": 4250.121214,
+    "process_exit_to_die_event_ms": 244.593584,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "pg-paused-2",
+    "signal_to_process_exit_ms": 4004.28283,
+    "signal_to_die_event_ms": 4339.283113,
+    "process_exit_to_die_event_ms": 335.000283,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "active-inference-pg-paused",
+    "signal_to_process_exit_ms": 4004.493539,
+    "signal_to_die_event_ms": 4319.1387,
+    "process_exit_to_die_event_ms": 314.645161,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "active-inference-healthy",
+    "signal_to_process_exit_ms": 38.599288,
+    "signal_to_die_event_ms": 521.544287,
+    "process_exit_to_die_event_ms": 482.944999,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "pg-stopped",
+    "signal_to_process_exit_ms": 4006.813998,
+    "signal_to_die_event_ms": 5925.309777,
+    "process_exit_to_die_event_ms": 1918.495779,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "pg-stopped-repeat-1",
+    "signal_to_process_exit_ms": 4006.792414,
+    "signal_to_die_event_ms": 4903.440948,
+    "process_exit_to_die_event_ms": 896.648534,
+    "exit_code": 0,
+    "oom_killed": false
+  },
+  {
+    "scenario": "pg-stopped-repeat-2",
+    "signal_to_process_exit_ms": 4.382201,
+    "signal_to_die_event_ms": 324.243116,
+    "process_exit_to_die_event_ms": 319.860915,
+    "exit_code": 0,
+    "oom_killed": false
+  }
+]

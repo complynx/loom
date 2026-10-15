@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/src/integration/failure_process_qa_test.go": "/src/management.local/failure-qa/failure_process_test.go.txt"
+  }
+}

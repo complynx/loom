@@ -1,0 +1,213 @@
+package integration_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
+	"os/exec"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/complynx/clx-scripter/internal/app"
+	"github.com/complynx/clx-scripter/internal/artifacts"
+	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/clx-scripter/internal/modules"
+	"github.com/complynx/clx-scripter/internal/operations"
+	"github.com/complynx/clx-scripter/internal/provider"
+	"github.com/complynx/clx-scripter/internal/runs"
+	"github.com/complynx/clx-scripter/internal/sandbox"
+	"github.com/stretchr/testify/require"
+)
+
+const fixtureURL = "http://127.0.0.1:58090"
+const qaRead = "isolated-functionalqa-read"
+const qaWrite = "isolated-functionalqa-write"
+const fixtureContainer = "clx-acceptance-functionalqa-20261011"
+
+type qaRequests struct {
+	mu               sync.Mutex
+	writes, statuses int
+}
+
+func qaRegistry(t *testing.T, f *fixture) (*modules.Registry, *qaRequests) {
+	t.Helper()
+	counts := &qaRequests{}
+	target, err := url.Parse(fixtureURL)
+	require.NoError(t, err)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counts.mu.Lock()
+		if r.URL.Path == "/write" {
+			counts.writes++
+		}
+		if r.URL.Path == "/status" {
+			counts.statuses++
+		}
+		counts.mu.Unlock()
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+	address, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	files, err := artifacts.New(t.TempDir(), f.repository, artifacts.Limits{MaxUploadBytes: 1024, QuotaBytes: 10240})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, files.Close()) })
+	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
+		return []modules.Endpoint{{ContainerID: fixtureContainer, URI: "http://registered-fixture:" + address.Port() + "/manifest", Address: "127.0.0.1"}}, nil
+	}), modules.Options{ImportArtifact: func(ctx context.Context, p modules.Principal, d modules.ArtifactDescriptor, s modules.ArtifactSource) (json.RawMessage, error) {
+		artifact, importErr := files.Import(ctx, artifacts.Principal{OwnerID: p.UserID, OrgID: p.Organization}, artifacts.Source{ServiceID: s.ServiceID, ExternalDisclosureAllowed: s.ExternalDisclosure, BaseURL: s.BaseURL, Client: s.Client, Headers: s.Headers, AllowedMIMETypes: s.AllowedMIMETypes, Authorize: s.Authorize}, artifacts.Descriptor{Path: d.DownloadPath, MIME: d.MIMEType, SHA256: d.SHA256, Size: d.SizeBytes})
+		if importErr != nil {
+			return nil, importErr
+		}
+		require.EqualValues(t, len("Acceptance blob. Original bytes bypass JavaScript.\n"), artifact.Size)
+		require.Equal(t, "text/plain", artifact.MIME)
+		return json.Marshal(map[string]string{"artifact_id": artifact.ID})
+	}})
+	require.NoError(t, err)
+	require.NoError(t, registry.Refresh(context.Background()))
+	return registry, counts
+}
+
+func qaFault(t *testing.T, token string) int {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), "POST", fixtureURL+"/qa/faults", bytes.NewBufferString(`{"drop_next_write_reply":true}`))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	response, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = response.Body.Close() }()
+	return response.StatusCode
+}
+
+func qaWorker(t *testing.T, f *fixture, registry *modules.Registry, write bool) (*modelFixture, *runs.Engine) {
+	t.Helper()
+	model, _ := fakeModel(t, f, func(index int) any {
+		if index == 1 {
+			name := "script"
+			args := `{"code":"return await modules.fixture_dynamic.lookup({query:'qa lookup'})"}`
+			if write {
+				name = "module_call"
+				args = `{"module":"fixture","method":"write","arguments":{"query":"qa committed value"}}`
+			}
+			return map[string]any{"id": "qa-provider-tool", "status": "completed", "output": []any{map[string]any{"type": "function_call", "call_id": "qa-stable-call", "name": name, "arguments": args}}, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}}
+		}
+		return finalResponse("QA verified completion")
+	})
+	authorize := func(_ context.Context, run domain.Run) (domain.Principal, string, error) {
+		token := qaRead
+		perms := map[string]bool{"runs.create": true, "chat.read": true, "qa.access": true, "qa.read": true}
+		if write {
+			token = qaWrite
+			perms["qa.write"] = true
+		}
+		return domain.Principal{Issuer: "https://test.identity", Subject: "alice", Actor: "alice", OrgID: "test-org", Permissions: perms}, token, nil
+	}
+	bridge := app.NewModuleBridge(registry, &operations.Coordinator{Pool: f.pool}, f.repository, authorize)
+	f.repository.SetApprovalHandler(bridge.ApproveTx)
+	client, err := provider.NewResponses(model.server.URL, "test-provider-key", model.server.Client())
+	require.NoError(t, err)
+	engine := runs.New(f.repository, client, runs.Options{Owner: "acceptance-qa-worker", Authorize: authorize, ModuleCall: bridge.Call, Script: func(ctx context.Context, run domain.Run, p domain.Principal, token, code string) (json.RawMessage, error) {
+		mp := modules.Principal{Issuer: p.Issuer, Subject: p.Subject, Actor: p.Actor, Organization: p.OrgID, UserID: run.OwnerID, Token: token, Permissions: []string{"qa.access", "qa.read"}}
+		reads, listErr := registry.List(ctx, mp)
+		if listErr != nil {
+			return nil, listErr
+		}
+		bindings := []sandbox.Binding{}
+		for _, tool := range reads {
+			bindings = append(bindings, sandbox.Binding{Module: tool.Module, Methods: []string{tool.Method}})
+		}
+		return (sandbox.Inline{}).Execute(ctx, code, bindings, registry.Broker(mp, run.ID, nil))
+	}})
+	return model, engine
+}
+
+func TestDockerFixtureDynamicScriptAndDurableBlob(t *testing.T) {
+	f := newFixture(t)
+	registry, _ := qaRegistry(t, f)
+	require.Equal(t, 403, qaFault(t, qaRead))
+	model, engine := qaWorker(t, f, registry, false)
+	run := f.createRun(t, runRequest("", "", "Read fixture dynamic lookup"), "qa-dynamic")
+	require.NoError(t, engine.Execute(context.Background(), run.ID))
+	require.Equal(t, domain.Completed, f.run(t, run.ID).State)
+	model.mu.Lock()
+	require.Len(t, model.requests, 2)
+	require.Contains(t, string(model.requests[1]), "Fixture read: qa lookup")
+	require.Contains(t, string(model.requests[1]), "artifact_id")
+	model.mu.Unlock()
+	var artifactsCount int
+	require.NoError(t, f.pool.QueryRow(context.Background(), "SELECT count(*) FROM artifacts").Scan(&artifactsCount))
+	require.Equal(t, 1, artifactsCount)
+	denied := modules.Principal{Issuer: "https://test.identity", Subject: "alice", Token: qaRead}
+	tools, err := registry.List(context.Background(), denied)
+	require.NoError(t, err)
+	require.Empty(t, tools)
+	_, err = registry.Broker(denied, "denied", nil).Call(context.Background(), "fixture", "read", json.RawMessage(`{"query":"denied"}`))
+	require.Error(t, err)
+	t.Log("PASS actual API run, mock Responses, real PG, dynamic JS read, production blob import, permission filtering")
+}
+
+func TestDockerFixtureApprovalLostReplyAndPersistentRestart(t *testing.T) {
+	f := newFixture(t)
+	registry, counts := qaRegistry(t, f)
+	model, engine := qaWorker(t, f, registry, true)
+	request := runRequest("", "", "Write fixture once")
+	request.Interaction.Approvals = true
+	run := f.createRun(t, request, "qa-write")
+	require.NoError(t, engine.Execute(context.Background(), run.ID))
+	waiting := f.run(t, run.ID)
+	require.Equal(t, domain.WaitingApproval, waiting.State)
+	require.NotNil(t, waiting.Approval)
+	code, raw := f.request(t, "bob", "POST", "/v1/runs/"+run.ID+"/input", "qa-cross-owner", domain.RunInput{Kind: "approval", ApprovalID: waiting.Approval.ID, Decision: "approve"})
+	require.Equal(t, 404, code, string(raw))
+	event := domain.AppendEvent{SourceEventID: "qa-passive", Type: "user.action", Action: "button.selected", Text: "approve", OccurredAt: time.Now()}
+	code, raw = f.request(t, "alice", "POST", "/v1/chats/"+run.ChatID+"/events", "", event)
+	require.Equal(t, 201, code, string(raw))
+	require.Equal(t, domain.WaitingApproval, f.run(t, run.ID).State)
+	input := domain.RunInput{Kind: "approval", ApprovalID: waiting.Approval.ID, Decision: "approve"}
+	for range 2 {
+		code, raw = f.request(t, "alice", "POST", "/v1/runs/"+run.ID+"/input", "qa-approve", input)
+		require.Equal(t, 200, code, string(raw))
+	}
+	require.Equal(t, 204, qaFault(t, qaWrite))
+	require.NoError(t, engine.Execute(context.Background(), run.ID))
+	require.Equal(t, domain.Reconciling, f.run(t, run.ID).State)
+	output, err := exec.CommandContext(context.Background(), "docker", "restart", fixtureContainer).CombinedOutput()
+	require.NoError(t, err, string(output))
+	require.Eventually(t, func() bool {
+		response, healthErr := http.Get(fixtureURL + "/healthz")
+		if healthErr != nil {
+			return false
+		}
+		_ = response.Body.Close()
+		return response.StatusCode == 200
+	}, 10*time.Second, 100*time.Millisecond)
+	code, raw = f.request(t, "alice", "POST", "/v1/runs/"+run.ID+"/resume", "qa-reconcile", nil)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, engine.Execute(context.Background(), run.ID))
+	final := f.run(t, run.ID)
+	require.Equal(t, domain.Completed, final.State)
+	require.ErrorContains(t, engine.Execute(context.Background(), run.ID), "run_not_runnable")
+	counts.mu.Lock()
+	require.Equal(t, 1, counts.writes)
+	require.Equal(t, 1, counts.statuses)
+	counts.mu.Unlock()
+	model.mu.Lock()
+	require.Len(t, model.requests, 2)
+	require.Contains(t, string(model.requests[1]), "qa committed value")
+	model.mu.Unlock()
+	output, err = exec.CommandContext(context.Background(), "docker", "cp", fixtureContainer+":/data/state.json", "-").Output()
+	require.NoError(t, err)
+	require.Contains(t, string(output), waiting.Approval.OperationID)
+	coordinator := operations.Coordinator{Pool: f.pool}
+	operation, err := coordinator.Get(context.Background(), waiting.Approval.OperationID)
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", operation.State)
+	require.JSONEq(t, `{"value":"qa committed value"}`, string(operation.Result))
+	t.Log("PASS actual API approval, duplicate approval, lost reply, reconciling, Docker restart on retained volume, status recovery, completed-run replay")
+}

@@ -1,0 +1,5 @@
+{
+  "name": "admin changes another user policy/preferences with organization boundary",
+  "status": "FAIL",
+  "error": "HTTP 200 GET /v1/admin/users/d60a49a0-5706-4dde-a402-3023b3df00df/policy {\"models\":[{\"provider\":\"openai\",\"input_cached_microcredits_per_million\":1000000,\"context_tokens\":272000,\"id\":\"qa-model\",\"provider_model\":\"qa-model\",\"efforts\":[\"low\"],\"max_effort\":\"low\",\"max_output_tokens\":4000,\"input_microcredits_per_million\":1000000,\"output_microcredits_per_million\":1000000,\"supports_images\":false}],\"active_run_limit\":2,\"version\":12}\n"
+}

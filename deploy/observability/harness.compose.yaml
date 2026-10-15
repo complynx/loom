@@ -1,0 +1,19 @@
+# Merge with the harness compose file. Create the external network once.
+# The API keeps its existing default network for database and discovery traffic.
+# In a server-specific compose profile, preserve any other application networks.
+services:
+  api:
+    expose: ["9090"]
+    networks:
+      default: {}
+      clx-observability:
+        aliases: [loom]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  clx-observability:
+    external: true
+    name: clx-observability

@@ -1,0 +1,21 @@
+{
+  "cases": [
+    {
+      "reserved_microcredits": 0,
+      "spent_microcredits": 220,
+      "run_id": "0903ec7e-a6e3-484f-b33e-89690fc71874",
+      "status": "PASS",
+      "scenario": "Model catalog + real supervisor module visibility",
+      "allowed": false
+    },
+    {
+      "reserved_microcredits": 0,
+      "spent_microcredits": 220,
+      "run_id": "cf7aa6ff-33c2-485f-b092-092539336380",
+      "status": "PASS",
+      "scenario": "Model catalog + real supervisor module visibility",
+      "allowed": true
+    }
+  ],
+  "image": "sha256:4b4fc6fc48b1606ee249f2e2e2bf08c75a2d382b7543ed187c5ae21b073e7544"
+}

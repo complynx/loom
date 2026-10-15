@@ -1,0 +1,1 @@
+W1011 01:02:55.575475  128248 library.go:394] module github.com/complynx/clx-scripter has empty version, defaults to HEAD. The license URL may be incorrect. Please verify!

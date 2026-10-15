@@ -1,0 +1,105 @@
+{
+  "active_milliseconds": 162,
+  "disconnect_policy": "continue",
+  "model_snapshot": {
+    "provider": "openai",
+    "input_cached_microcredits_per_million": 1000000,
+    "context_tokens": 272000,
+    "id": "qa-model",
+    "provider_model": "qa-model",
+    "efforts": [
+      "low"
+    ],
+    "max_effort": "low",
+    "max_output_tokens": 4000,
+    "input_microcredits_per_million": 1000000,
+    "output_microcredits_per_million": 1000000,
+    "supports_images": false
+  },
+  "settings_snapshot": {
+    "run_active_time_seconds": 600,
+    "regex_pattern_max_chars": 256,
+    "regex_scan_max_bytes": 1048576,
+    "regex_deadline_ms": 500,
+    "run_lifetime_seconds": 604800,
+    "input_wait_seconds": 86400,
+    "approval_wait_seconds": 900,
+    "paused_wait_seconds": 604800,
+    "history_retention": {
+      "mode": "duration",
+      "days": 365
+    },
+    "artifact_retention": {
+      "mode": "duration",
+      "days": 365
+    },
+    "trace_retention": {
+      "mode": "forever",
+      "days": 0
+    },
+    "external_disclosure": true,
+    "models": [
+      {
+        "provider": "openai",
+        "input_cached_microcredits_per_million": 1000000,
+        "context_tokens": 272000,
+        "id": "qa-model",
+        "provider_model": "qa-model",
+        "efforts": [
+          "low"
+        ],
+        "max_effort": "low",
+        "max_output_tokens": 4000,
+        "input_microcredits_per_million": 1000000,
+        "output_microcredits_per_million": 1000000,
+        "supports_images": false
+      }
+    ],
+    "default_model_id": "qa-model",
+    "default_effort": "low",
+    "initial_credits": 1000000,
+    "max_run_microcredits": 1000000,
+    "active_run_limit": 2,
+    "history_recent_limit": 100,
+    "max_steps": 30,
+    "question_timeout_seconds": 86400,
+    "version": 1
+  },
+  "run_id": "6c105f83-df86-40ae-bbae-6fbbc22be0cb",
+  "chat_id": "f25174ab-a794-4a39-804a-a7fc6d61edbc",
+  "owner_id": "03b0423e-4ea4-4c8e-a30c-ce566544fa44",
+  "actor_id": "qa-human",
+  "org_id": "qa-org",
+  "status": "completed",
+  "input": {
+    "text": "QA_WRITE"
+  },
+  "result": "QA runtime completed",
+  "model_id": "qa-model",
+  "effort": "low",
+  "interaction": {
+    "questions": "text",
+    "approvals": true
+  },
+  "auth_session_id": "044cdcbb-94a3-4444-a33d-e27030bdce37",
+  "max_microcredits": 10000,
+  "spent_microcredits": 220,
+  "reserved_microcredits": 0,
+  "version": 13,
+  "pause_requested": false,
+  "cancel_requested": false,
+  "created_at": "2026-10-11T14:15:32.629149Z",
+  "updated_at": "2026-10-11T14:15:34.997937Z",
+  "approval": {
+    "approval_id": "f589a4ec-c036-42cf-947d-0fa11804acb8",
+    "text": "Apply fixture value once",
+    "operation_id": "f589a4ec-c036-42cf-947d-0fa11804acb8",
+    "method": "fixture.write",
+    "arguments": {
+      "query": "runtime committed value"
+    },
+    "argument_hash": "13940d3a010d131d5e47a266f0a16cbf7dff8425b80f9a463cf944f1a0a4412d",
+    "decision": "approve",
+    "expires_at": "2026-10-11T14:20:32.690322702Z"
+  }
+}

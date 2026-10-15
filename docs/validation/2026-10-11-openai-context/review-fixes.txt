@@ -1,0 +1,3 @@
+ok  	github.com/complynx/clx-scripter/integration	9.437s
+ok  	github.com/complynx/clx-scripter/internal/store	17.410s
+ok  	github.com/complynx/clx-scripter/internal/config	(cached)

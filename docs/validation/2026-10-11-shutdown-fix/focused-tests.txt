@@ -1,0 +1,2 @@
+ok  	github.com/complynx/clx-scripter/internal/lifecycle	0.860s
+ok  	github.com/complynx/clx-scripter/internal/app	1.253s

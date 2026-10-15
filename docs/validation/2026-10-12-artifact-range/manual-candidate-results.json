@@ -1,0 +1,15 @@
+[
+  {
+    "partial_bytes": 16,
+    "status": "PASS",
+    "artifact_size": 1048576,
+    "scenario": "1MiB full/range/head/etag/foreign/416"
+  },
+  {
+    "spent_microcredits": 110,
+    "status": "PASS",
+    "run_id": "d642e986-6eb3-42f0-9b69-f2ac50cba740",
+    "scenario": "API/River fixture run and temporary handle range",
+    "reserved_microcredits": 0
+  }
+]

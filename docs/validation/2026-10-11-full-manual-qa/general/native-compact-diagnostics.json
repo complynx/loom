@@ -1,0 +1,73 @@
+{
+  "run": {
+    "id": "0ade27b2-ae2f-4ab0-bca8-44e3073bc183",
+    "chat_id": "b8488f7c-7747-4ecd-a143-c376d860ede5",
+    "state": "completed",
+    "created_at": "2026-10-11T18:02:06.192209Z",
+    "updated_at": "2026-10-11T18:02:06.463079Z",
+    "pause_requested": false,
+    "cancel_requested": false,
+    "spent_microcredits": 3240,
+    "reserved_microcredits": 0,
+    "platform_attempts": 0
+  },
+  "steps": [
+    {
+      "id": "e8c7bcc2-61ab-4b37-a634-30fc9c077d68",
+      "kind": "model",
+      "state": "completed",
+      "reserve_microcredits": 4100,
+      "created_at": "2026-10-11T18:02:06.420857Z",
+      "usage": {
+        "cached_input_tokens": 0,
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "microcredits": 110
+      }
+    },
+    {
+      "id": "533254f7-a3fe-41bc-aa20-2ff5055ea760",
+      "kind": "compact",
+      "state": "completed",
+      "reserve_microcredits": 13000,
+      "created_at": "2026-10-11T18:02:06.368857Z",
+      "usage": {
+        "cached_input_tokens": 0,
+        "input_tokens": 3000,
+        "output_tokens": 20,
+        "microcredits": 3020
+      }
+    },
+    {
+      "id": "af50df1a-a4c8-4307-9990-7c65f1c0b7c0",
+      "kind": "tool",
+      "state": "completed",
+      "reserve_microcredits": 0,
+      "created_at": "2026-10-11T18:02:06.290311Z",
+      "usage": {
+        "cached_input_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "microcredits": 0
+      }
+    },
+    {
+      "id": "44387849-045f-4e16-89a8-05f7d55ee42e",
+      "kind": "model",
+      "state": "completed",
+      "reserve_microcredits": 4100,
+      "created_at": "2026-10-11T18:02:06.254914Z",
+      "usage": {
+        "cached_input_tokens": 0,
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "microcredits": 110
+      }
+    }
+  ],
+  "writes": [],
+  "attempts": [],
+  "steps_partial": false,
+  "writes_partial": false,
+  "attempts_partial": false
+}

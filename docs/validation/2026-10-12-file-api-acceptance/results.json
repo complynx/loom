@@ -1,0 +1,328 @@
+{
+  "source_commit": "f1c30a40879aac1c6a8715ea0bd627f61b677fd7",
+  "platform": "local Docker Linux/amd64",
+  "production_changed": false,
+  "real_provider_calls": 0,
+  "groups_passed": 21,
+  "results": [
+    {
+      "scenario": "text paging + regex",
+      "status": "PASS",
+      "duration_ms": 1109,
+      "detail": {
+        "run_ids": [
+          "b3fd9c0c-f7ae-459d-9631-9475d8d79f1b",
+          "58c8fc58-0e19-4b94-abc1-0bf6413980dc"
+        ],
+        "source_size": 168044,
+        "page_bytes": 2047,
+        "next_cursor": "2047",
+        "regex_matches": 2
+      }
+    },
+    {
+      "scenario": "image derive + stream + model attachment",
+      "status": "PASS",
+      "duration_ms": 952,
+      "detail": {
+        "run_id": "3c60c2f1-a37e-4d99-a3d7-e3999d6e80af",
+        "artifact_id": "5655761b7e6eb409e7a3f09c11d8fc04",
+        "download_bytes": 202,
+        "model_image_items": 1,
+        "sha256": "aceff5484b6e1e5b6997a4a5bbb46658e326dae21496cad53796d5a4f5a7a16b",
+        "crop": {
+          "width": 50,
+          "height": 40,
+          "format": "png",
+          "orientation_applied": false,
+          "first_frame_only": false
+        }
+      }
+    },
+    {
+      "scenario": "PDF info/text/search/render",
+      "status": "PASS",
+      "duration_ms": 1515,
+      "detail": {
+        "pages": 2,
+        "partial_cursor": "12",
+        "matches": [
+          {
+            "line": 1,
+            "text": "PDF FIRST PAGE abcdefXYZ"
+          }
+        ],
+        "render_bytes": 220
+      }
+    },
+    {
+      "scenario": "video/GIF storyboard/frame/audio",
+      "status": "PASS",
+      "duration_ms": 3390,
+      "detail": {
+        "has_audio": true,
+        "initial_frames": 2,
+        "cursor": "1.000",
+        "detail_frames": 4,
+        "audio_bytes": 32078,
+        "gif_frames": 2
+      }
+    },
+    {
+      "scenario": "text/document formats",
+      "status": "PASS",
+      "duration_ms": 3827,
+      "detail": {
+        "text_read": {
+          "encoding": "utf-16le",
+          "offset": 0,
+          "text": "Начало\nПривет Андрей\nКонец"
+        },
+        "csv_read": {
+          "encoding": "utf-8",
+          "offset": 0,
+          "rows": [
+            [
+              "name",
+              "value"
+            ],
+            [
+              "Andrey",
+              "42"
+            ]
+          ]
+        },
+        "json_read": {
+          "pointer": "/items/0/name",
+          "summary": false,
+          "value": "Andrey"
+        },
+        "xml_read": {
+          "text": "XML acceptance marker\n"
+        },
+        "html_read": {
+          "extraction": "basic_visible_text",
+          "text": "HTML acceptance marker\n"
+        },
+        "office_docx": {
+          "text": "DOCX acceptance marker\n"
+        },
+        "office_xlsx": {
+          "rows": [
+            {
+              "cells": [
+                {
+                  "reference": "A1",
+                  "value": "Rich inline marker"
+                },
+                {
+                  "reference": "B1",
+                  "value": "42"
+                }
+              ],
+              "index": 1
+            }
+          ],
+          "sheet": "xl/worksheets/sheet1.xml"
+        },
+        "office_odf": {
+          "text": "ODF acceptance marker\n"
+        },
+        "epub_read": {
+          "extraction": "basic_visible_text",
+          "text": "EPUB acceptance marker\n"
+        },
+        "office_pptx": {
+          "first_cursor": "1024",
+          "tail_reachable": true
+        }
+      }
+    },
+    {
+      "scenario": "archive bounds/extraction",
+      "status": "PASS",
+      "duration_ms": 1469,
+      "detail": {
+        "entries_partial": true,
+        "extracted_bytes": 25,
+        "unsafe_and_expansion_denied": true
+      }
+    },
+    {
+      "scenario": "ownership/org/permission denial",
+      "status": "PASS",
+      "duration_ms": 359,
+      "detail": {}
+    },
+    {
+      "scenario": "audio durable credits + streaming",
+      "status": "PASS",
+      "duration_ms": 687,
+      "detail": {
+        "run_id": "c3bd8f91-2547-42a4-9a54-0a6184e5fc02",
+        "transcription_calls": 1,
+        "spent_microcredits": 405,
+        "transcription_microcredits": 75
+      }
+    },
+    {
+      "scenario": "delegated service streaming/ranges",
+      "status": "PASS",
+      "duration_ms": 94,
+      "detail": {
+        "delegated_service_range_status": 206,
+        "bytes": 32,
+        "conditional_status": 304,
+        "undelegated_status": 401
+      }
+    },
+    {
+      "scenario": "worker tmpfs disk-full + recovery",
+      "status": "PASS",
+      "duration_ms": 2094,
+      "detail": {
+        "run_id": "99b09215-d3db-4c0a-a529-40e792ffbc2e",
+        "actual_enospc": true,
+        "reserve": 0,
+        "source_preserved": true,
+        "next_render_succeeded": true
+      }
+    },
+    {
+      "scenario": "cancel in-flight worker processing",
+      "status": "PASS",
+      "duration_ms": 1858,
+      "detail": {
+        "run_id": "387ebc88-ba67-48ef-96fc-67e4790875e3",
+        "cancel_ms": 109,
+        "status": "cancelled",
+        "reserve": 0,
+        "subsequent_processing_ok": true
+      }
+    },
+    {
+      "scenario": "automatic worker crash restart",
+      "status": "PASS",
+      "duration_ms": 1907,
+      "detail": {
+        "restart_count_before": 0,
+        "restart_count_after": 1,
+        "persistent_socket_recovered": true
+      }
+    },
+    {
+      "scenario": "malformed/oversize/invalid args",
+      "status": "PASS",
+      "duration_ms": 1390,
+      "detail": {
+        "malformed_pdf_denied": true,
+        "bad_regex_denied": true,
+        "oversize_upload_status": 413,
+        "invalid_crop_denied": true
+      }
+    },
+    {
+      "scenario": "artifact tmpfs ENOSPC + rollback",
+      "status": "PASS",
+      "duration_ms": 2329,
+      "detail": {
+        "upload_disk_full_status": 500,
+        "failed_upload_metadata_unchanged": true,
+        "derived_disk_full_denied": true,
+        "derived_metadata_unchanged": true,
+        "run_id": "c22e8e98-5b0f-4833-a5fe-92f605ece14f",
+        "source_preserved": true,
+        "small_upload_after_failure": 2
+      }
+    },
+    {
+      "scenario": "transcription rejected/unknown/restart/reconcile",
+      "status": "PASS",
+      "duration_ms": 3015,
+      "detail": {
+        "rejected_run_id": "ea62d805-a74b-4aea-bdb4-89a74558fe2b",
+        "rejected_audio_charge": 0,
+        "unknown_run_id": "b464d3f5-97d8-4a4c-b008-aef36cd41263",
+        "unknown_hold": 150,
+        "restart_preserved_hold": true,
+        "resume_blocked_status": 409,
+        "reconciled_audio_charge": 75,
+        "no_redispatch": true
+      }
+    },
+    {
+      "scenario": "user storage quota + rollback",
+      "status": "PASS",
+      "duration_ms": 4032,
+      "detail": {
+        "quota_bytes": 65536,
+        "first_upload": 40000,
+        "over_quota_status": 429,
+        "metadata_unchanged": true,
+        "subsequent_small_upload": 1000,
+        "credits_unchanged": true
+      }
+    },
+    {
+      "scenario": "handle run/owner scope + streaming",
+      "status": "PASS",
+      "duration_ms": 765,
+      "detail": {
+        "original_run": "154d81e4-1477-4dda-9b21-f23256ccd8c8",
+        "different_run": "0347edf4-820d-4ad3-ba9f-9fa1167f3505",
+        "owner_range_status": 206,
+        "different_run_denied": true,
+        "foreign_status": 404
+      }
+    },
+    {
+      "scenario": "disabled file/transcription tools hidden",
+      "status": "PASS",
+      "duration_ms": 3688,
+      "detail": {
+        "run_id": "2e2d3458-5f34-4fc0-b6f4-2d11f26a1c40",
+        "files_namespace_hidden": true,
+        "audio_tool_hidden": true
+      }
+    },
+    {
+      "scenario": "remaining metadata/listing/TAR/GZIP methods",
+      "status": "PASS",
+      "duration_ms": 3765,
+      "detail": {
+        "file_info": true,
+        "image_info": true,
+        "zero_embedded_images": true,
+        "xlsx_slides_epub_listing": true,
+        "tar_gzip_roundtrip": true
+      }
+    },
+    {
+      "scenario": "crop pixels + model/download exact bytes",
+      "status": "PASS",
+      "duration_ms": 454,
+      "detail": {
+        "run_id": "0d4f2731-f67a-4cd0-bf4e-e3404766e718",
+        "crop_first_pixel_rgb": [
+          0,
+          0,
+          255
+        ],
+        "model_image_bytes_equal_download": true,
+        "binary_bytes_never_in_js_output": true
+      }
+    },
+    {
+      "scenario": "derived artifact quota rollback",
+      "status": "PASS",
+      "detail": {
+        "run_id": "bcc2cd61-2f7f-424c-ba18-0df99abb2592",
+        "quota_bytes": 1857139,
+        "derived_file_denied": true,
+        "metadata_unchanged": true,
+        "reserve": 0,
+        "subsequent_upload_succeeds": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+* text=auto
+*.go text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+# Preserve audited third-party notice bytes and their SHA-256 manifest.
+/docs/dependency-audit/**/notices/** -text -whitespace
+
+# Preserve captured QA evidence, including console whitespace and original bytes.
+/docs/validation/** -text -whitespace

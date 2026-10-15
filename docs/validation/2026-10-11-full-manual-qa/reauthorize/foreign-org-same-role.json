@@ -1,0 +1,7 @@
+{
+  "foreign_run_http": 404,
+  "foreign_org_with_same_harness_role_own_chat_http": 200,
+  "run_error": "not_found",
+  "foreign_saved_session_cas_http": 409,
+  "session_error": "session_version_conflict"
+}

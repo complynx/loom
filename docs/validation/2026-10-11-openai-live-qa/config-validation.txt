@@ -1,0 +1,2 @@
+PASS blank provider key rejected
+PASS substituted-config parse: model=gpt-6-luna effort=medium output_limit=1024 max_steps=2 sponsored=0

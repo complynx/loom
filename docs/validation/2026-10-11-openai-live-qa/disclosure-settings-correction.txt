@@ -1,0 +1,18 @@
+BEGIN
+DO
+COMMIT
+ version | disclosure 
+---------+------------
+       2 | true
+(1 row)
+
+                  id                  | state  | disclosure 
+--------------------------------------+--------+------------
+ 8d7a9f3c-e8e2-4733-accc-81397842864a | paused | true
+(1 row)
+
+ model_steps_before_resume 
+---------------------------
+                         0
+(1 row)
+

@@ -1,0 +1,71 @@
+{
+  "status": "PASS",
+  "scenario": "3 simultaneous heap attackers and active healthy worker in shared 128MiB cgroup",
+  "image": "sha256:8760177546942b0b4948004b82dd510769c269c9acaf1718ebd368154b086641",
+  "container_id": "aba8fcd7c5f3f5177f35e91733330c4f903216c4610ab789e1c262206b4ba9ea",
+  "running_after": true,
+  "restart_count_before": 0,
+  "restart_count_after": 0,
+  "counters_before": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+  "counters_after": "low 0\nhigh 0\nmax 20085\noom 5\noom_kill 3\noom_group_kill 0",
+  "oom_events": [
+    "1791802734634273184 oom",
+    "1791802734965931501 oom",
+    "1791802735379973076 oom"
+  ],
+  "healthy_run": {
+    "run_id": "ee007c50-00d9-4347-aedb-53fd997be8e2",
+    "status": "completed",
+    "spent": 220,
+    "reserved": 0,
+    "tool_result": {
+      "ok": true
+    }
+  },
+  "attackers": [
+    {
+      "run_id": "81daf5d2-5114-48ea-9299-bd4a9dd4218a",
+      "status": "completed",
+      "spent": 220,
+      "reserved": 0,
+      "tool_result": {
+        "error": "tool_failed"
+      }
+    },
+    {
+      "run_id": "64266fc1-b19f-48d5-9c2e-15f179566e33",
+      "status": "completed",
+      "spent": 220,
+      "reserved": 0,
+      "tool_result": {
+        "error": "tool_failed"
+      }
+    },
+    {
+      "run_id": "78db52ae-9943-49e7-a2a4-e25ac4e8e18a",
+      "status": "completed",
+      "spent": 220,
+      "reserved": 0,
+      "tool_result": {
+        "error": "tool_failed"
+      }
+    }
+  ],
+  "healthy_observations": [
+    {
+      "at_attacker_completion": "81daf5d2-5114-48ea-9299-bd4a9dd4218a",
+      "healthy_status": "running",
+      "healthy_spent": 110
+    },
+    {
+      "at_attacker_completion": "64266fc1-b19f-48d5-9c2e-15f179566e33",
+      "healthy_status": "running",
+      "healthy_spent": 110
+    },
+    {
+      "at_attacker_completion": "78db52ae-9943-49e7-a2a4-e25ac4e8e18a",
+      "healthy_status": "running",
+      "healthy_spent": 110
+    }
+  ]
+}

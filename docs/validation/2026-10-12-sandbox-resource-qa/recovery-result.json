@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "run_id": "940a54b9-b4b3-401f-ae28-0ca4d9cdf9db",
+  "spent": 220,
+  "reserved": 0,
+  "tool_result": {
+    "ok": true
+  }
+}

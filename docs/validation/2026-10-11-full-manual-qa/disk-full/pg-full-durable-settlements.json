@@ -1,0 +1,35 @@
+{
+  "provider_calls": 3,
+  "database": {
+    "runs": [
+      {
+        "id": "4a73b5d9-e99c-434b-ade1-5271cbaeff9f",
+        "state": "completed",
+        "spent": 110,
+        "reserved": 0
+      },
+      {
+        "id": "09b77a2e-2159-47c6-babb-c5d72c53b0f9",
+        "state": "completed",
+        "spent": 110,
+        "reserved": 0
+      },
+      {
+        "id": "49b9fdcd-931d-4e85-bdce-c6131175c640",
+        "state": "paused",
+        "spent": 110,
+        "reserved": 0
+      }
+    ],
+    "steps": 3,
+    "ledger": 7,
+    "billing": [
+      {
+        "owner_id": "558a97f0-6110-4a2c-bef2-d60b920fd6f0",
+        "balance": 999670,
+        "spent": 330,
+        "reserved": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+rotated_sessions=60; repeat until zero, after all writers use the active key

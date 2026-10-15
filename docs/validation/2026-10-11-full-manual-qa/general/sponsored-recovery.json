@@ -1,0 +1,54 @@
+{
+  "run": {
+    "id": "fa17be64-3e72-4b7b-b481-dd11afdd4f72",
+    "chat_id": "48ecab05-693a-46b1-8f67-ef679231f4fa",
+    "state": "completed",
+    "created_at": "2026-10-11T17:57:28.087852Z",
+    "updated_at": "2026-10-11T17:57:28.233801Z",
+    "pause_requested": false,
+    "cancel_requested": false,
+    "spent_microcredits": 110,
+    "reserved_microcredits": 0,
+    "platform_attempts": 1
+  },
+  "steps": [
+    {
+      "id": "e1170667-47a3-4606-89cd-1c34a25d28fc",
+      "kind": "model",
+      "state": "completed",
+      "reserve_microcredits": 10237,
+      "created_at": "2026-10-11T17:57:28.196865Z",
+      "usage": {
+        "cached_input_tokens": 0,
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "microcredits": 110
+      }
+    },
+    {
+      "id": "b1bf92ae-d8a9-4d6c-813e-3aba58133be5",
+      "kind": "model",
+      "state": "completed",
+      "reserve_microcredits": 10067,
+      "created_at": "2026-10-11T17:57:28.138187Z",
+      "usage": {
+        "cached_input_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "microcredits": 0
+      }
+    }
+  ],
+  "writes": [],
+  "attempts": [
+    {
+      "step_id": "b1bf92ae-d8a9-4d6c-813e-3aba58133be5",
+      "status": "unknown",
+      "reserved_exposure_microcredits": 10067,
+      "created_at": "2026-10-11T17:57:28.149977Z"
+    }
+  ],
+  "steps_partial": false,
+  "writes_partial": false,
+  "attempts_partial": false
+}

@@ -1,0 +1,1244 @@
+The files belonging to this database system will be owned by user "postgres".
+sh: locale: not found
+2026-10-11 17:56:21.104 UTC [39] WARNING:  no usable system locales were found
+initdb: warning: enabling "trust" authentication for local connections
+initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.utf8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default "max_connections" ... 100
+selecting default "shared_buffers" ... 128MB
+selecting default time zone ... UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /var/lib/postgresql/data -l logfile start
+
+waiting for server to start....2026-10-11 17:56:21.508 UTC [45] LOG:  starting PostgreSQL 17.11 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-10-11 17:56:21.514 UTC [45] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-10-11 17:56:21.517 UTC [48] LOG:  database system was shut down at 2026-10-11 17:56:21 UTC
+2026-10-11 17:56:21.522 UTC [45] LOG:  database system is ready to accept connections
+ done
+2026-10-11 17:56:21.730 UTC [8] LOG:  starting PostgreSQL 17.11 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+server started
+CREATE DATABASE
+
+
+/usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+
+waiting for server to shut down....2026-10-11 17:56:21.616 UTC [45] LOG:  received fast shutdown request
+2026-10-11 17:56:21.616 UTC [45] LOG:  aborting any active transactions
+2026-10-11 17:56:21.619 UTC [45] LOG:  background worker "logical replication launcher" (PID 51) exited with exit code 1
+2026-10-11 17:56:21.620 UTC [46] LOG:  shutting down
+2026-10-11 17:56:21.620 UTC [46] LOG:  checkpoint starting: shutdown immediate
+2026-10-11 17:56:21.627 UTC [46] LOG:  checkpoint complete: wrote 926 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.007 s, sync=0.001 s, total=0.008 s; sync files=301, longest=0.001 s, average=0.000 s; distance=4266 kB, estimate=4266 kB; lsn=0/191E810, redo lsn=0/191E810
+2026-10-11 17:56:21.635 UTC [45] LOG:  database system is shut down
+ done
+server stopped
+
+PostgreSQL init process complete; ready for start up.
+
+2026-10-11 17:56:21.730 UTC [8] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-10-11 17:56:21.731 UTC [8] LOG:  listening on IPv6 address "::", port 5432
+2026-10-11 17:56:21.733 UTC [8] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-10-11 17:56:21.735 UTC [67] LOG:  database system was shut down at 2026-10-11 17:56:21 UTC
+2026-10-11 17:56:21.738 UTC [8] LOG:  database system is ready to accept connections
+2026-10-11 17:56:30.894 UTC [180] ERROR:  could not extend file "base/16384/17012": No space left on device
+2026-10-11 17:56:30.894 UTC [180] HINT:  Check free disk space.
+2026-10-11 17:56:30.894 UTC [180] STATEMENT:  INSERT INTO diskqa_probe SELECT repeat(md5(random()::text),2048) FROM generate_series(1,200); CHECKPOINT;
+2026-10-11 17:56:31.055 UTC [90] ERROR:  could not extend file "base/16384/16466": No space left on device
+2026-10-11 17:56:31.055 UTC [90] HINT:  Check free disk space.
+2026-10-11 17:56:31.055 UTC [90] STATEMENT:  INSERT INTO chats(id,owner_id,org_id) VALUES($1,$2,$3) RETURNING id::text,owner_id::text,org_id,is_default,created_at
+2026-10-11 17:56:51.794 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.794 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.794 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_attribute"
+2026-10-11 17:56:51.802 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.802 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.802 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_class"
+2026-10-11 17:56:51.802 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.802 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.802 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_attrdef"
+2026-10-11 17:56:51.809 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.809 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.809 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_constraint"
+2026-10-11 17:56:51.812 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.812 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.812 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_index"
+2026-10-11 17:56:51.815 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.815 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.815 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_trigger"
+2026-10-11 17:56:51.822 UTC [360] ERROR:  could not extend file "base/16384/2619": No space left on device
+2026-10-11 17:56:51.822 UTC [360] HINT:  Check free disk space.
+2026-10-11 17:56:51.822 UTC [360] CONTEXT:  automatic analyze of table "clx.pg_catalog.pg_depend"
+2026-10-11 17:57:11.792 UTC [494] FATAL:  could not write init file: No space left on device
+2026-10-11 17:57:31.789 UTC [629] FATAL:  could not write init file: No space left on device
+2026-10-11 17:58:11.808 UTC [928] FATAL:  could not write init file: No space left on device
+2026-10-11 17:58:31.815 UTC [1077] FATAL:  could not write init file: No space left on device
+2026-10-11 17:59:50.562 UTC [734] FATAL:  terminating connection due to administrator command
+2026-10-11 17:59:50.562 UTC [735] FATAL:  terminating connection due to administrator command
+2026-10-11 17:59:50.562 UTC [736] FATAL:  terminating connection due to administrator command
+2026-10-11 17:59:50.562 UTC [737] FATAL:  terminating connection due to administrator command
+2026-10-11 17:59:50.562 UTC [738] FATAL:  terminating connection due to administrator command
+2026-10-11 17:59:50.800 UTC [1658] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:50.800 UTC [1658] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:50.981 UTC [1658] ERROR:  cannot execute INSERT in a read-only transaction
+2026-10-11 17:59:50.981 UTC [1658] STATEMENT:  INSERT INTO users(id,issuer,subject) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING id::text
+2026-10-11 17:59:51.397 UTC [1665] ERROR:  cannot execute ALTER ROLE in a read-only transaction
+2026-10-11 17:59:51.397 UTC [1665] STATEMENT:  SET default_transaction_read_only = off; ALTER ROLE clx RESET default_transaction_read_only;
+2026-10-11 17:59:51.819 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:51.819 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:51.835 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:51.835 UTC [1673] STATEMENT:  -- name: LeaderAttemptReelect :one
+	UPDATE river_leader
+	SET expires_at = coalesce($1::timestamptz, now()) + make_interval(secs => $2)
+	WHERE
+	    elected_at = $3::timestamptz
+	    AND expires_at >= coalesce($1::timestamptz, now())
+	    AND leader_id = $4
+	RETURNING elected_at, expires_at, leader_id, name
+	
+2026-10-11 17:59:52.845 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:52.845 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:52.849 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:52.849 UTC [1673] STATEMENT:  -- name: LeaderAttemptReelect :one
+	UPDATE river_leader
+	SET expires_at = coalesce($1::timestamptz, now()) + make_interval(secs => $2)
+	WHERE
+	    elected_at = $3::timestamptz
+	    AND expires_at >= coalesce($1::timestamptz, now())
+	    AND leader_id = $4
+	RETURNING elected_at, expires_at, leader_id, name
+	
+2026-10-11 17:59:52.857 UTC [1673] ERROR:  cannot execute SELECT FOR UPDATE in a read-only transaction
+2026-10-11 17:59:52.857 UTC [1673] STATEMENT:  -- name: JobSchedule :many
+	WITH jobs_to_schedule AS (
+	    SELECT
+	        id,
+	        unique_key,
+	        unique_states,
+	        priority,
+	        scheduled_at
+	    FROM river_job
+	    WHERE
+	        state IN ('retryable', 'scheduled')
+	        AND priority >= 0
+	        AND queue IS NOT NULL
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority,
+	        scheduled_at,
+	        id
+	    LIMIT $2::bigint
+	    FOR UPDATE
+	),
+	jobs_with_rownum AS (
+	    SELECT
+	        id, unique_key, unique_states, priority, scheduled_at,
+	        CASE
+	            WHEN unique_key IS NOT NULL AND unique_states IS NOT NULL THEN
+	                ROW_NUMBER() OVER (
+	                    PARTITION BY unique_key
+	                    ORDER BY priority, scheduled_at, id
+	                )
+	            ELSE NULL
+	        END AS row_num
+	    FROM jobs_to_schedule
+	),
+	unique_conflicts AS (
+	    SELECT river_job.unique_key
+	    FROM river_job
+	    JOIN jobs_with_rownum
+	        ON river_job.unique_key = jobs_with_rownum.unique_key
+	        AND river_job.id != jobs_with_rownum.id
+	    WHERE
+	        river_job.unique_key IS NOT NULL
+	        AND river_job.unique_states IS NOT NULL
+	        AND river_job_state_in_bitmask(river_job.unique_states, river_job.state)
+	),
+	job_updates AS (
+	    SELECT
+	        job.id,
+	        job.unique_key,
+	        job.unique_states,
+	        CASE
+	            WHEN job.row_num IS NULL THEN 'available'::river_job_state
+	            WHEN uc.unique_key IS NOT NULL THEN 'discarded'::river_job_state
+	            WHEN job.row_num = 1 THEN 'available'::river_job_state
+	            ELSE 'discarded'::river_job_state
+	        END AS new_state,
+	        (job.row_num IS NOT NULL AND (uc.unique_key IS NOT NULL OR job.row_num > 1)) AS finalized_at_do_update,
+	        (job.row_num IS NOT NULL AND (uc.unique_key IS NOT NULL OR job.row_num > 1)) AS metadata_do_update
+	    FROM jobs_with_rownum job
+	    LEFT JOIN unique_conflicts uc ON job.unique_key = uc.unique_key
+	),
+	updated_jobs AS (
+	    UPDATE river_job
+	    SET
+	        state        = job_updates.new_state,
+	        finalized_at = CASE WHEN job_updates.finalized_at_do_update THEN coalesce($1::timestamptz, now())
+	                            ELSE river_job.finalized_at END,
+	        metadata     = CASE WHEN job_updates.metadata_do_update THEN river_job.metadata || '{"unique_key_conflict": "scheduler_discarded"}'::jsonb
+	                            ELSE river_job.metadata END
+	    FROM job_updates
+	    WHERE river_job.id = job_updates.id
+	    RETURNING
+	        river_job.id,
+	        job_updates.new_state = 'discarded'::river_job_state AS conflict_discarded
+	)
+	SELECT
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states,
+	    updated_jobs.conflict_discarded
+	FROM river_job
+	JOIN updated_jobs ON river_job.id = updated_jobs.id
+	
+2026-10-11 17:59:53.911 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:53.911 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:54.764 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:54.764 UTC [1673] STATEMENT:  -- name: LeaderAttemptReelect :one
+	UPDATE river_leader
+	SET expires_at = coalesce($1::timestamptz, now()) + make_interval(secs => $2)
+	WHERE
+	    elected_at = $3::timestamptz
+	    AND expires_at >= coalesce($1::timestamptz, now())
+	    AND leader_id = $4
+	RETURNING elected_at, expires_at, leader_id, name
+	
+2026-10-11 17:59:54.941 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:54.941 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:56.025 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:56.025 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:57.075 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:57.075 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:57.852 UTC [1673] ERROR:  cannot execute SELECT FOR UPDATE in a read-only transaction
+2026-10-11 17:59:57.852 UTC [1673] STATEMENT:  -- name: JobSchedule :many
+	WITH jobs_to_schedule AS (
+	    SELECT
+	        id,
+	        unique_key,
+	        unique_states,
+	        priority,
+	        scheduled_at
+	    FROM river_job
+	    WHERE
+	        state IN ('retryable', 'scheduled')
+	        AND priority >= 0
+	        AND queue IS NOT NULL
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority,
+	        scheduled_at,
+	        id
+	    LIMIT $2::bigint
+	    FOR UPDATE
+	),
+	jobs_with_rownum AS (
+	    SELECT
+	        id, unique_key, unique_states, priority, scheduled_at,
+	        CASE
+	            WHEN unique_key IS NOT NULL AND unique_states IS NOT NULL THEN
+	                ROW_NUMBER() OVER (
+	                    PARTITION BY unique_key
+	                    ORDER BY priority, scheduled_at, id
+	                )
+	            ELSE NULL
+	        END AS row_num
+	    FROM jobs_to_schedule
+	),
+	unique_conflicts AS (
+	    SELECT river_job.unique_key
+	    FROM river_job
+	    JOIN jobs_with_rownum
+	        ON river_job.unique_key = jobs_with_rownum.unique_key
+	        AND river_job.id != jobs_with_rownum.id
+	    WHERE
+	        river_job.unique_key IS NOT NULL
+	        AND river_job.unique_states IS NOT NULL
+	        AND river_job_state_in_bitmask(river_job.unique_states, river_job.state)
+	),
+	job_updates AS (
+	    SELECT
+	        job.id,
+	        job.unique_key,
+	        job.unique_states,
+	        CASE
+	            WHEN job.row_num IS NULL THEN 'available'::river_job_state
+	            WHEN uc.unique_key IS NOT NULL THEN 'discarded'::river_job_state
+	            WHEN job.row_num = 1 THEN 'available'::river_job_state
+	            ELSE 'discarded'::river_job_state
+	        END AS new_state,
+	        (job.row_num IS NOT NULL AND (uc.unique_key IS NOT NULL OR job.row_num > 1)) AS finalized_at_do_update,
+	        (job.row_num IS NOT NULL AND (uc.unique_key IS NOT NULL OR job.row_num > 1)) AS metadata_do_update
+	    FROM jobs_with_rownum job
+	    LEFT JOIN unique_conflicts uc ON job.unique_key = uc.unique_key
+	),
+	updated_jobs AS (
+	    UPDATE river_job
+	    SET
+	        state        = job_updates.new_state,
+	        finalized_at = CASE WHEN job_updates.finalized_at_do_update THEN coalesce($1::timestamptz, now())
+	                            ELSE river_job.finalized_at END,
+	        metadata     = CASE WHEN job_updates.metadata_do_update THEN river_job.metadata || '{"unique_key_conflict": "scheduler_discarded"}'::jsonb
+	                            ELSE river_job.metadata END
+	    FROM job_updates
+	    WHERE river_job.id = job_updates.id
+	    RETURNING
+	        river_job.id,
+	        job_updates.new_state = 'discarded'::river_job_state AS conflict_discarded
+	)
+	SELECT
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states,
+	    updated_jobs.conflict_discarded
+	FROM river_job
+	JOIN updated_jobs ON river_job.id = updated_jobs.id
+	
+2026-10-11 17:59:58.114 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:58.114 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:58.440 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:58.440 UTC [1673] STATEMENT:  -- name: LeaderAttemptReelect :one
+	UPDATE river_leader
+	SET expires_at = coalesce($1::timestamptz, now()) + make_interval(secs => $2)
+	WHERE
+	    elected_at = $3::timestamptz
+	    AND expires_at >= coalesce($1::timestamptz, now())
+	    AND leader_id = $4
+	RETURNING elected_at, expires_at, leader_id, name
+	
+2026-10-11 17:59:59.213 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:59.213 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 17:59:59.477 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 17:59:59.477 UTC [1673] STATEMENT:  -- name: LeaderAttemptReelect :one
+	UPDATE river_leader
+	SET expires_at = coalesce($1::timestamptz, now()) + make_interval(secs => $2)
+	WHERE
+	    elected_at = $3::timestamptz
+	    AND expires_at >= coalesce($1::timestamptz, now())
+	    AND leader_id = $4
+	RETURNING elected_at, expires_at, leader_id, name
+	
+2026-10-11 18:00:00.237 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:00.237 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:00.830 UTC [1673] ERROR:  cannot execute DELETE in a read-only transaction
+2026-10-11 18:00:00.830 UTC [1673] STATEMENT:  -- name: LeaderResign :execrows
+	WITH currently_held_leaders AS (
+	    SELECT elected_at, expires_at, leader_id, name
+	    FROM river_leader
+	    WHERE
+	        elected_at = $1::timestamptz
+	        AND leader_id = $2::text
+	    FOR UPDATE
+	),
+	notified_resignations AS (
+	    SELECT CASE WHEN $3::boolean THEN pg_notify(
+	        concat(coalesce($4::text, current_schema()), '.', $5::text),
+	        json_build_object('leader_id', leader_id, 'action', 'resigned')::text
+	    ) END
+	    FROM currently_held_leaders
+	)
+	DELETE FROM river_leader USING notified_resignations
+	
+2026-10-11 18:00:01.263 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:01.263 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:01.736 UTC [1673] ERROR:  cannot execute DELETE in a read-only transaction
+2026-10-11 18:00:01.736 UTC [1673] STATEMENT:  -- name: LeaderResign :execrows
+	WITH currently_held_leaders AS (
+	    SELECT elected_at, expires_at, leader_id, name
+	    FROM river_leader
+	    WHERE
+	        elected_at = $1::timestamptz
+	        AND leader_id = $2::text
+	    FOR UPDATE
+	),
+	notified_resignations AS (
+	    SELECT CASE WHEN $3::boolean THEN pg_notify(
+	        concat(coalesce($4::text, current_schema()), '.', $5::text),
+	        json_build_object('leader_id', leader_id, 'action', 'resigned')::text
+	    ) END
+	    FROM currently_held_leaders
+	)
+	DELETE FROM river_leader USING notified_resignations
+	
+2026-10-11 18:00:02.322 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:02.322 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:02.852 UTC [1673] ERROR:  cannot execute SELECT FOR UPDATE in a read-only transaction
+2026-10-11 18:00:02.852 UTC [1673] STATEMENT:  -- name: JobSchedule :many
+	WITH jobs_to_schedule AS (
+	    SELECT
+	        id,
+	        unique_key,
+	        unique_states,
+	        priority,
+	        scheduled_at
+	    FROM river_job
+	    WHERE
+	        state IN ('retryable', 'scheduled')
+	        AND priority >= 0
+	        AND queue IS NOT NULL
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority,
+	        scheduled_at,
+	        id
+	    LIMIT $2::bigint
+	    FOR UPDATE
+	),
+	jobs_with_rownum AS (
+	    SELECT
+	        id, unique_key, unique_states, priority, scheduled_at,
+	        CASE
+	            WHEN unique_key IS NOT NULL AND unique_states IS NOT NULL THEN
+	                ROW_NUMBER() OVER (
+	                    PARTITION BY unique_key
+	                    ORDER BY priority, scheduled_at, id
+	                )
+	            ELSE NULL
+	        END AS row_num
+	    FROM jobs_to_schedule
+	),
+	unique_conflicts AS (
+	    SELECT river_job.unique_key
+	    FROM river_job
+	    JOIN jobs_with_rownum
+	        ON river_job.unique_key = jobs_with_rownum.unique_key
+	        AND river_job.id != jobs_with_rownum.id
+	    WHERE
+	        river_job.unique_key IS NOT NULL
+	        AND river_job.unique_states IS NOT NULL
+	        AND river_job_state_in_bitmask(river_job.unique_states, river_job.state)
+	),
+	job_updates AS (
+	    SELECT
+	        job.id,
+	        job.unique_key,
+	        job.unique_states,
+	        CASE
+	            WHEN job.row_num IS NULL THEN 'available'::river_job_state
+	            WHEN uc.unique_key IS NOT NULL THEN 'discarded'::river_job_state
+	            WHEN job.row_num = 1 THEN 'available'::river_job_state
+	            ELSE 'discarded'::river_job_state
+	        END AS new_state,
+	        (job.row_num IS NOT NULL AND (uc.unique_key IS NOT NULL OR job.row_num > 1)) AS finalized_at_do_update,
+	        (job.row_num IS NOT NULL AND (uc.unique_key IS NOT NULL OR job.row_num > 1)) AS metadata_do_update
+	    FROM jobs_with_rownum job
+	    LEFT JOIN unique_conflicts uc ON job.unique_key = uc.unique_key
+	),
+	updated_jobs AS (
+	    UPDATE river_job
+	    SET
+	        state        = job_updates.new_state,
+	        finalized_at = CASE WHEN job_updates.finalized_at_do_update THEN coalesce($1::timestamptz, now())
+	                            ELSE river_job.finalized_at END,
+	        metadata     = CASE WHEN job_updates.metadata_do_update THEN river_job.metadata || '{"unique_key_conflict": "scheduler_discarded"}'::jsonb
+	                            ELSE river_job.metadata END
+	    FROM job_updates
+	    WHERE river_job.id = job_updates.id
+	    RETURNING
+	        river_job.id,
+	        job_updates.new_state = 'discarded'::river_job_state AS conflict_discarded
+	)
+	SELECT
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states,
+	    updated_jobs.conflict_discarded
+	FROM river_job
+	JOIN updated_jobs ON river_job.id = updated_jobs.id
+	
+2026-10-11 18:00:03.417 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:03.417 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:03.632 UTC [1673] ERROR:  cannot execute DELETE in a read-only transaction
+2026-10-11 18:00:03.632 UTC [1673] STATEMENT:  -- name: LeaderResign :execrows
+	WITH currently_held_leaders AS (
+	    SELECT elected_at, expires_at, leader_id, name
+	    FROM river_leader
+	    WHERE
+	        elected_at = $1::timestamptz
+	        AND leader_id = $2::text
+	    FOR UPDATE
+	),
+	notified_resignations AS (
+	    SELECT CASE WHEN $3::boolean THEN pg_notify(
+	        concat(coalesce($4::text, current_schema()), '.', $5::text),
+	        json_build_object('leader_id', leader_id, 'action', 'resigned')::text
+	    ) END
+	    FROM currently_held_leaders
+	)
+	DELETE FROM river_leader USING notified_resignations
+	
+2026-10-11 18:00:04.503 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:04.503 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:05.581 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:05.581 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:06.591 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:06.591 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:07.595 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:07.595 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:07.634 UTC [1673] ERROR:  cannot execute DELETE in a read-only transaction
+2026-10-11 18:00:07.634 UTC [1673] STATEMENT:  -- name: LeaderDeleteExpired :execrows
+	DELETE FROM river_leader
+	WHERE expires_at < coalesce($1::timestamptz, now())
+	
+2026-10-11 18:00:08.598 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:08.598 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:08.729 UTC [1673] ERROR:  cannot execute DELETE in a read-only transaction
+2026-10-11 18:00:08.729 UTC [1673] STATEMENT:  -- name: LeaderDeleteExpired :execrows
+	DELETE FROM river_leader
+	WHERE expires_at < coalesce($1::timestamptz, now())
+	
+2026-10-11 18:00:09.619 UTC [1673] ERROR:  cannot execute UPDATE in a read-only transaction
+2026-10-11 18:00:09.619 UTC [1673] STATEMENT:  -- name: JobGetAvailable :many
+	WITH locked_jobs AS (
+	    SELECT
+	        id, args, attempt, attempted_at, attempted_by, created_at, errors, finalized_at, kind, max_attempts, metadata, priority, queue, state, scheduled_at, tags, unique_key, unique_states
+	    FROM
+	        river_job
+	    WHERE
+	        state = 'available'
+	        AND queue = $4::text
+	        AND ($5::text[] IS NULL OR kind = ANY($5::text[]))
+	        AND scheduled_at <= coalesce($1::timestamptz, now())
+	    ORDER BY
+	        priority ASC,
+	        scheduled_at ASC,
+	        id ASC
+	    LIMIT $6::integer
+	    FOR UPDATE
+	    SKIP LOCKED
+	)
+	UPDATE
+	    river_job
+	SET
+	    state = 'running',
+	    attempt = river_job.attempt + 1,
+	    attempted_at = coalesce($1::timestamptz, now()),
+	    attempted_by = array_append(
+	        CASE WHEN array_length(river_job.attempted_by, 1) >= $2::int
+	        -- +2 instead of +1 because Postgres array indexing starts at 1, not 0.
+	        THEN river_job.attempted_by[array_length(river_job.attempted_by, 1) + 2 - $2:]
+	        ELSE river_job.attempted_by
+	        END,
+	        $3::text
+	    )
+	FROM
+	    locked_jobs
+	WHERE
+	    river_job.id = locked_jobs.id
+	RETURNING
+	    river_job.id, river_job.args, river_job.attempt, river_job.attempted_at, river_job.attempted_by, river_job.created_at, river_job.errors, river_job.finalized_at, river_job.kind, river_job.max_attempts, river_job.metadata, river_job.priority, river_job.queue, river_job.state, river_job.scheduled_at, river_job.tags, river_job.unique_key, river_job.unique_states
+	
+2026-10-11 18:00:09.956 UTC [1658] FATAL:  terminating connection due to administrator command
+2026-10-11 18:00:09.956 UTC [1673] FATAL:  terminating connection due to administrator command
+2026-10-11 18:01:21.735 UTC [65] LOG:  checkpoint starting: time
+2026-10-11 18:02:17.280 UTC [65] LOG:  checkpoint complete: wrote 558 buffers (3.4%); 1 WAL file(s) added, 0 removed, 0 recycled; write=55.539 s, sync=0.001 s, total=55.546 s; sync files=267, longest=0.001 s, average=0.001 s; distance=3528 kB, estimate=3528 kB; lsn=0/1D16F48, redo lsn=0/1C909D0

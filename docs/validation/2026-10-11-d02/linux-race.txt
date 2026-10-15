@@ -1,0 +1,18 @@
+?   	github.com/complynx/clx-scripter/cmd/clx-scripter	[no test files]
+ok  	github.com/complynx/clx-scripter/integration	(cached)
+ok  	github.com/complynx/clx-scripter/internal/api	(cached)
+ok  	github.com/complynx/clx-scripter/internal/app	(cached)
+ok  	github.com/complynx/clx-scripter/internal/artifacts	(cached)
+ok  	github.com/complynx/clx-scripter/internal/config	(cached)
+?   	github.com/complynx/clx-scripter/internal/domain	[no test files]
+ok  	github.com/complynx/clx-scripter/internal/history	(cached)
+ok  	github.com/complynx/clx-scripter/internal/identity	(cached)
+ok  	github.com/complynx/clx-scripter/internal/lifecycle	(cached)
+ok  	github.com/complynx/clx-scripter/internal/modules	(cached)
+ok  	github.com/complynx/clx-scripter/internal/operations	(cached)
+ok  	github.com/complynx/clx-scripter/internal/provider	(cached)
+?   	github.com/complynx/clx-scripter/internal/runs	[no test files]
+ok  	github.com/complynx/clx-scripter/internal/sandbox	(cached)
+ok  	github.com/complynx/clx-scripter/internal/store	25.159s
+?   	github.com/complynx/clx-scripter/internal/store/dbgen	[no test files]
+?   	github.com/complynx/clx-scripter/migrations	[no test files]

@@ -1,0 +1,402 @@
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.58s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.61s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.62s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.69s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.50s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.52s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.54s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.63s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.57s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.59s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.66s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.76s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.57s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.68s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.70s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.77s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.67s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.72s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.73s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.83s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.63s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.66s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.67s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.76s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.56s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.59s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.66s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.75s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.58s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.58s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.59s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.69s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.63s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.66s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.71s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.81s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.72s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.75s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.76s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.91s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.76s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.79s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.81s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.91s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.66s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.67s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.68s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.77s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.59s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.64s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.65s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.74s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.53s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.56s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.57s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.65s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.52s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.54s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.55s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.62s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.50s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.52s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.53s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.60s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.51s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.52s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.53s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.60s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.50s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.51s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.53s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.61s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.53s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.55s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.57s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.65s)
+=== RUN   TestInterruptedStateReadCheckpointsControl
+=== PAUSE TestInterruptedStateReadCheckpointsControl
+=== RUN   TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== PAUSE TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestCancelDuringInferenceCannotBeOverwrittenByLateFinal
+=== CONT  TestInterruptedStateReadCheckpointsControl
+=== RUN   TestInterruptedStateReadCheckpointsControl/cancel
+=== PAUSE TestInterruptedStateReadCheckpointsControl/cancel
+=== RUN   TestInterruptedStateReadCheckpointsControl/pause
+=== PAUSE TestInterruptedStateReadCheckpointsControl/pause
+=== RUN   TestInterruptedStateReadCheckpointsControl/shutdown
+=== PAUSE TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/cancel
+=== CONT  TestInterruptedStateReadCheckpointsControl/shutdown
+=== CONT  TestInterruptedStateReadCheckpointsControl/pause
+--- PASS: TestInterruptedStateReadCheckpointsControl (0.00s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/shutdown (0.49s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/pause (0.51s)
+    --- PASS: TestInterruptedStateReadCheckpointsControl/cancel (0.52s)
+--- PASS: TestCancelDuringInferenceCannotBeOverwrittenByLateFinal (0.60s)
+PASS
+ok  	github.com/complynx/clx-scripter/integration	15.424s

@@ -1,0 +1,23 @@
+package main
+import (
+ _ "github.com/jackc/pgx/v5/pgxpool"
+ _ "github.com/pressly/goose/v3"
+ _ "github.com/danielgtaylor/huma/v2"
+ _ "github.com/danielgtaylor/huma/v2/adapters/humago"
+ _ "github.com/santhosh-tekuri/jsonschema/v6"
+ _ "github.com/zitadel/oidc/v3/pkg/client/rp"
+ _ "github.com/zitadel/oidc/v3/pkg/client/rs"
+ _ "github.com/dop251/goja"
+ _ "github.com/dop251/goja_nodejs/eventloop"
+ _ "github.com/moby/moby/client"
+ _ "go.yaml.in/yaml/v3"
+ _ "github.com/caarlos0/env/v11"
+ _ "github.com/riverqueue/river"
+ _ "github.com/riverqueue/river/riverdriver/riverpgxv5"
+ _ "github.com/stretchr/testify/require"
+ _ "github.com/testcontainers/testcontainers-go/modules/postgres"
+ _ "go.uber.org/goleak"
+ _ "github.com/cenkalti/backoff/v5"
+ _ "github.com/sony/gobreaker/v2"
+)
+func main() {}

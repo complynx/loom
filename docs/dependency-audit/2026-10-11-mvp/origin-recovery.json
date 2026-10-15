@@ -1,0 +1,11 @@
+{
+  "module": "github.com/shopspring/decimal",
+  "version": "v1.4.0",
+  "cached_proxy_origin_hash": "a2e78c6cff3451d68a784428ce443e5a9021a89f",
+  "verified_direct_commit": "a1bdfc355e9c71119322b748c95f7d6b82566e30",
+  "canonical_version_query": "go list -m -json github.com/shopspring/decimal@a1bdfc355e9c71119322b748c95f7d6b82566e30",
+  "direct_download": "GOPROXY=direct; isolated GOMODCACHE; go mod download -json github.com/shopspring/decimal@a1bdfc355e9c71119322b748c95f7d6b82566e30",
+  "cached_proxy_and_direct_module_sum": "h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=",
+  "cached_proxy_and_direct_go_mod_sum": "h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME=",
+  "conclusion": "Stale cached origin metadata; direct pinned source and proxy archive contents match. No content repin."
+}

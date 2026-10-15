@@ -1,0 +1,13 @@
+# Merge into the API configuration. Do not pass provider secrets to the worker.
+file_tools:
+  enabled: true
+  socket: /run/loom-files/processor.sock
+  timeout_ms: 30000
+transcription:
+  enabled: false
+  provider: openai
+  model: gpt-transcribe
+  endpoint: https://api.openai.com/v1/audio/transcriptions
+  api_key: "${CLX_OPENAI_API_KEY}"
+  credits_per_second: 75
+  max_duration_seconds: 300

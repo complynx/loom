@@ -1,0 +1,119 @@
+[
+  {
+    "error": "{\"active_milliseconds\":43,\"disconnect_policy\":\"continue\",\"model_snapshot\":{\"provider\":\"openai\",\"input_cached_microcredits_per_million\":1000000,\"context_tokens\":272000,\"id\":\"qa-model\",\"provider_model\":\"qa-model\",\"efforts\":[\"low\"],\"max_effort\":\"low\",\"max_output_tokens\":4000,\"input_microcredits_per_million\":1000000,\"output_microcredits_per_million\":1000000,\"supports_images\":false},\"settings_snapshot\":{\"run_active_time_seconds\":600,\"regex_pattern_max_chars\":256,\"regex_scan_max_bytes\":1048576,\"regex_deadline_ms\":500,\"run_lifetime_seconds\":604800,\"input_wait_seconds\":86400,\"approval_wait_seconds\":900,\"paused_wait_seconds\":604800,\"history_retention\":{\"mode\":\"duration\",\"days\":365},\"artifact_retention\":{\"mode\":\"duration\",\"days\":365},\"trace_retention\":{\"mode\":\"forever\",\"days\":0},\"external_disclosure\":true,\"models\":[{\"provider\":\"openai\",\"input_cached_microcredits_per_million\":1000000,\"context_tokens\":272000,\"id\":\"qa-model\",\"provider_model\":\"qa-model\",\"efforts\":[\"low\"],\"max_effort\":\"low\",\"max_output_tokens\":4000,\"input_microcredits_per_million\":1000000,\"output_microcredits_per_million\":1000000,\"supports_images\":false}],\"default_model_id\":\"qa-model\",\"default_effort\":\"low\",\"initial_credits\":1000000,\"max_run_microcredits\":1000000,\"active_run_limit\":2,\"history_recent_limit\":100,\"max_steps\":30,\"question_timeout_seconds\":86400,\"version\":2},\"run_id\":\"c21ccf46-64cd-48de-8bd3-2ff79ff5355b\",\"chat_id\":\"9ae5b98e-38cc-4568-a816-cbcdbda0f85e\",\"owner_id\":\"d60a49a0-5706-4dde-a402-3023b3df00df\",\"actor_id\":\"qa-human\",\"org_id\":\"qa-org\",\"status\":\"paused\",\"reason\":\"budget_exhausted\",\"input\":{\"text\":\"QA memory script\"},\"model_id\":\"qa-model\",\"effort\":\"low\",\"interaction\":{\"questions\":\"choices_and_text\",\"approvals\":true},\"auth_session_id\":\"aba7af97-7692-4563-86c7-a5fa4f5ac4c0\",\"max_microcredits\":10000,\"spent_microcredits\":0,\"reserved_microcredits\":0,\"version\":4,\"pause_requested\":false,\"cancel_requested\":false,\"created_at\":\"2026-10-11T17:55:41.689909Z\",\"updated_at\":\"2026-10-11T17:55:41.770808Z\"}",
+    "name": "memory script mutation and fresh micro on next model request",
+    "status": "FAIL"
+  },
+  {
+    "error": "{\"active_milliseconds\":41,\"disconnect_policy\":\"continue\",\"model_snapshot\":{\"provider\":\"openai\",\"input_cached_microcredits_per_million\":1000000,\"context_tokens\":272000,\"id\":\"qa-model\",\"provider_model\":\"qa-model\",\"efforts\":[\"low\"],\"max_effort\":\"low\",\"max_output_tokens\":4000,\"input_microcredits_per_million\":1000000,\"output_microcredits_per_million\":1000000,\"supports_images\":false},\"settings_snapshot\":{\"run_active_time_seconds\":600,\"regex_pattern_max_chars\":256,\"regex_scan_max_bytes\":1048576,\"regex_deadline_ms\":500,\"run_lifetime_seconds\":604800,\"input_wait_seconds\":86400,\"approval_wait_seconds\":900,\"paused_wait_seconds\":604800,\"history_retention\":{\"mode\":\"duration\",\"days\":365},\"artifact_retention\":{\"mode\":\"duration\",\"days\":365},\"trace_retention\":{\"mode\":\"forever\",\"days\":0},\"external_disclosure\":true,\"models\":[{\"provider\":\"openai\",\"input_cached_microcredits_per_million\":1000000,\"context_tokens\":272000,\"id\":\"qa-model\",\"provider_model\":\"qa-model\",\"efforts\":[\"low\"],\"max_effort\":\"low\",\"max_output_tokens\":4000,\"input_microcredits_per_million\":1000000,\"output_microcredits_per_million\":1000000,\"supports_images\":false}],\"default_model_id\":\"qa-model\",\"default_effort\":\"low\",\"initial_credits\":1000000,\"max_run_microcredits\":1000000,\"active_run_limit\":2,\"history_recent_limit\":100,\"max_steps\":30,\"question_timeout_seconds\":86400,\"version\":2},\"run_id\":\"26d4190c-89be-48cd-90fa-60ca12637138\",\"chat_id\":\"f7ad396a-a7a9-4b20-af50-e2429582697f\",\"owner_id\":\"d60a49a0-5706-4dde-a402-3023b3df00df\",\"actor_id\":\"qa-human\",\"org_id\":\"qa-org\",\"status\":\"paused\",\"reason\":\"budget_exhausted\",\"input\":{\"text\":\"QA dynamic module\"},\"model_id\":\"qa-model\",\"effort\":\"low\",\"interaction\":{\"questions\":\"choices_and_text\",\"approvals\":true},\"auth_session_id\":\"3fe90539-7166-49e3-a8f4-638e30bf946a\",\"max_microcredits\":10000,\"spent_microcredits\":0,\"reserved_microcredits\":0,\"version\":4,\"pause_requested\":false,\"cancel_requested\":false,\"created_at\":\"2026-10-11T17:55:41.929507Z\",\"updated_at\":\"2026-10-11T17:55:42.005236Z\"}",
+    "name": "dynamic module and import blob handle raw download",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"218c8f6d-ae03-4149-8aa0-7effb70cbc0f\",\"retryable\":false}}\n",
+    "name": "script builtins search read memory open handles never bytes",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"69ff1d9a-2d87-400b-a932-83f406689541\",\"retryable\":false}}\n",
+    "name": "parallel service reads through separate sandbox workers",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"a01fda76-2b58-4000-93de-00fe8cb10245\",\"retryable\":false}}\n",
+    "name": "client cancellation interrupts executing JS within five seconds",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"f00f16cf-aa6a-465c-94e9-b35ad1aa1a28\",\"retryable\":false}}\n",
+    "name": "question choices and mixed text answer duplicate conflict",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"2186ea47-7770-47c4-a6c2-b2adfe78f528\",\"retryable\":false}}\n",
+    "name": "question text only and none never guess",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"b3488901-c0c0-4ac1-aa05-e67833b9fe0f\",\"retryable\":false}}\n",
+    "name": "idempotency replay conflict and busy chat",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"0ebca47e-2341-4607-b829-0a5d03fec5b4\",\"retryable\":false}}\n",
+    "name": "steering applied between steps",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"fd2f2df2-978f-43d2-8908-3502be2b5b21\",\"retryable\":false}}\n",
+    "name": "pause checkpoint resume and cancellation",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"ed78d381-1197-4721-aeba-742be1c8bcb7\",\"retryable\":false}}\n",
+    "name": "approval lost reply retained volume restart status reconciliation",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"11f95226-2f2c-4674-a446-88401d55ef1b\",\"retryable\":false}}\n",
+    "name": "approval rejection and unavailable approvals never imply consent",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"b2db07d3-cd5e-40b6-a861-5f2950d98066\",\"retryable\":false}}\n",
+    "name": "bounded one-shot wait returns completed durable run",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"47a3cedd-44d1-4c34-92e4-9a453ed9e9c8\",\"retryable\":false}}\n",
+    "name": "read-only user catalog excludes write and denied direct request",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 404 GET /v1/admin/diagnostics/runs/ 404 page not found\n",
+    "name": "diagnostics public permission paging detail and agent functions",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"cc26b7dc-a914-4caa-9623-cb40f45d7db1\",\"retryable\":false}}\n",
+    "name": "previous run context reuse and current micro",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"2657caaf-4ad5-4b35-9009-d5f1e0051a3a\",\"retryable\":false}}\n",
+    "name": "provider short and durable rejection retry zero extra usage",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"fe466c7d-f25b-4a6d-8b84-5ca80b83c084\",\"retryable\":false}}\n",
+    "name": "provider unknown transport is sponsored and ledger charges success only",
+    "status": "FAIL"
+  },
+  {
+    "name": "credit adjustment audited idempotent and denied without rights",
+    "status": "PASS"
+  },
+  {
+    "error": "no SSE events",
+    "name": "SSE initial replay reconnect after cursor and ambiguous cursor denied",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"d2b9ea2e-a580-489c-888b-d2531ee9c0cf\",\"retryable\":false}}\n",
+    "name": "PNG upload raw stream JS handle and direct model attachment capability gate",
+    "status": "FAIL"
+  },
+  {
+    "error": "HTTP 429 POST /v1/runs {\"error\":{\"code\":\"active_run_limit\",\"message\":\"active run limit\",\"request_id\":\"8f72d1f7-0839-49cc-bf03-38e6d9c39d6e\",\"retryable\":false}}\n",
+    "name": "active native compaction durable opaque context and micro preserved",
+    "status": "FAIL"
+  },
+  {
+    "name": "memory delete source note and account clear",
+    "status": "PASS"
+  },
+  {
+    "name": "chat delete soft tombstone",
+    "status": "PASS"
+  }
+]

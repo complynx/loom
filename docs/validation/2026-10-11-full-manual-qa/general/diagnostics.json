@@ -1,0 +1,31 @@
+{
+  "overview": {
+    "generated_at": "2026-10-11T17:57:23.748807763Z",
+    "runs": {
+      "cancelled": 4,
+      "completed": 12,
+      "reconciling": 1
+    },
+    "queue": {
+      "completed": 21
+    },
+    "reserved_microcredits": 10031,
+    "unknown_inference_steps": 1,
+    "unresolved_writes": 1,
+    "platform_attempts": 0,
+    "platform_exposure_microcredits": 0,
+    "oldest_queued_seconds": 0,
+    "oldest_reservation_seconds": 33.643342,
+    "expired_leases": 0
+  },
+  "runtime": {
+    "sampled_at": "2026-10-11T17:57:17.376765284Z",
+    "uptime_seconds": 126.520872444,
+    "dependencies": {
+      "artifact_volume": true,
+      "database": true,
+      "discovery": true,
+      "sandbox": true
+    }
+  }
+}

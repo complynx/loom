@@ -1,0 +1,20 @@
+[
+  {
+    "detail": {
+      "body": "{\"external_disclosure_allowed\":true,\"artifact_id\":\"4d2066284a248e6557665af3a26fa936\",\"owner_id\":\"1ddbd7a0-22ec-4200-8770-397e37c4d709\",\"org_id\":\"qa-org\",\"mime\":\"application/octet-stream\",\"sha256\":\"cb984e84a31fccfbc1b665cc6aaeabb601aa4c960270753855ea90277a05b56e\",\"size\":26,\"created_at\":\"2026-10-11T17:54:23.03994347Z\"}\n",
+      "status": 201
+    },
+    "scenario": "baseline-upload",
+    "passed": true
+  },
+  {
+    "detail": {
+      "metadata_before": "1",
+      "response": 500,
+      "files": [],
+      "metadata_after": "1"
+    },
+    "scenario": "artifact-enospc-cleanup",
+    "passed": false
+  }
+]

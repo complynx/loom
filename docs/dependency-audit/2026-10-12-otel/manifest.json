@@ -1,0 +1,626 @@
+[
+  {
+    "module": "cel.dev/expr",
+    "version": "v0.25.2",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "cb51b4176013ad19bd00df94be273c322916a620",
+    "repository": "https://github.com/google/cel-spec"
+  },
+  {
+    "module": "cloud.google.com/go/auth",
+    "version": "v0.18.2",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "75e6b63c37d2b97010a2ccaa20239cae237e5d10",
+    "repository": "https://github.com/googleapis/google-cloud-go"
+  },
+  {
+    "module": "cloud.google.com/go/compute/metadata",
+    "version": "v0.9.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "7b2365446764b0bba37198a55644954b437bddd0",
+    "repository": "https://github.com/googleapis/google-cloud-go"
+  },
+  {
+    "module": "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp",
+    "version": "v1.33.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "059f723244364dd67f86051b38d67c66094651bd",
+    "repository": "https://github.com/GoogleCloudPlatform/opentelemetry-operations-go"
+  },
+  {
+    "module": "github.com/apapsch/go-jsonmerge/v2",
+    "version": "v2.0.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "90b01458c2af82553f17c56a431386c57a8a569f",
+    "repository": "https://github.com/apapsch/go-jsonmerge"
+  },
+  {
+    "module": "github.com/cenkalti/backoff/v5",
+    "version": "v5.0.3",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "7cad66a637c4ffff09d0795608116ddcc7eb1769",
+    "repository": "https://github.com/cenkalti/backoff"
+  },
+  {
+    "module": "github.com/cncf/xds/go",
+    "version": "v0.0.0-20260202195803-dba9d589def2",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "dba9d589def2cd10099a3a64887d859188c2f57a",
+    "repository": "https://github.com/cncf/xds"
+  },
+  {
+    "module": "github.com/envoyproxy/go-control-plane",
+    "version": "v0.14.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "71637ad69bbc5f51fbb2562e612a4365292804a5",
+    "repository": "https://github.com/envoyproxy/go-control-plane"
+  },
+  {
+    "module": "github.com/envoyproxy/go-control-plane/envoy",
+    "version": "v1.37.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "004b9ec70a4696c9fac559adea646dab4ebf62b7",
+    "repository": "https://github.com/envoyproxy/go-control-plane"
+  },
+  {
+    "module": "github.com/envoyproxy/go-control-plane/ratelimit",
+    "version": "v0.1.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "2cdf9fc1e8a104e69a6487721514041c335d86f6",
+    "repository": "https://github.com/envoyproxy/go-control-plane"
+  },
+  {
+    "module": "github.com/envoyproxy/protoc-gen-validate",
+    "version": "v1.3.3",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "92b9a7df69ca9f71bfc492f7a90adf4d36eab569",
+    "repository": "https://github.com/envoyproxy/protoc-gen-validate"
+  },
+  {
+    "module": "github.com/go-openapi/analysis",
+    "version": "v0.25.5",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "f65b57650f15860b5c7225e5391d194b6241dd9b",
+    "repository": "https://github.com/go-openapi/analysis"
+  },
+  {
+    "module": "github.com/go-openapi/errors",
+    "version": "v0.22.8",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "a6770388153a83b5e93288d66979a29883828211",
+    "repository": "https://github.com/go-openapi/errors"
+  },
+  {
+    "module": "github.com/go-openapi/jsonpointer",
+    "version": "v1.0.0",
+    "notices": [
+      "LICENSE",
+      "NOTICE"
+    ],
+    "commit": "94e86086395062d3094c09c01aea3592df0fcba3",
+    "repository": "https://github.com/go-openapi/jsonpointer"
+  },
+  {
+    "module": "github.com/go-openapi/jsonreference",
+    "version": "v1.0.0",
+    "notices": [
+      "LICENSE",
+      "NOTICE"
+    ],
+    "commit": "edb350b0a13c936c03de055a3483ea334a50478c",
+    "repository": "https://github.com/go-openapi/jsonreference"
+  },
+  {
+    "module": "github.com/go-openapi/loads",
+    "version": "v0.25.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "8538331e9bf306361c9549b885844c978c1c21a5",
+    "repository": "https://github.com/go-openapi/loads"
+  },
+  {
+    "module": "github.com/go-openapi/runtime",
+    "version": "v0.33.0",
+    "notices": [
+      "LICENSE",
+      "NOTICE"
+    ],
+    "commit": "accfcf5c480ab8f04b693164b8d65449bb2273b5",
+    "repository": "https://github.com/go-openapi/runtime"
+  },
+  {
+    "module": "github.com/go-openapi/runtime/server-middleware",
+    "version": "v0.30.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "644458839dffd601a7e1790861a36da72f013346",
+    "repository": "https://github.com/go-openapi/runtime"
+  },
+  {
+    "module": "github.com/go-openapi/spec",
+    "version": "v0.22.9",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e682f665cd0b25eee1bcc3ec42d939d7b037a1f1",
+    "repository": "https://github.com/go-openapi/spec"
+  },
+  {
+    "module": "github.com/go-openapi/strfmt",
+    "version": "v0.27.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "836482188ed4ce2c1b9207af61ac5c7bae328155",
+    "repository": "https://github.com/go-openapi/strfmt"
+  },
+  {
+    "module": "github.com/go-openapi/swag",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/cmdutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/conv",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/fileutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/jsonutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/loading",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/mangling",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/netutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/pools",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/stringutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/typeutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/swag/yamlutils",
+    "version": "v0.28.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "e3df19940ebd798e4bc6441542427b26484506d9",
+    "repository": "https://github.com/go-openapi/swag"
+  },
+  {
+    "module": "github.com/go-openapi/validate",
+    "version": "v0.26.1",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "9b81767db56f7b5b2f868bcb884d9dc07e6a7da0",
+    "repository": "https://github.com/go-openapi/validate"
+  },
+  {
+    "module": "github.com/go-viper/mapstructure/v2",
+    "version": "v2.5.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "9aa3f77c68e2a56222ea436c1bfa631f1b1072d5",
+    "repository": "https://github.com/go-viper/mapstructure"
+  },
+  {
+    "module": "github.com/golang/glog",
+    "version": "v1.2.5",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "2b790ef78571cd58d29ce909a8d4e3f71cc4c47e",
+    "repository": "https://github.com/golang/glog"
+  },
+  {
+    "module": "github.com/golang/protobuf",
+    "version": "v1.5.4",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "75de7c059e36b64f01d0dd234ff2fff404ec3374",
+    "repository": "https://github.com/golang/protobuf"
+  },
+  {
+    "module": "github.com/google/go-cmp",
+    "version": "v0.7.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "9b12f366a942ebc7254abc7f32ca05068b455fb7",
+    "repository": "https://github.com/google/go-cmp"
+  },
+  {
+    "module": "github.com/google/s2a-go",
+    "version": "v0.1.9",
+    "notices": [
+      "LICENSE.md"
+    ],
+    "commit": "b293be1aa7a6e6e4565f9967c093dd412253b267",
+    "repository": "https://github.com/google/s2a-go"
+  },
+  {
+    "module": "github.com/googleapis/enterprise-certificate-proxy",
+    "version": "v0.3.11",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "84fe33f9b5f729c5596077f469ad19751a239a42",
+    "repository": "https://github.com/googleapis/enterprise-certificate-proxy"
+  },
+  {
+    "module": "github.com/googleapis/gax-go/v2",
+    "version": "v2.17.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "f3fb23db5cd85c402dac650b2357356245711508",
+    "repository": "https://github.com/googleapis/gax-go"
+  },
+  {
+    "module": "github.com/grpc-ecosystem/grpc-gateway/v2",
+    "version": "v2.30.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "1debdeabd09134bc7755b9bc85802a7840bae100",
+    "repository": "https://github.com/grpc-ecosystem/grpc-gateway"
+  },
+  {
+    "module": "github.com/kr/pretty",
+    "version": "v0.3.1",
+    "notices": [
+      "License"
+    ],
+    "commit": "3cd153a126da607b78d1762779b1e1054f9889fc",
+    "repository": "https://github.com/kr/pretty"
+  },
+  {
+    "module": "github.com/oapi-codegen/runtime",
+    "version": "v1.6.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "01be2fa2667493dab65b6167f668a3c09a38ab34",
+    "repository": "https://github.com/oapi-codegen/runtime"
+  },
+  {
+    "module": "github.com/oklog/ulid/v2",
+    "version": "v2.1.1",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "96c4edf226ef639c92f96f42c7c2a161ae0e1a66",
+    "repository": "https://github.com/oklog/ulid"
+  },
+  {
+    "module": "github.com/planetscale/vtprotobuf",
+    "version": "v0.6.1-0.20240319094008-0393e58bdf10",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "0393e58bdf106fe0347e554d272a8f2c84d12461",
+    "repository": "https://github.com/planetscale/vtprotobuf"
+  },
+  {
+    "module": "github.com/rogpeppe/fastuuid",
+    "version": "v1.2.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "10c3923834d38e951ae8f627bfec2dc632c5b6cb",
+    "repository": "https://github.com/rogpeppe/fastuuid"
+  },
+  {
+    "module": "github.com/spiffe/go-spiffe/v2",
+    "version": "v2.7.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "76b14bd4140aac9bef74b27a77c81333c47feee1",
+    "repository": "https://github.com/spiffe/go-spiffe"
+  },
+  {
+    "module": "go.opentelemetry.io/contrib/detectors/gcp",
+    "version": "v1.44.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "03b2bcdb54b3dde73c9ff91ae216aec262f6c8f5",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go-contrib"
+  },
+  {
+    "module": "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
+    "version": "v0.70.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "c8a87a60ba1b3374fd16df11fc3eeae6c41abbc9",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go-contrib"
+  },
+  {
+    "module": "go.opentelemetry.io/otel",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/exporters/stdout/stdouttrace",
+    "version": "v1.45.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "93a693edeed0e07ce5ebd1dfe67af42d1e2055d8",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/log",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/metric",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/metric/x",
+    "version": "v0.69.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/sdk",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/sdk/metric",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/otel/trace",
+    "version": "v1.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "66cfc9520e205b7d450183532772401bc2b6674c",
+    "repository": "https://github.com/open-telemetry/opentelemetry-go"
+  },
+  {
+    "module": "go.opentelemetry.io/proto/otlp",
+    "version": "v1.11.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "bc625d6e040020737ab65c675c87e03bc841fd60",
+    "repository": "https://github.com/open-telemetry/opentelemetry-proto-go"
+  },
+  {
+    "module": "golang.org/x/crypto",
+    "version": "v0.58.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "8fdf07b3114278fb3b78c1cf1814e08bd851eb4c",
+    "repository": "https://go.googlesource.com/crypto"
+  },
+  {
+    "module": "golang.org/x/net",
+    "version": "v0.61.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "c1d31df183e51b1075a2fd670d6f6f4efb871773",
+    "repository": "https://go.googlesource.com/net"
+  },
+  {
+    "module": "golang.org/x/oauth2",
+    "version": "v0.36.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "4d954e69a88d9e1ccb8439f8d5b6cbef230c4ef9",
+    "repository": "https://go.googlesource.com/oauth2"
+  },
+  {
+    "module": "golang.org/x/sys",
+    "version": "v0.49.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "b6b8557e8e2974925aec7a136ba0e323eedc5f43",
+    "repository": "https://go.googlesource.com/sys"
+  },
+  {
+    "module": "golang.org/x/term",
+    "version": "v0.47.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "0851034afad912733699827b3bb94436f059797f",
+    "repository": "https://go.googlesource.com/term"
+  },
+  {
+    "module": "gonum.org/v1/gonum",
+    "version": "v0.17.0",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "fc402bc485e3a92f8d4f1f0ee5a49e2edf232ed2",
+    "repository": "https://github.com/gonum/gonum"
+  },
+  {
+    "module": "google.golang.org/genproto/googleapis/api",
+    "version": "v0.0.0-20260928230214-8a89bd6388cc",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "8a89bd6388cc9f960fc7076f7e2a43f96ad592e9",
+    "repository": "https://github.com/googleapis/go-genproto"
+  },
+  {
+    "module": "google.golang.org/genproto/googleapis/rpc",
+    "version": "v0.0.0-20260928230214-8a89bd6388cc",
+    "notices": [
+      "LICENSE"
+    ],
+    "commit": "8a89bd6388cc9f960fc7076f7e2a43f96ad592e9",
+    "repository": "https://github.com/googleapis/go-genproto"
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "status": "PASS",
+  "pending_run_id": "3138aaf3-33b5-49d2-bcab-2640aafc7e91",
+  "post_snapshot_write_run_id": "37a640b0-68f6-44b1-9a54-2245d853b665",
+  "source_spent": 110,
+  "restored_reserve": 9997,
+  "recovery_readyz": 503,
+  "blocked_routes": {
+    "/v1/chats/default": 503,
+    "/v1/runs/3138aaf3-33b5-49d2-bcab-2640aafc7e91/events": 503,
+    "/v1/runs": 503,
+    "/v1/runs/3138aaf3-33b5-49d2-bcab-2640aafc7e91/resume": 503,
+    "/v1/admin/settings": 503,
+    "/v1/artifacts": 503
+  },
+  "provider_requests_unchanged": 11,
+  "external_effect_state_unchanged": true,
+  "post_snapshot_write_absent_restored_db": true,
+  "blob_inventory_sha256": "4031ca244d869de7e715e212aaa68f51b47967f51147da2e01beb5588e660d4d",
+  "blob_file_count": 4,
+  "snapshot_sha256": "2010cde359b663f5958b80de0999f0de43fe74def3401e1872c321de98b40f97",
+  "restored_pending_step": {
+    "id": "50d8a6fe-8d50-42c5-aaac-a4924eccd55c",
+    "kind": "model",
+    "state": "pending",
+    "reserve_microcredits": 9997,
+    "created_at": "2026-10-12T11:29:55.253985Z",
+    "usage": {
+      "cached_input_tokens": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "microcredits": 0
+    }
+  },
+  "running_cancel_preserves_reserve": true,
+  "image": "sha256:03ad7858cd47033fd5cdae28ed93017d9697d1921c6730ff4bb911c01c9deb49"
+}

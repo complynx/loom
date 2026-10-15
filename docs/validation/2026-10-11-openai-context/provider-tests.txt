@@ -1,0 +1,11 @@
+--- FAIL: TestManualQAProviderUsesProductionAccounting (5.17s)
+    development_provider_test.go:37: 
+        	Error Trace:	/src/integration/development_provider_test.go:37
+        	Error:      	Condition never satisfied
+        	Test:       	TestManualQAProviderUsesProductionAccounting
+FAIL
+FAIL	github.com/complynx/clx-scripter/integration	12.054s
+ok  	github.com/complynx/clx-scripter/internal/provider	2.336s
+ok  	github.com/complynx/clx-scripter/internal/config	1.069s
+ok  	github.com/complynx/clx-scripter/internal/app	7.077s
+FAIL

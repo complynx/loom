@@ -1,0 +1,84 @@
+# Copy into server_configs/configs/loom. Read docs/server-rollout.md first.
+# CLX_IMAGE must be complynx/loom@sha256:<approved release digest>.
+name: loom
+x-runtime: &runtime
+  image: ${CLX_IMAGE:?Set an approved immutable image digest}
+  platform: linux/amd64
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  migrate:
+    <<: *runtime
+    profiles: [migration]
+    command: [migrate]
+    env_file: [../../data/loom/migration.env]
+    networks: [traefik-net]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    pids_limit: 32
+    mem_limit: 256m
+  docker-api-proxy:
+    <<: *runtime
+    user: "0:0"
+    command: [docker-proxy, --listen, ":2375", --socket, /var/run/docker.sock]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    networks: [discovery-proxy]
+    pids_limit: 16
+    mem_limit: 64m
+    cpus: 0.5
+    stop_grace_period: 2s
+    restart: unless-stopped
+  sandbox:
+    <<: *runtime
+    command: [sandbox-supervisor, --socket, /run/clx-sandbox/sandbox.sock, --max-workers, "4", --worker-executable, /usr/local/bin/loom, --cleanup-timeout, 100ms]
+    network_mode: none
+    volumes: ["sandbox-socket:/run/clx-sandbox"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    # Include supervisor and Go runtime threads for all four workers.
+    pids_limit: 128
+    mem_limit: 128m
+    cpus: 1.0
+    stop_grace_period: 6s
+    restart: unless-stopped
+  api:
+    <<: *runtime
+    command: [serve]
+    environment: {CLX_CONFIG: /etc/clx/config.yaml}
+    env_file: [../../data/loom/api.env]
+    volumes:
+      - ../../data/loom/config.yaml:/etc/clx/config.yaml:ro
+      - ../../data/loom/keys/key-v1:/run/secrets/clx-auth-key:ro
+      - ../../data/loom/artifacts:/data/artifacts
+      - sandbox-socket:/run/clx-sandbox:ro
+    ports: ["127.0.0.1:58280:8080"]
+    expose: ["8080", "9090"]
+    networks:
+      traefik-net: {}
+      discovery-proxy: {}
+      clx-observability: {aliases: [loom]}
+    depends_on:
+      sandbox: {condition: service_started}
+      docker-api-proxy: {condition: service_started}
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 2.0
+    stop_grace_period: 6s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.loom.rule=Host(`${CLX_PUBLIC_HOST:?Set an approved DNS host}`)"
+      - "traefik.http.routers.loom.entrypoints=web"
+      - "traefik.http.routers.loom.tls.certresolver=letsencrypt"
+      - "traefik.http.services.loom.loadbalancer.server.port=8080"
+      - "complynx.docker.rollout-strategy=recreate"
+networks:
+  traefik-net: {external: true}
+  clx-observability: {external: true}
+  discovery-proxy: {internal: true}
+volumes:
+  sandbox-socket: {}

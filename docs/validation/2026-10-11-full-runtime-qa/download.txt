@@ -1,0 +1,1 @@
+Acceptance blob. Original bytes bypass JavaScript.

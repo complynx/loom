@@ -1,0 +1,135 @@
+# Design example, not a deployable configuration. Values require implementation
+# and integration validation. ${NAME} expansion is strict: missing vars fail startup.
+http:
+  listen: ":8080"
+  max_request_bytes: 1048576
+  max_wait_ms: 20000
+  sse_buffer_events: 128
+  disconnect_grace_ms: 5000
+
+database:
+  dsn: "${CLX_DATABASE_DSN}"
+  max_connections: 20
+  statement_timeout_ms: 2000
+  lock_timeout_ms: 500
+
+identity:
+  issuer: "https://id.complynx.net"
+  audience: "${CLX_ZITADEL_AUDIENCE}"
+  client_id: "${CLX_ZITADEL_CLIENT_ID}"
+  client_secret: "${CLX_ZITADEL_CLIENT_SECRET}"
+  refreshable_exchange_enabled: false # Enable only after the installed-version gate.
+  encryption_key_file: "/run/secrets/clx-auth-key"
+  encryption_key_id: "key-v1"
+  # Read-only previous keys during rotation; see docs/session-key-rotation.md.
+  previous_encryption_keys: {}
+  # previous_encryption_keys: {key-v0: /run/secrets/clx-auth-key-v0}
+  permissions_cache_ttl_seconds: 120 # 0 disables; maximum 300. Sensitive writes bypass it.
+  jwks_cache_ttl_seconds: 300
+
+discovery:
+  docker_api: "http://docker-api-proxy:2375"
+  label: "clx.harness.service"
+  allowed_networks: ["agent-net"]
+  poll_seconds: 300
+  freshness_ttl_seconds: 3600
+  max_manifest_bytes: 1048576
+  request_timeout_ms: 3000
+  dynamic_cache_ceiling_seconds: 60
+
+providers:
+  openai:
+    endpoint: "https://api.openai.com/v1"
+    api_key: "${CLX_OPENAI_API_KEY}"
+
+artifacts:
+  ttl_seconds: 86400 # Temporary bytes only; derived files keep the source deadline.
+  root: "/data/artifacts"
+  max_upload_bytes: 20971520
+  quota_per_user_bytes: 1073741824
+
+sandbox:
+  engine_candidate: "goja"
+  max_workers: 4
+  memory_ceiling_bytes: 134217728
+  pids_ceiling: 128
+  script_timeout_ceiling_ms: 30000
+  parallel_rpc_ceiling: 8
+  cleanup_ms: 100
+
+execution:
+  recovery_mode: false
+  provider_retry_attempt_limit: 6
+  provider_retry_window_seconds: 300
+  provider_retry_short_limit: 2
+  provider_retry_short_budget_ms: 3000
+  # Up to two uncertain attempts per run: one recovery, then pause. Zero disables.
+  sponsored_attempt_limit: 2
+  lease_seconds: 15
+  heartbeat_seconds: 3
+  shutdown_target_ms: 1000
+  shutdown_deadline_ms: 5000
+  active_runs_per_user_ceiling: 4
+  active_runs_total_ceiling: 32
+
+# Seeded into the database only when no settings revision exists.
+# An omitted catalog seeds the reviewed latest OpenAI models and USD-based tariffs.
+bootstrap_settings:
+  # OpenAI defaults: gpt-6-luna / medium. Explicit catalogs override the preset.
+  initial_credits: 0
+  max_run_microcredits: 1000000
+  user_active_run_limit: 2
+  run_active_time_seconds: 600
+  run_lifetime_seconds: 604800
+  input_wait_seconds: 86400
+  approval_wait_seconds: 900
+  paused_wait_seconds: 604800
+  script_timeout_ms: 10000
+  parallel_rpc_limit: 4
+  context_input_token_budget: 272000 # Process ceiling; each model may use a lower threshold.
+  output_token_limit: 4000
+  regex_pattern_max_chars: 256
+  regex_scan_max_bytes: 1048576
+  regex_deadline_ms: 500
+  history_retention: {mode: "duration", days: 365}
+  artifact_retention: {mode: "duration", days: 1} # Legacy compatibility field; files use artifacts.ttl_seconds.
+  trace_retention: {mode: "forever"}
+  external_disclosure_default: false
+
+observability:
+  otel:
+    enabled: false
+    endpoint: http://alloy:4318
+    service_name: loom
+    sample_ratio: 0.1
+    timeout_ms: 1000
+    export_interval_ms: 15000
+    max_queue: 512
+    max_batch: 64
+  metrics_listen: ":9090" # Private Docker network only; never publish through Traefik.
+  log_level: "info"
+  log_payloads: false
+
+# Disable to omit vector search from agent tools and reject vector operations.
+search:
+  semantic_enabled: false
+
+# Separate public Zitadel Code/PKCE client; empty settings disable operator login.
+operator:
+  client_id: ""
+  redirect_uri: ""
+
+# Optional private streamed file worker; see docs/file-tools.md.
+file_tools:
+  enabled: false
+  socket: /run/loom-files/processor.sock
+  timeout_ms: 30000
+transcription:
+  enabled: false
+  provider: openai
+  model: gpt-transcribe
+  endpoint: https://api.openai.com/v1/audio/transcriptions
+  # Empty value uses providers.openai.api_key in the API process only.
+  api_key: ""
+  credits_per_second: 75
+  max_duration_seconds: 300

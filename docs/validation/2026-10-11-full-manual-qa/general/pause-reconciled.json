@@ -1,0 +1,8 @@
+{
+  "run_id": "b309d38f-9f12-4164-8ae8-8e07d1193bdf",
+  "status": "paused",
+  "reason": "usage_reconciled",
+  "unresolved_steps": [],
+  "spent_microcredits": 110,
+  "reserved_microcredits": 0
+}

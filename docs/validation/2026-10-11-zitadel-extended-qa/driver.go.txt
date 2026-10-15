@@ -1,0 +1,177 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/complynx/clx-scripter/internal/config"
+	"github.com/complynx/clx-scripter/internal/domain"
+	"github.com/complynx/clx-scripter/internal/identity"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+)
+
+type oauth struct {
+	AccessToken string `json:"access_token"`
+}
+type client struct{ ClientID, ClientSecret string }
+type state struct {
+	Human, Human2, Machine struct{ UserID string }
+	Project                struct{ ID string }
+	App, OIDC, Secret      client
+	Grant                  struct{ UserGrantID string }
+	Org2                   struct{ ID string }
+	Scope                  string
+	User, User2, Service   oauth
+}
+
+const base = "http://localhost:18090"
+
+func main() {
+	ctx := context.Background()
+	dir := "management.local/zitadel-extended-qa/"
+	var s state
+	b, e := os.ReadFile(dir + "state.json")
+	must(e)
+	must(json.Unmarshal(b, &s))
+	pb, e := os.ReadFile(dir + "data/admin.pat")
+	must(e)
+	pat := strings.TrimSpace(string(pb))
+	failures := 0
+	check := func(name string, ok bool) {
+		if ok {
+			fmt.Println("PASS " + name)
+		} else {
+			fmt.Println("FAIL " + name)
+			failures++
+		}
+	}
+	api := func(method, path string, body any) json.RawMessage {
+		bb, _ := json.Marshal(body)
+		r, _ := http.NewRequest(method, base+path, strings.NewReader(string(bb)))
+		r.Header.Set("Authorization", "Bearer "+pat)
+		r.Header.Set("Content-Type", "application/json")
+		resp, e := http.DefaultClient.Do(r)
+		must(e)
+		defer resp.Body.Close()
+		raw, e := io.ReadAll(resp.Body)
+		must(e)
+		if resp.StatusCode != 200 {
+			panic(fmt.Sprintf("stand mutation %s status=%d", path, resp.StatusCode))
+		}
+		return raw
+	}
+	exchange := func(id string) oauth {
+		f := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:token-exchange"}, "subject_token": {id}, "subject_token_type": {"urn:zitadel:params:oauth:token-type:user_id"}, "actor_token": {s.Service.AccessToken}, "actor_token_type": {"urn:ietf:params:oauth:token-type:access_token"}, "requested_token_type": {"urn:ietf:params:oauth:token-type:jwt"}, "scope": {s.Scope}}
+		r, _ := http.NewRequest("POST", base+"/oauth/v2/token", strings.NewReader(f.Encode()))
+		r.SetBasicAuth(s.OIDC.ClientID, s.OIDC.ClientSecret)
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, e := http.DefaultClient.Do(r)
+		must(e)
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			panic(fmt.Sprintf("stand exchange status=%d", resp.StatusCode))
+		}
+		var t oauth
+		must(json.NewDecoder(resp.Body).Decode(&t))
+		return t
+	}
+	cfg := config.Identity{Issuer: base, Audience: s.Project.ID, ClientID: s.App.ClientID, ClientSecret: s.App.ClientSecret, ServiceSubjects: []string{s.Machine.UserID}, RolePermissions: map[string][]string{"qa-user": {"orders.read", "chat.read"}, "qa-service": {"runs.create", "chat.read"}}}
+	binding := func(context.Context, *http.Request, domain.Principal) (identity.Binding, error) {
+		return identity.Binding{Actor: s.Machine.UserID, Permissions: map[string]bool{"runs.create": true, "chat.read": true}}, nil
+	}
+	newAuth := func() *identity.Authenticator { a, e := identity.New(cfg, nil, binding); must(e); return a }
+	a := newAuth()
+	req := func(actor, subject string) *http.Request {
+		r := httptest.NewRequest("GET", "http://harness/v1/chats/default", nil)
+		r.Header.Set("Authorization", "Bearer "+actor)
+		if subject != "" {
+			r.Header.Set("X-Subject-Token", subject)
+		}
+		return r
+	}
+	key := make([]byte, 32)
+	_, e = rand.Read(key)
+	must(e)
+	cipher, e := identity.NewSessionCipherForClient("extended-qa", key, cfg.Audience, cfg.ClientID)
+	must(e)
+	verifyBinding := func(ctx context.Context, p domain.Principal) (identity.Binding, error) { return binding(ctx, nil, p) }
+	human, e := a.Authenticate(ctx, req(s.User.AccessToken, ""))
+	check("baseline human has live assigned role", e == nil && human.Permissions["orders.read"])
+	other, e := a.Authenticate(ctx, req(s.User2.AccessToken, ""))
+	check("second organization token independently authenticates", e == nil && other.Subject == s.Human2.UserID && other.OrgID == s.Org2.ID && other.OrgID != human.OrgID)
+	_, e = a.Authenticate(ctx, req(s.Service.AccessToken, s.User2.AccessToken))
+	check("valid cross-organization delegation rejected", errors.Is(e, identity.ErrUnauthorized))
+	delegated, e := a.Authenticate(ctx, req(s.Service.AccessToken, s.User.AccessToken))
+	must(e)
+	raw, e := cipher.SealRequest(ctx, req(s.Service.AccessToken, s.User.AccessToken), delegated)
+	must(e)
+	api("DELETE", "/management/v1/users/"+s.Human.UserID+"/grants/"+s.Grant.UserGrantID, nil)
+	var fresh domain.Principal
+	for i := 0; i < 10; i++ {
+		fresh, e = a.Authenticate(ctx, req(s.User.AccessToken, ""))
+		if e == nil && !fresh.Permissions["orders.read"] {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	check("already issued JWT loses removed role via live introspection", e == nil && !fresh.Permissions["orders.read"] && !fresh.Permissions["chat.read"])
+	updated, _, e := a.VerifySession(ctx, cipher, delegated, raw, verifyBinding)
+	check("stored delegated session loses removed user module role", e == nil && !updated.Permissions["orders.read"])
+	restore := api("POST", "/management/v1/users/"+s.Human.UserID+"/grants", map[string]any{"projectId": s.Project.ID, "roleKeys": []string{"qa-user"}})
+	var rg struct{ UserGrantID string }
+	must(json.Unmarshal(restore, &rg))
+	s.Grant.UserGrantID = rg.UserGrantID
+	b, e = json.Marshal(s)
+	must(e)
+	must(os.WriteFile(dir+"state.json", b, 0600))
+	freshToken := exchange(s.Human.UserID)
+	fresh, e = a.Authenticate(ctx, req(freshToken.AccessToken, ""))
+	check("restored grant with new credential authorizes role", e == nil && fresh.Permissions["orders.read"])
+	oldSettings := api("GET", "/admin/v1/settings/oidc", nil)
+	var settings struct{ Settings map[string]any }
+	must(json.Unmarshal(oldSettings, &settings))
+	short := map[string]any{"accessTokenLifetime": "5s", "idTokenLifetime": "5s", "refreshTokenIdleExpiration": "3600s", "refreshTokenExpiration": "86400s"}
+	api("PUT", "/admin/v1/settings/oidc", short)
+	shortToken := exchange(s.Human.UserID)
+	api("PUT", "/admin/v1/settings/oidc", settings.Settings)
+	before, e := a.Authenticate(ctx, req(s.Service.AccessToken, shortToken.AccessToken))
+	must(e)
+	expiredRaw, e := cipher.SealRequest(ctx, req(s.Service.AccessToken, shortToken.AccessToken), before)
+	must(e)
+	time.Sleep(6 * time.Second)
+	restarted := newAuth()
+	_, _, e = restarted.VerifySession(ctx, cipher, before, expiredRaw, verifyBinding)
+	check("new authenticator rejects persisted expired real-token session", errors.Is(e, identity.ErrUnauthorized))
+	renewed := exchange(s.Human.UserID)
+	again, e := restarted.Authenticate(ctx, req(s.Service.AccessToken, renewed.AccessToken))
+	check("fresh user credential reauthorizes after session expiration", e == nil && again.Subject == before.Subject)
+	renewedRaw, e := cipher.SealRequest(ctx, req(s.Service.AccessToken, renewed.AccessToken), again)
+	must(e)
+	_, _, e = restarted.VerifySession(ctx, cipher, again, renewedRaw, verifyBinding)
+	check("new sealed session verifies after expiration recovery", e == nil)
+	// Preserve only current ignored fixture state for optional follow-up probes.
+	s.User = renewed
+	b, e = json.Marshal(s)
+	must(e)
+	must(os.WriteFile(dir+"state.json", b, 0600))
+	fmt.Printf("RESULT failures=%d\n", failures)
+	if failures > 0 {
+		os.Exit(1)
+	}
+}
+func must(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+// Written by Codex (gpt-6/Codex desktop)
+// on behalf of Daniel Drizhuk

@@ -1,0 +1,19 @@
+[
+  {
+    "error": "Conversion from JSON failed with error: Additional text encountered after finished reading JSON content: p. Path '', line 1, position 4.",
+    "status": "FAIL",
+    "name": "semantic off removes vector API and agent advertisement"
+  },
+  {
+    "status": "PASS",
+    "name": "Docker polling removes stopped module registration and restores after restart"
+  },
+  {
+    "status": "PASS",
+    "name": "session encryption CLI rotation retains authenticated session"
+  },
+  {
+    "status": "PASS",
+    "name": "logs metrics expose operational labels without fixture bearer secrets"
+  }
+]

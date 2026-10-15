@@ -1,0 +1,87 @@
+name: clx-fullqa-reauth-20261011
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: {POSTGRES_DB: clx, POSTGRES_USER: clx, POSTGRES_PASSWORD: qa-only-disposable}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: {test: [CMD-SHELL, "pg_isready -U clx -d clx"], interval: 2s, timeout: 2s, retries: 30}
+  zitadel:
+    image: ghcr.io/zitadel/zitadel@sha256:f3738fd984131d3f02e386d37fa480d1a30e42b7d4202e2b322f12f7cf556b64
+    command: [start-from-init, --masterkey, "01234567890123456789012345678901", --tlsMode, disabled]
+    environment:
+      ZITADEL_EXTERNALDOMAIN: peers
+      ZITADEL_EXTERNALPORT: 9443
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: qa-only-disposable
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: clx
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: qa-only-disposable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: qa-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: QA Admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2027-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /data/admin.pat
+    volumes: ["./data:/data"]
+    depends_on: {postgres: {condition: service_healthy}}
+  peers:
+    image: alpine:3.24
+    entrypoint: [/qa/peers]
+    ports: ["127.0.0.1:58490:9443"]
+    volumes: ["./peers:/qa/peers:ro", "./:/tls:ro", "./provider-evidence:/evidence"]
+  acceptance-service:
+    image: clx-acceptance-qa:20261011
+    environment: {CLX_QA_STATE_PATH: /data/state.json, CLX_QA_READ_TOKEN: qa-runtime-read, CLX_QA_WRITE_TOKEN: qa-runtime-write}
+    labels: {clx.harness.service: "http://acceptance-service:8090/manifest"}
+    ports: ["127.0.0.1:58491:8090"]
+    volumes: [acceptance-state:/data]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+  migrate:
+    image: clx-scripter:full-review-qa-20261011
+    command: [migrate]
+    environment: {CLX_CONFIG: /etc/clx/config.yaml}
+    volumes: ["./config.yaml:/etc/clx/config.yaml:ro"]
+    depends_on: {postgres: {condition: service_healthy}}
+  docker-api-proxy:
+    image: clx-scripter:full-review-qa-20261011
+    user: "0:0"
+    command: [docker-proxy, --listen, ":2375", --socket, /var/run/docker.sock]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+  sandbox:
+    image: clx-scripter:full-review-qa-20261011
+    command: [sandbox-supervisor, --socket, /run/clx-sandbox/sandbox.sock, --max-workers, "4", --worker-executable, /usr/local/bin/clx-scripter, --cleanup-timeout, 100ms]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 128m
+    volumes: [sandbox-socket:/run/clx-sandbox]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+  api:
+    image: clx-scripter:full-review-qa-20261011
+    command: [serve]
+    environment: {CLX_CONFIG: /etc/clx/config.yaml, SSL_CERT_FILE: /tls/ca.pem}
+    volumes: ["./config.yaml:/etc/clx/config.yaml:ro", "./auth.key:/run/secrets/clx-auth-key:ro", "./ca.pem:/tls/ca.pem:ro", "sandbox-socket:/run/clx-sandbox:ro", "artifacts:/data/artifacts"]
+    ports: ["127.0.0.1:58480:8080"]
+    depends_on: {migrate: {condition: service_completed_successfully}, sandbox: {condition: service_started}, docker-api-proxy: {condition: service_started}, peers: {condition: service_started}, acceptance-service: {condition: service_started}}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+volumes: {pgdata: {}, sandbox-socket: {}, artifacts: {}, acceptance-state: {}}
+networks:
+  default:
+    ipam:
+      config: [{subnet: 10.254.246.0/24}]
+
