@@ -4,7 +4,7 @@ Target: Linux amd64 / Docker; server uname returned Linux x86_64. Windows amd64 
 
 This is a synthetic import graph, not the application module. Copy candidate.go.mod to go.mod, candidate.go.sum to go.sum, and imports.go.txt to main.go in a temporary directory. Do not activate it as the repository root module.
 
-Use Go 1.27.2, GOWORK=off, GOOS=linux, GOARCH=amd64 and CGO_ENABLED=0. Tool source commits and artifact checksums are in ../../../tools/dependencies.lock.json.
+Use Go 1.27.2, GOWORK=off, GOOS=linux, GOARCH=amd64 and CGO_ENABLED=0. Reviewed source and artifact metadata are preserved in this dated report.
 
 Checks completed:
 

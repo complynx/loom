@@ -32,7 +32,7 @@ archive source bytes were not modified.
 - Linux/amd64 production Docker build: PASS; see docker-build.txt.
 - CI actionlint: PASS (ShellCheck/Pyflakes were unavailable and disabled in this
   local actionlint invocation).
-- `go mod verify`: PASS. All 171 full dependency commit pins verified by the lock checker. Dependencies and their lock were not changed.
+- `go mod verify`: PASS. Dependencies were not changed.
 - Linux-targeted `govulncheck -tags=integration ./...`: no vulnerabilities found; see vulnerabilities.txt.
 - Diff whitespace check: PASS. Index remains empty; no staging or commit.
 

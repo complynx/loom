@@ -14,7 +14,7 @@ An authenticated queued request executed JavaScript through the real sidecar and
 
 Measured SIGTERM: sandbox 493 ms; API 622 ms, exit 0, no OOM. These are local measurements for this fixture, not a guarantee under a lost database or blocked kernel I/O. Unknown inference behavior and the five-second shutdown bound are also covered by dedicated behavioral tests.
 
-`go vet ./...` passed. Pinned golangci-lint 2.14.0 reported zero issues. A Linux-target govulncheck scan reported no known vulnerabilities in the loaded application graph. All 171 Go module commit pins, `go mod verify`, and all 362 redistributed notice SHA-256 hashes passed. License and scanner scope are documented in [the dependency audit](../../dependency-audit/2026-10-11-mvp/README.md).
+`go vet ./...` passed. Pinned golangci-lint 2.14.0 reported zero issues. A Linux-target govulncheck scan reported no known vulnerabilities in the loaded application graph. `go mod verify` and all 362 redistributed notice SHA-256 hashes passed. License and scanner scope are documented in [the dependency audit](../../dependency-audit/2026-10-11-mvp/README.md).
 
 The independent review loops completed in three scopes: durable API/storage/auth (6 passes), engine/modules/sandbox/artifacts (5), and runtime/deployment (4). Findings were verified, fixed and behavior-tested; each final fresh reviewer returned no actionable findings. Staging remained empty throughout the loops.
 

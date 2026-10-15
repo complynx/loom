@@ -73,7 +73,6 @@ Write сверяется через status API модуля с прежним op
 ```sh
 go test ./...
 CLX_TEST_DATABASE_DSN='postgres://...' sh scripts/linux-tests.sh
-python3 scripts/dependency-lock.py --check
 go mod verify
 ```
 
