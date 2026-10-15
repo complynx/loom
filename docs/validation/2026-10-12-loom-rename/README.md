@@ -8,7 +8,7 @@ Checks: Go tests with integration tags passed (database scenarios skip without C
 
 Alert fixture initially expected an obsolete unknown-inference annotation. It was aligned with the existing bounded platform-paid recovery description, then passed.
 
-The local sibling server receiver and Alloy mapping were updated to updated-loom, service loom and integrations/loom. The [coordinated patch](../2026-10-12-loom-rename-server.patch) records them; it is not committed/pushed in server_configs or deployed. Publish its receiver before main CI dispatches the renamed event. Docker Hub credentials must authorize complynx/loom.
+The local sibling server receiver and Alloy mapping were updated to updated-loom, service loom and integrations/loom. The coordinated patch is retained in the operator-local configuration pack; it is not committed/pushed in server_configs or deployed. Publish its receiver before main CI dispatches the renamed event. Docker Hub credentials must authorize complynx/loom.
 
 No main push, image publication, production change or data migration occurred.
 

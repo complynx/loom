@@ -19,7 +19,7 @@ Go-модули закреплены каноническими версиями
 - [Ограничения MVP](docs/mvp-limitations.md)
 - [Дальнейший трек разработки](docs/development-track.md)
 - [Запуск, настройка и восстановление MVP](docs/running.md)
-- [Подробное развёртывание на complynx.net](docs/server-rollout.md)
+- [Запуск, миграции и ключи](docs/startup.md)
 - [Review всего кода и итоговые gates](docs/validation/2026-10-11-full-review/README.md)
 - [Личная память пользователя](docs/user-memory.md)
 - [Diagnostics API и панель](docs/diagnostics.md)

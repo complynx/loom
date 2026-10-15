@@ -11,9 +11,10 @@ function harness(search, fetch) {
     if (!elements.has(id)) elements.set(id, {value:"", disabled:false, tBodies:[{replaceChildren(){}, append(){}}], addEventListener(name, callback){this[name] = callback;}});
     return elements.get(id);
   };
-  const context = vm.createContext({document:{getElementById:element, createElement:()=>new Node()}, Node, window:{location:{search,assign(){}}}, history:{replaceState(){}}, URLSearchParams, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, fetch});
+  const destinations = [];
+  const context = vm.createContext({document:{getElementById:element, createElement:()=>new Node()}, Node, window:{location:{search,assign(path){destinations.push(path);}}}, history:{replaceState(){}}, URLSearchParams, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, fetch});
   vm.runInContext(source, context);
-  return {context, element};
+  return {context, element, destinations};
 }
 async function disconnectDuringLogin() {
   let release;
@@ -74,4 +75,29 @@ async function paginationAndFilter() {
   element("disconnect").click();
   assert.equal(element("state").disabled,false);
 }
-(async()=>{await disconnectDuringLogin();await disconnectDuringConfiguration();await paginationAndFilter();console.log("PASS: pending login/config disconnect, page-preserving refresh, filter locking and cursor reset.");})().catch(error=>{console.error(error);process.exitCode=1;});
+async function proxyLoginAndRevocation(redirect = false) {
+  const paths = [];
+  let denied = false;
+  const {context,element,destinations} = harness("", async (path, options) => {
+    if (path.endsWith("/config")) return {ok:true,json:async()=>({enabled:true,proxy:true})};
+    paths.push(path);
+    assert.match(path, /^\/admin\/api\/diagnostics/);
+    assert.equal(options.credentials, "same-origin");
+    assert.equal(options.redirect, "manual");
+    assert.equal(options.headers.Authorization, undefined);
+    if (denied) return redirect ? {ok:false,type:"opaqueredirect",status:0} : {ok:false,status:403};
+    return {ok:true,json:async()=>path.includes("/runs?") ? {items:[]} : {overview:{},runtime:{dependencies:{}}}};
+  });
+  await tick();
+  assert.equal(vm.runInContext("token", context), "");
+  assert.equal(element("refresh").disabled, false);
+  assert.equal(paths.length, 2);
+  denied = true;
+  await vm.runInContext("refresh()", context);
+  assert.equal(element("refresh").disabled, true);
+  assert.match(element("notice").textContent, redirect ? /SSO sign-in required/ : /Authorization denied/);
+  element("login").click();
+  assert.deepEqual(destinations, ["/admin"]);
+  element("disconnect").click();
+}
+(async()=>{await disconnectDuringLogin();await disconnectDuringConfiguration();await paginationAndFilter();await proxyLoginAndRevocation();await proxyLoginAndRevocation(true);console.log("PASS: PKCE races, pagination, proxy cookie requests without tokens, revocation, expired-SSO redirects and reconnect.");})().catch(error=>{console.error(error);process.exitCode=1;});

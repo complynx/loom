@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -33,6 +34,7 @@ type HTTP struct {
 	DisconnectGraceMS int    `yaml:"disconnect_grace_ms"`
 }
 type Database struct {
+	MigrateOnStart     bool   `yaml:"migrate_on_start"`
 	DSN                string `yaml:"dsn"`
 	MaxConnections     int32  `yaml:"max_connections"`
 	StatementTimeoutMS int    `yaml:"statement_timeout_ms"`
@@ -44,6 +46,10 @@ type Identity struct {
 	Audience                   string              `yaml:"audience"`
 	ClientID                   string              `yaml:"client_id"`
 	ClientSecret               string              `yaml:"client_secret"`
+	ClientKeyBase64            string              `yaml:"client_key_base64"             json:"-"`
+	ClientKeyFile              string              `yaml:"client_key_file"`
+	ClientKeyID                string              `yaml:"-"                             json:"-"`
+	ClientPrivateKey           *rsa.PrivateKey     `yaml:"-"                             json:"-"`
 	RefreshableExchangeEnabled bool                `yaml:"refreshable_exchange_enabled"`
 	EncryptionKeyFile          string              `yaml:"encryption_key_file"`
 	EncryptionKeyID            string              `yaml:"encryption_key_id"`
@@ -240,6 +246,7 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	strict := yaml.NewDecoder(bytes.NewReader(expanded))
 	strict.KnownFields(true)
 	c := Config{
+		Database:      Database{MigrateOnStart: true},
 		Identity:      Identity{PermissionsCacheTTLSeconds: defaultPermissionsCacheTTLSeconds},
 		Artifacts:     Artifacts{TTLSeconds: defaultArtifactTTLSeconds},
 		Observability: Observability{OTel: OTel{SampleRatio: DefaultOTelSampleRatio}},
@@ -257,6 +264,10 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	applyOpenAIDefaults(&c)
 	applyFileDefaults(&c)
 	c.Observability.OTel.ApplyDefaults()
+	c.Identity, e = c.Identity.ResolveCredentials()
+	if e != nil {
+		return Config{}, e
+	}
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
@@ -275,7 +286,7 @@ func (c Config) Validate() error {
 }
 
 func (c Config) validateTrust() error {
-	if err := c.Operator.Validate(); err != nil {
+	if err := c.validateOperator(); err != nil {
 		return err
 	}
 	if c.Sandbox.EngineCandidate != "" && c.Sandbox.EngineCandidate != "goja" {
@@ -293,7 +304,7 @@ func (c Config) validateTrust() error {
 		return errors.New("http.listen and database.dsn required")
 	}
 	if c.Identity.Issuer == "" || c.Identity.Audience == "" || c.Identity.ClientID == "" ||
-		c.Identity.ClientSecret == "" {
+		(c.Identity.ClientSecret == "" && c.Identity.ClientPrivateKey == nil) {
 		return errors.New("identity trust roots and introspection credentials required")
 	}
 	if e := validateURL(c.Identity.Issuer); e != nil {

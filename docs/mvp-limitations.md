@@ -1,3 +1,7 @@
+Proxy SSO panel: [local checks and remaining target-IAM acceptance](validation/2026-10-15-proxy-sso/README.md).
+
+Automatic startup: [local acceptance and unverified deployment boundaries](validation/2026-10-15-automatic-startup/README.md).
+
 Temporary-file acceptance: [8 groups PASS](validation/2026-10-12-temporary-files/README.md); full Linux race and Golden lint PASS; 2-pass independent review closed.
 
 Temporary-file policy supersedes former long artifact retention. Default TTL is 24 hours; raw files are not included in long-term backups. Expiry denies access immediately; minute-based physical collection may be delayed by database/disk outages or recovery mode. Metadata, excerpts in chat history, and financial receipts remain independent of file bytes. Source services own durable originals. Service-backed references with `fetch_method` recover the exact version for agent tools and initial attachments within the same run. Raw uploads, derived outputs without a refetch contract and legacy imports cannot recover automatically. See [file contract](file-tools.md).

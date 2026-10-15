@@ -8,6 +8,7 @@ http:
   disconnect_grace_ms: 5000
 
 database:
+  migrate_on_start: true # Apply schema before the API and queue workers start.
   dsn: "${CLX_DATABASE_DSN}"
   max_connections: 20
   statement_timeout_ms: 2000
@@ -17,6 +18,7 @@ identity:
   issuer: "https://id.complynx.net"
   audience: "${CLX_ZITADEL_AUDIENCE}"
   client_id: "${CLX_ZITADEL_CLIENT_ID}"
+  # Alternative: omit client_id/client_secret and use client_key_base64: "${CLX_ZITADEL_CLIENT_KEY_B64}"
   client_secret: "${CLX_ZITADEL_CLIENT_SECRET}"
   refreshable_exchange_enabled: false # Enable only after the installed-version gate.
   encryption_key_file: "/run/secrets/clx-auth-key"

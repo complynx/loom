@@ -9,6 +9,7 @@ http:
   disconnect_grace_ms: 5000
 
 database:
+  migrate_on_start: true # Apply schema before the API and queue workers start.
   dsn: "${CLX_DATABASE_DSN}"
   max_connections: 20
   statement_timeout_ms: 2000
@@ -18,6 +19,7 @@ identity:
   issuer: "${CLX_ZITADEL_ISSUER}"
   audience: "${CLX_ZITADEL_AUDIENCE}"
   client_id: "${CLX_ZITADEL_CLIENT_ID}"
+  # Alternative: omit client_id/client_secret and use client_key_base64: "${CLX_ZITADEL_CLIENT_KEY_B64}"
   client_secret: "${CLX_ZITADEL_CLIENT_SECRET}"
   admin_organization_id: "${CLX_ADMIN_ORGANIZATION_ID}"
   # Optional rights require an explicit operator decision: chat.delete for owners,
@@ -110,7 +112,8 @@ observability:
 search:
   semantic_enabled: false
 
-# Separate public Zitadel Code/PKCE client; empty settings disable operator login.
+# Choose proxy SSO or a separate public PKCE client; see docs/operator-login.md.
 operator:
+  # proxy_origin: https://panel.example # Leave client_id/redirect_uri empty in proxy mode.
   client_id: ""
   redirect_uri: ""

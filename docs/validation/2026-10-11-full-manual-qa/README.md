@@ -26,7 +26,7 @@ First-pass driver mistakes and invalid fixture expectations remain in each lane.
 - Host OOM, inode exhaustion, physical filesystem power-loss durability, WAL PANIC recovery, active-inference shutdown during ENOSPC, sustained load/fairness and multi-replica operation were not exercised here.
 - Production issuer/client setup, service adapter, remote CI, monitoring delivery, permissions, backup/restore/PITR and pilot are separate gates. There is no global recovery barrier for restored database state behind external effects.
 
-The [whole-code review evidence](../2026-10-11-full-review/README.md) records final Windows integration, Linux race, Golden and image build passes. Reviewed source hashes remain unchanged except documentation. Final documentation link check covered 179 relative links with no missing files; whitespace check passed and the Git index remained empty. [Limitations](../../mvp-limitations.md), [track](../../development-track.md), and [server rollout](../../server-rollout.md) describe the remaining work.
+The [whole-code review evidence](../2026-10-11-full-review/README.md) records final Windows integration, Linux race, Golden and image build passes. Reviewed source hashes remain unchanged except documentation. Final documentation link check covered 179 relative links with no missing files; whitespace check passed and the Git index remained empty. [Limitations](../../mvp-limitations.md), [track](../../development-track.md), and [startup contract](../../startup.md) describe the remaining work.
 
 ## Retained isolated stands
 

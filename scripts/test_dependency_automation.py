@@ -40,7 +40,7 @@ class AuthorityTests(unittest.TestCase):
         user = pr()
         user["user"]["login"] = "someone"
         cases.append((user, ["go.mod"]))
-        cases.extend((pr(), ["go.mod", path]) for path in ("scripts/dependency-lock.py", ".github/workflows/ci.yml", "docs/dependency-audit/current/../../scripts/evil.py", "/go.sum"))
+        cases.extend((pr(), ["go.mod", path]) for path in ("scripts/dependency-lock.py", ".github/workflows/ci.yml", "docs/dependency-audit/current/manifest.json", "docs/dependency-audit/current/../../scripts/evil.py", "/go.sum"))
         for candidate, paths in cases:
             with self.subTest(paths=paths, author=candidate["user"]):
                 with self.assertRaises(ValueError):
@@ -148,22 +148,18 @@ class RefreshFlowTests(unittest.TestCase):
             self.prepare()
         self.assertEqual((self.root / "go.mod").read_bytes(), before)
 
-    def test_stale_pr_notices_are_removed_even_when_absent_from_base(self):
+    def test_pin_refresh_preserves_manual_license_snapshot_in_pr_tree(self):
         self.prepare()
-        restored = "docs/dependency-audit/current/notices/lib/LICENSE"
-        file = self.root / restored
+        notice = "docs/dependency-audit/current/notices/lib/LICENSE"
+        file = self.root / notice
         file.parent.mkdir(parents=True)
-        file.write_bytes(b"reviewed base notice")
-        self.previous_tree = [{"path": "docs/dependency-audit/current/notices/stale/LICENSE", "type": "blob"}, {"path": restored, "type": "blob"}]
-        # Neither notice differs from the trusted base checkout.
+        file.write_bytes(b"older reviewed snapshot")
+        self.previous_tree = [{"path": notice, "type": "blob"}]
         with patch.object(refresh.subprocess, "check_output", return_value=b""):
             refresh.publish()
-        tree = next(body["tree"] for method, path, body in self.calls if method == "POST" and path.endswith("/git/trees"))
-        removed = next(item for item in tree if item["path"].endswith("stale/LICENSE"))
-        self.assertIsNone(removed["sha"])
-        self.assertTrue(any(item["path"] == restored and item["sha"] for item in tree))
-        uploaded = [base64.b64decode(body["content"]) for method, path, body in self.calls if method == "POST" and path.endswith("/git/blobs")]
-        self.assertIn(b"reviewed base notice", uploaded)
+        updated = next(body for method, path, body in self.calls if method == "POST" and path.endswith("/git/trees"))
+        self.assertEqual(updated["base_tree"], "old-tree")
+        self.assertFalse(any(item["path"].startswith("docs/") for item in updated["tree"]))
 
 
 class AuditTests(unittest.TestCase):

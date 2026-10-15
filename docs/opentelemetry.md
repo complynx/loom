@@ -25,7 +25,7 @@ Trace export uses a bounded nonblocking batch queue; a full queue drops spans. E
 
 ## Server rollout
 
-The server's existing Alloy configuration does not have an OTLP receiver. `deploy/server/alloy-otel.alloy` is a prepared snippet, not an applied production change. Integrate it with `server_configs/configs/alloy/config.alloy`, select a trace backend, and verify the existing Prometheus remote-write component label. Keep port 4318 on the private Docker network. Do not publish the receiver through Traefik. Set `LOOM_TRACE_ENDPOINT` on Alloy to the trace backend base origin, with collector-side TLS/authentication as required. Connect Loom and Alloy to the same private network, then enable the configuration above.
+Configure a private OTLP HTTP receiver in your collector and select a trace backend with collector-side TLS/authentication. Keep port 4318 on a private network shared with Loom. Do not expose it through the public ingress. Collector configuration is maintained in the operator deployment repository.
 
 Check that a request produces a route-pattern trace and correlated JSON log. Check OTLP operation metrics separately from the existing `clx_*` scrape metrics. Stop the collector temporarily and verify that API requests and process shutdown remain responsive. Set `enabled: false` and restart Loom to disable export.
 
