@@ -16,12 +16,13 @@ import (
 )
 
 const (
-	maxShutdownDeadlineMS        = 5000
-	heartbeatLeaseFactor         = 2
-	maxJWKSCacheTTLSeconds       = 3600
-	encryptionKeyBytes           = 32
-	defaultSponsoredAttemptLimit = 2
-	maxSponsoredAttemptLimit     = 8
+	defaultPermissionsCacheTTLSeconds = 120
+	maxShutdownDeadlineMS             = 5000
+	heartbeatLeaseFactor              = 2
+	maxJWKSCacheTTLSeconds            = 3600
+	encryptionKeyBytes                = 32
+	defaultSponsoredAttemptLimit      = 2
+	maxSponsoredAttemptLimit          = 8
 )
 
 type HTTP struct {
@@ -239,6 +240,7 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	strict := yaml.NewDecoder(bytes.NewReader(expanded))
 	strict.KnownFields(true)
 	c := Config{
+		Identity:      Identity{PermissionsCacheTTLSeconds: defaultPermissionsCacheTTLSeconds},
 		Artifacts:     Artifacts{TTLSeconds: defaultArtifactTTLSeconds},
 		Observability: Observability{OTel: OTel{SampleRatio: DefaultOTelSampleRatio}},
 		Execution: Execution{
@@ -334,6 +336,9 @@ func validateSponsoredAttempts(limit int) error {
 }
 
 func (c Config) validateLimits() error {
+	if c.Identity.PermissionsCacheTTLSeconds < 0 || c.Identity.PermissionsCacheTTLSeconds > 300 {
+		return errors.New("permissions cache TTL must be within 0..300 seconds")
+	}
 	if c.Artifacts.TTLSeconds < 0 || c.Artifacts.TTLSeconds > 604800 {
 		return errors.New("artifact TTL must be between 1 and 604800 seconds; zero uses 86400")
 	}

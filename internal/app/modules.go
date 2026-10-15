@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
 	"github.com/complynx/loom/internal/modules"
 	"github.com/complynx/loom/internal/operations"
 	"github.com/complynx/loom/internal/provider"
@@ -81,6 +82,7 @@ func (b *ModuleBridge) Call(
 	_ string,
 	call provider.Call,
 ) (json.RawMessage, *domain.Approval, error) {
+	ctx = identity.RequireFresh(ctx)
 	var args struct {
 		Module    string          `json:"module"`
 		Method    string          `json:"method"`
@@ -109,7 +111,7 @@ func (b *ModuleBridge) Call(
 		Registry:  b.registry,
 		Principal: mp,
 		RefreshPrincipal: func(c context.Context) (modules.Principal, error) {
-			currentPrincipal, currentCredential, refreshErr := b.authorize(c, run)
+			currentPrincipal, currentCredential, refreshErr := b.authorize(identity.RequireFresh(c), run)
 			value := modulePrincipal(currentPrincipal, currentCredential, run.SettingsSnapshot.Version)
 			value.UserID = run.OwnerID
 			return value, refreshErr
@@ -215,7 +217,7 @@ func (b *ModuleBridge) Discard(
 		Registry:  b.registry,
 		Principal: mp,
 		RefreshPrincipal: func(c context.Context) (modules.Principal, error) {
-			user, secret, refreshErr := b.authorize(c, run)
+			user, secret, refreshErr := b.authorize(identity.RequireFresh(c), run)
 			value := modulePrincipal(user, secret, run.SettingsSnapshot.Version)
 			value.UserID = run.OwnerID
 			return value, refreshErr

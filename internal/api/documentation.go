@@ -163,6 +163,9 @@ func operationTypes(method, path string) (any, any, string) {
 }
 
 func sessionAndReadTypes(method, path string) (any, any, string, bool) {
+	if path == "/v1/admin/identity/cache/clear" {
+		return nil, identityCacheReceipt{}, "200", true
+	}
 	if strings.HasPrefix(path, "/v1/auth/sessions") {
 		request, response, status := authSessionTypes(method, path)
 		return request, response, status, true

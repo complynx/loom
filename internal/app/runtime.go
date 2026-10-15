@@ -620,6 +620,13 @@ func runtimeHandler(
 		repository,
 		measuredAuth{auth: auth, observer: observer},
 		api.Options{
+			ClearIdentityCache: func(c context.Context) (int64, error) {
+				epoch, err := auth.ClearPermissionsCache(c)
+				if err == nil {
+					observer.Event(c, "identity cache cleared", "generation", epoch)
+				}
+				return epoch, err
+			},
 			RecoveryMode:      cfg.Execution.RecoveryMode,
 			OperatorLogin:     operatorLogin,
 			DiagnosticsHealth: observer.DiagnosticsHealth,
@@ -915,6 +922,7 @@ func (r *runtimeComponents) initAgent(
 	if err != nil {
 		return err
 	}
+	r.auth.UseCacheControl(r.repository.IdentityCacheEpoch, r.repository.ClearIdentityCache, observer.IdentityCache)
 	if cfg.Execution.RecoveryMode {
 		return nil
 	}

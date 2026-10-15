@@ -28,7 +28,7 @@ identity:
   refreshable_exchange_enabled: false # Enable only after the installed-version gate.
   encryption_key_file: "/run/secrets/clx-auth-key"
   encryption_key_id: "key-v1"
-  permissions_cache_ttl_seconds: 30
+  permissions_cache_ttl_seconds: 120 # 0 disables; maximum 300. Sensitive writes bypass it.
   jwks_cache_ttl_seconds: 300
 
 discovery:

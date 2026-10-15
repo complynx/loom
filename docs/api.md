@@ -4,6 +4,8 @@
 
 ## Аутентификация
 
+Положительные token claims используют [ограниченный кэш прав](identity-cache.md); sensitive writes требуют online-проверки. Админская ручка `POST /v1/admin/identity/cache/clear` очищает его для всех API/workers общей базы; нужны `settings.write`, admin organization и свежая авторизация.
+
 - Прямой запрос: `Authorization: Bearer <user-access-token>`.
 - Сервисный запрос: `Authorization: Bearer <service-access-token>` и, при bootstrap делегации, `X-Subject-Token: <user-access-token>`.
 - После bootstrap сервис указывает `X-Auth-Session-ID` (либо `auth_session_id` в run-create body); сессия привязана к пользователю, actor, организации и разрешённым аудиториям. ID не является bearer credential.

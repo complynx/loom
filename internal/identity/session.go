@@ -150,7 +150,8 @@ func (c *SessionCipher) SealRequest(_ context.Context, r *http.Request, p domain
 	return c.Seal(p, string(bundle))
 }
 
-// VerifySession rechecks live access tokens. A service session also requires a current deployment registration check.
+// VerifySession checks token authority within the configured cache TTL unless RequireFresh is set.
+// A service session also requires a current deployment registration check.
 func (a *Authenticator) VerifySession(
 	ctx context.Context,
 	c *SessionCipher,

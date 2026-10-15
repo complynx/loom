@@ -1,5 +1,7 @@
 # Observability for complynx.net
 
+Identity-cache counters, claim-age histogram, purge event and operational limits are described in the [cache contract](identity-cache.md).
+
 Repository rename: use the coordinated [Loom receiver/Alloy patch](validation/2026-10-12-loom-rename-server.patch). Historical QA patches preserve their original names. Deploy the updated receiver before enabling `updated-loom` dispatch.
 
 The server uses Grafana Alloy with Grafana Cloud Prometheus remote_write and Loki

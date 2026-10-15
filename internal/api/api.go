@@ -26,6 +26,7 @@ type Authenticator interface {
 	Authenticate(context.Context, *http.Request) (domain.Principal, error)
 }
 type Options struct {
+	ClearIdentityCache                              func(context.Context) (int64, error)
 	RecoveryMode                                    bool
 	OperatorLogin                                   *OperatorLogin
 	DiagnosticsHealth                               func() domain.DiagnosticsHealth
@@ -177,6 +178,7 @@ func (s *server) registerRoutes(mux *http.ServeMux) {
 	s.route(mux, "GET /v1/users/me/credits", "chat.read", s.balance)
 	s.route(mux, "GET /v1/admin/settings", "settings.read", s.settings)
 	s.route(mux, "PATCH /v1/admin/settings", "settings.write", s.updateSettings)
+	s.route(mux, "POST /v1/admin/identity/cache/clear", "settings.write", s.clearIdentityCache)
 	s.route(mux, "GET /v1/admin/users/{id}/policy", "users.policy.write", s.policy)
 	s.route(mux, "PATCH /v1/admin/users/{id}/policy", "users.policy.write", s.updatePolicy)
 	s.route(mux, "GET /v1/admin/users/{id}/preferences", "preferences.other.write", s.userPreferences)
@@ -198,16 +200,19 @@ func (s *server) route(mux *http.ServeMux, pattern, permission string, handler e
 			fail(w, http.StatusServiceUnavailable, "dependency_unavailable", "Authorization is unavailable", true)
 			return
 		}
+		if freshAuthorization(pattern) {
+			r = r.WithContext(identity.RequireFresh(r.Context()))
+		}
 		p, err := s.auth.Authenticate(r.Context(), r)
 		if err != nil {
 			s.error(w, err)
 			return
 		}
-		if p.Subject == "" || p.OrgID == "" || (!p.ExpiresAt.IsZero() && !time.Now().Before(p.ExpiresAt)) {
+		if !validPrincipal(p) {
 			fail(w, http.StatusUnauthorized, "unauthorized", "Valid authorization is required", false)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/v1/admin/settings") &&
+		if administrativeOrganizationRequired(r.URL.Path) &&
 			(s.options.AdminOrganizationID == "" || p.OrgID != s.options.AdminOrganizationID) {
 			fail(w, http.StatusForbidden, "forbidden", "Administrative organization is required", false)
 			return
@@ -243,6 +248,7 @@ func recoveryRoute(pattern string) bool {
 		"GET /v1/admin/diagnostics/runs",
 		"GET /v1/admin/diagnostics/runs/{id}",
 		"GET /v1/admin/settings",
+		"POST /v1/admin/identity/cache/clear",
 		"POST /v1/admin/runs/{id}/steps/{step}/reconcile",
 		"POST /v1/admin/runs/{id}/recovery/prepare",
 		"POST /v1/runs/{id}/cancel":

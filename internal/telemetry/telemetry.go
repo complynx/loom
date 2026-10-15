@@ -16,6 +16,7 @@ import (
 
 const (
 	errorOutcome           = "error"
+	deniedOutcome          = "denied"
 	statusClassDivisor     = 100
 	authorizationComponent = "authorization"
 	cancelledOutcome       = "cancelled"
@@ -48,6 +49,8 @@ type sample struct {
 type HTTPKey struct{ Route, Method, Status string }
 type CallKey struct{ Component, Outcome string }
 type Telemetry struct {
+	identityCacheEvents  map[string]uint64
+	identityCacheAge     sample
 	traceExportFailures  uint64
 	metricExportFailures uint64
 	otel                 *otelState
@@ -68,11 +71,12 @@ func histogramBounds() [8]float64 { return [8]float64{.005, .025, .1, .5, 1, 5, 
 
 func New(logger *slog.Logger) *Telemetry {
 	return &Telemetry{
-		logger:       logger,
-		started:      time.Now(),
-		http:         map[HTTPKey]sample{},
-		calls:        map[CallKey]sample{},
-		dependencies: map[string]bool{},
+		logger:              logger,
+		started:             time.Now(),
+		http:                map[HTTPKey]sample{},
+		calls:               map[CallKey]sample{},
+		identityCacheEvents: map[string]uint64{},
+		dependencies:        map[string]bool{},
 	}
 }
 
@@ -126,7 +130,7 @@ func (t *Telemetry) Operation(ctx context.Context, component, outcome, runID str
 		return
 	}
 	switch outcome {
-	case successOutcome, errorOutcome, cancelledOutcome, "timeout", "unknown", "denied":
+	case successOutcome, errorOutcome, cancelledOutcome, "timeout", "unknown", deniedOutcome:
 	default:
 		outcome = errorOutcome
 	}
@@ -146,7 +150,7 @@ func (t *Telemetry) Operation(ctx context.Context, component, outcome, runID str
 		level = slog.LevelDebug
 		message = "operation finished"
 	}
-	if outcome == cancelledOutcome || outcome == "denied" {
+	if outcome == cancelledOutcome || outcome == deniedOutcome {
 		level = slog.LevelDebug
 	}
 	if outcome == errorOutcome &&
@@ -383,6 +387,7 @@ func (t *Telemetry) recoveryGauge() float64 {
 }
 
 func (t *Telemetry) processMetrics(gauge func(string, string, float64), b *strings.Builder) {
+	t.identityCacheMetrics(b)
 	t.exportFailureMetrics(b)
 	gauge("clx_recovery_mode", "Restore dispatch barrier enabled.", t.recoveryGauge())
 	gauge("clx_process_start_time_seconds", "Unix process start time.", float64(t.started.Unix()))

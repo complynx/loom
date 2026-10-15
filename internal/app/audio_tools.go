@@ -13,6 +13,7 @@ import (
 	"github.com/complynx/loom/internal/artifacts"
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/fileproc"
+	"github.com/complynx/loom/internal/identity"
 	"github.com/complynx/loom/internal/provider"
 	"github.com/complynx/loom/internal/runs"
 	"github.com/complynx/loom/internal/transcription"
@@ -60,6 +61,7 @@ func (t runtimeTools) Prepare(
 	_ string,
 	call provider.Call,
 ) (domain.PaidToolIntent, int64, error) {
+	ctx = identity.RequireFresh(ctx)
 	if !t.cfg.Transcription.Enabled || t.transcriber == nil {
 		return domain.PaidToolIntent{}, 0, domain.Forbidden()
 	}
@@ -151,6 +153,7 @@ func (t runtimeTools) Execute(
 	intent domain.PaidToolIntent,
 	stepID string,
 ) (json.RawMessage, domain.Usage, error) {
+	ctx = identity.RequireFresh(ctx)
 	current, _, err := t.fresh(ctx, r)
 	if err != nil {
 		return nil, domain.Usage{}, notDispatched(err)

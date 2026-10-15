@@ -24,7 +24,7 @@ identity:
   # Read-only previous keys during rotation; see docs/session-key-rotation.md.
   previous_encryption_keys: {}
   # previous_encryption_keys: {key-v0: /run/secrets/clx-auth-key-v0}
-  permissions_cache_ttl_seconds: 30
+  permissions_cache_ttl_seconds: 120 # 0 disables; maximum 300. Sensitive writes bypass it.
   jwks_cache_ttl_seconds: 300
 
 discovery:

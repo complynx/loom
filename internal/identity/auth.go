@@ -38,6 +38,7 @@ type BindingResolver func(context.Context, *http.Request, domain.Principal) (Bin
 // ServiceClassifier uses fresh trusted deployment registration and durable service-identity markers.
 type ServiceClassifier func(context.Context, domain.Principal) (bool, error)
 type Authenticator struct {
+	cache               *permissionsCache
 	serviceClassifier   ServiceClassifier
 	discoveryFetchMu    sync.Mutex
 	keysFetchMu         sync.Mutex
@@ -86,6 +87,9 @@ func (a *audience) UnmarshalJSON(b []byte) error {
 	return nil
 }
 func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Authenticator, error) {
+	if cfg.PermissionsCacheTTLSeconds < 0 || cfg.PermissionsCacheTTLSeconds > 300 {
+		return nil, errors.New("permissions cache TTL must be between 0 and 300 seconds")
+	}
 	if cfg.Issuer == "" || cfg.Audience == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil, errors.New("identity trust root and introspection credentials required")
 	}
@@ -101,7 +105,8 @@ func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Au
 	bounded := *client
 	bounded.Timeout = identityRequestTimeout
 	bounded.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Authenticator{cfg: cfg, client: &bounded, binding: binding}, nil
+	return &Authenticator{cfg: cfg, client: &bounded, binding: binding,
+		cache: newPermissionsCache(time.Duration(cfg.PermissionsCacheTTLSeconds) * time.Second)}, nil
 }
 func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (domain.Principal, error) {
 	token, err := bearer(r.Header.Get("Authorization"))
@@ -184,13 +189,24 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 	if token == "" || len(token) > 16384 {
 		return domain.Principal{}, ErrUnauthorized
 	}
-	d, err := a.discover(ctx)
+	info, err := a.cache.load(ctx, token, a.introspectToken)
 	if err != nil {
 		return domain.Principal{}, err
 	}
+	return domain.Principal{
+		Issuer: info.Issuer, Subject: info.Subject, Actor: info.Subject,
+		OrgID: info.OrgID, Permissions: a.rolePermissions(info), ExpiresAt: time.Unix(info.Expires, 0),
+	}, nil
+}
+
+func (a *Authenticator) introspectToken(ctx context.Context, token string) (tokenInfo, error) {
+	d, err := a.discover(ctx)
+	if err != nil {
+		return tokenInfo{}, err
+	}
 	signed, err := a.verifySignedToken(ctx, token, d.JWKSURI)
 	if err != nil {
-		return domain.Principal{}, err
+		return tokenInfo{}, err
 	}
 	form := url.Values{"token": {token}, "token_type_hint": {"access_token"}}
 	req, err := http.NewRequestWithContext(
@@ -200,18 +216,18 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 		strings.NewReader(form.Encode()),
 	)
 	if err != nil {
-		return domain.Principal{}, ErrUnavailable
+		return tokenInfo{}, ErrUnavailable
 	}
 	req.SetBasicAuth(a.cfg.ClientID, a.cfg.ClientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	var info tokenInfo
 	if fetchErr := a.fetch(req, &info); fetchErr != nil {
-		return domain.Principal{}, fetchErr
+		return tokenInfo{}, fetchErr
 	}
 	now := time.Now()
 	if !info.Active || info.Subject == "" || info.Issuer != a.cfg.Issuer || info.Expires <= now.Unix() ||
 		info.NotBefore > now.Unix() {
-		return domain.Principal{}, ErrUnauthorized
+		return tokenInfo{}, ErrUnauthorized
 	}
 	allowed := false
 	for _, aud := range info.Audience {
@@ -220,19 +236,12 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 		}
 	}
 	if !allowed || signed.Subject != "" && signed.Subject != info.Subject {
-		return domain.Principal{}, ErrUnauthorized
+		return tokenInfo{}, ErrUnauthorized
 	}
 	if signed.Expiry != nil && int64(*signed.Expiry) < info.Expires {
 		info.Expires = int64(*signed.Expiry)
 	}
-	return domain.Principal{
-		Issuer:      info.Issuer,
-		Subject:     info.Subject,
-		Actor:       info.Subject,
-		OrgID:       info.OrgID,
-		Permissions: a.rolePermissions(info),
-		ExpiresAt:   time.Unix(info.Expires, 0),
-	}, nil
+	return info, nil
 }
 
 func (a *Authenticator) rolePermissions(info tokenInfo) map[string]bool {

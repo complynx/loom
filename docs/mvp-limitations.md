@@ -75,7 +75,7 @@ Temporary-file policy supersedes former long artifact retention. Default TTL is 
 
 - Один sandbox container делит 128 MiB и 128 PID между supervisor и четырьмя workers. Это не per-worker memory isolation. Исправлен доказанный PID starvation при прежнем пределе 32; локально приняты четыре concurrent scripts, CPU timeout, настоящий worker OOM при активном здоровом соседе и последующее выполнение ([QA](validation/2026-10-12-sandbox-resource-qa/README.md)). Multi-attacker OOM, sustained fairness и host OOM не приняты.
 
-- Online introspection выполняется при авторизации; permission cache фактически не используется. Недоступность настоящего локального Zitadel с warm/cold cache проверена fail-closed; target/runtime acceptance остаётся открытой. Просроченный trust snapshot discovery также блокирует текущую классификацию callers, включая обычные запросы.
+- Реализован [положительный permission cache](identity-cache.md): TTL 120 секунд по умолчанию, 0..300, без stale-on-error, sensitive boundaries online, общая очистка через PG generation. Новый cache/outage контракт проверяется deterministic IAM и PostgreSQL тестами; прежняя настоящая Zitadel outage-приёмка относится к online-only режиму. Target/runtime acceptance нового кэша остаётся открытой. Просроченный trust snapshot discovery также блокирует текущую классификацию callers, включая обычные запросы.
 
 - **Readiness не проверяет writable capacity.** `/healthz` и `/readyz` могут возвращать 200 при ENOSPC или read-only роли, хотя запись возвращает 500. Нужны отдельные storage/SQL error alerts и контроль свободного места. Host OOM, поддерживаемая нагрузка, restore/PITR и доставка alerts на целевом сервере не приняты.
 
