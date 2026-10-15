@@ -6,6 +6,7 @@
 /.env
 *.test
 *.test.exe
+__pycache__/
 /deploy/config.yaml
 *.local
 *.local.*

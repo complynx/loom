@@ -13,7 +13,10 @@ LOCK = ROOT / "tools" / "dependencies.lock.json"
 
 
 def go_json(*args, env=None):
-    result = subprocess.run(["go", *args], cwd=ROOT, check=True, text=True, capture_output=True, env=env)
+    try:
+        result = subprocess.run(["go", *args], cwd=ROOT, check=True, text=True, capture_output=True, env=env)
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(f"go {' '.join(args)} failed:\n{error.stderr.strip()}") from error
     decoder = json.JSONDecoder()
     tail = result.stdout.strip()
     records = []

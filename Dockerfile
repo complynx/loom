@@ -33,6 +33,7 @@ FROM file-runtime AS file-worker
 COPY --from=build /out/loom /usr/local/bin/loom
 COPY docs/dependency-audit/2026-10-11-mvp/notices /licenses/dependencies/
 COPY docs/dependency-audit/2026-10-12-otel/notices /licenses/dependencies-otel/
+COPY docs/dependency-audit/current/notices /licenses/dependencies-current/
 COPY LICENSE /licenses/loom/LICENSE
 COPY docs/file-worker.md /licenses/runtime/DISTRIBUTION.md
 COPY --from=file-worker-source-build /corresponding-source/ /licenses/corresponding-source/
@@ -49,6 +50,7 @@ COPY --chown=10001:10001 --from=build /out/run/ /run/
 COPY --chown=10001:10001 --from=build /out/data/ /data/
 COPY docs/dependency-audit/2026-10-11-mvp/notices /licenses/dependencies/
 COPY docs/dependency-audit/2026-10-12-otel/notices /licenses/dependencies-otel/
+COPY docs/dependency-audit/current/notices /licenses/dependencies-current/
 COPY LICENSE /licenses/loom/LICENSE
 USER 10001:10001
 STOPSIGNAL SIGTERM

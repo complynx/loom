@@ -9,6 +9,7 @@ Makefile text eol=lf
 
 # Preserve audited third-party notice bytes and their SHA-256 manifest.
 /docs/dependency-audit/**/notices/** -text -whitespace
+/docs/dependency-audit/current/** -text -whitespace
 
 # Preserve captured QA evidence, including console whitespace and original bytes.
 /docs/validation/** -text -whitespace

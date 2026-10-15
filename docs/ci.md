@@ -30,8 +30,9 @@ Set these in `complynx/loom`:
   across repositories. See the [dispatch action documentation](https://github.com/peter-evans/repository-dispatch#token).
 
 Both secrets are checked before login or publication. Credentials are passed as
-secrets, never Docker build arguments. The workflow's built-in token has only
-`contents: read` permissions.
+secrets, never Docker build arguments. The publication workflow's built-in token
+has only `contents: read` permissions. The separate Dependabot metadata workflow
+has the scoped write permissions described below.
 
 ## Server contract
 
@@ -62,13 +63,59 @@ configuration checks for updates weekly.
 
 | Action | Release | License |
 | --- | --- | --- |
+| actions/checkout | v7.0.1 | MIT |
+| actions/setup-go | v7.0.0 | MIT |
 | docker/setup-buildx-action | v4.4.1 | Apache-2.0 |
 | docker/login-action | v4.6.0 | Apache-2.0 |
 | docker/build-push-action | v7.4.0 | Apache-2.0 |
 | peter-evans/repository-dispatch | v4.0.1 | MIT |
 
-Release tags were resolved through each official GitHub repository when preparing
-this change. No application Go dependencies were added.
+Release tags were resolved through each official GitHub repository. The bundled
+Go updates and their license audit are recorded in
+[the dependency report](dependency-audit/2026-10-15-bundle/README.md).
+
+## Dependabot metadata refresh
+
+Dependabot groups minor/patch Go updates and minor/patch Actions updates separately.
+Major updates remain separate PRs. No automatic merge is enabled. Green checks
+remain required before a human merge.
+
+Go PRs need full commit pins and current license evidence in addition to go.mod
+and go.sum. `dependabot-refresh.yml` refreshes these without relaxing the checks:
+
+1. `pull_request_target` runs reviewed scripts from the exact trusted base SHA.
+   It accepts only open, same-repository Dependabot Go branches. Only module
+   files and generated metadata may differ. Renames from other paths are rejected.
+2. It reads go.mod/go.sum as data at the PR head SHA. It rejects replacement,
+   tool, toolchain and other unsupported directives. It does not check out or
+   execute PR scripts. The Go toolchain stays fixed and dependency caches are not
+   uploaded from this privileged workflow.
+3. With no token in subprocess environments, it resolves full commit pins and
+   generates Linux runtime/test license reports. Runtime/test licenses must match
+   the approved list. Module-root license bytes must match a previously reviewed
+   snapshot; a new notice or license text requires manual review.
+4. It rechecks the PR head and base, then commits only allowlisted metadata through
+   the Git API. A non-force update preserves the original PR parent and refuses a
+   concurrent head change. The token has Contents write, Pull requests read and
+   Actions write permissions, only in this job. It never receives publishing secrets.
+5. GitHub suppresses normal push/PR triggers for GITHUB_TOKEN commits, so the job
+   explicitly dispatches the same full CI on the updated branch. This includes
+   race/integration tests, lock/license checks, lint, vulnerability scanning and
+   both container builds. Dispatch runs cannot publish or deploy.
+
+The repository must permit the scoped GITHUB_TOKEN writes. The workflows must
+first be merged into the default branch. This change has local behavioral tests
+for the GitHub API flow; the first live Dependabot refresh/dispatch still needs
+verification after merge. A stale base or a concurrent push fails safely: update
+the PR branch and rerun the workflow. Failed refreshes leave the PR unmergeable
+until its ordinary full CI passes with correct metadata.
+
+For a manual refresh, review go.mod/go.sum, run `make lock-update`, then install
+the pinned go-licenses tool from tools/dependencies.lock.json and run
+`make audit-update`. Commit the generated current snapshot and run full CI.
+New license text needs a reviewed dated root-license snapshot first. Historical
+snapshots stay unchanged; Docker images ship the original notices plus the current
+delta. `make audit-check` verifies the graph and notice byte hashes offline.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk
