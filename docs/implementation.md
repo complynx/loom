@@ -37,7 +37,7 @@ Structured logs: request/run/step/operation IDs, actor/subject identifiers, ст
 1. **Интеграционные spikes.** Проверить installed Zitadel: claims/audiences, exchange+offline_access, rotation/revocation; проверить JS engine, async host RPC и OS kill/isolation. Зафиксировать конкретные зависимости и версии. Непрерывная делегация и sandbox security — release gates, не предположения.
 2. **Durable API skeleton.** Go routing, DB migrations, identities/default chats, run state machine, idempotency, leases, SSE replay. Fake provider/module только для проверок контракта.
 3. **Один end-to-end read-only run.** Реальный provider adapter, модели/preferences, history/context/search, один discovered сервис с read методом, artifacts, JS worker и бюджет.
-4. **Управление и изменения.** Questions, steering, два approval протокола, write idempotency/status/cancel, reconciliation, refreshable auth, administrative settings.
+4. **Управление и изменения.** Questions, steering, prepare/execute с service ID или exact parameters, write idempotency/status/cancel, reconciliation, refreshable auth, administrative settings.
 5. **Отказы и эксплуатация.** Fault scenarios из failures.md, shutdown SLO, deployment integration, backup/restore, нагрузочные пределы. Затем приёмка первой версии.
 
 Начальные packages: `api`, `identity`, `policy`, `runs`, `history`, `billing`, `modules`, `sandbox`, `artifacts`, `store`, `config`. Не вводить абстрактные frameworks сверх реальных границ. Выбраны pgx + sqlc, SQL migrations Goose, HTTP/OpenAPI Huma + ServeMux и PG jobs River core. Goja с eventloop — выбранный кандидат для изолированного worker; окончательное принятие после spike. [Полный набор, лицензии и коммиты](dependencies.md).

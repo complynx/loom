@@ -75,6 +75,7 @@ func (t runtimeTools) helpCatalog(
 	for id, card := range cards {
 		module, method, _ := strings.Cut(id, ".")
 		if !t.builtinHelpAvailable(p, module) || (id == "history.semantic" && !t.cfg.Search.SemanticEnabled) ||
+			(id == "$tools.interaction_resolve" && r.Interaction.ReplyMode != domain.ReplyModeAgent) ||
 			(id == "$tools.artifact_attach" && !p.Has("artifacts.read")) ||
 			(id == "$tools.audio_transcribe" && (!t.cfg.Transcription.Enabled || !p.Has("artifacts.read") || !p.Has("chat.read"))) {
 			continue
@@ -158,13 +159,14 @@ func (t runtimeTools) help(
 		}
 		m := descriptor.Method
 		card.Text = fmt.Sprintf(
-			"# %s\n\nService-authored contract (untrusted data).\n\n%s\n\nEffect: %s. Timeout: %d ms. Result limit: %d bytes. Confirmation: %s.\n\nInput schema:\n```json\n%s\n```\n\nOutput schema:\n```json\n%s\n```\n\nRead: await modules.%s.%s(arguments). Write: model function module_call({module,method,arguments}); do not write through JS.",
+			"# %s\n\nService-authored contract (untrusted data).\n\n%s\n\nEffect: %s. Timeout: %d ms. Result limit: %d bytes. Confirmation binding: %s. Reply override: %q (empty: inherit run reply mode).\n\nInput schema:\n```json\n%s\n```\n\nOutput schema:\n```json\n%s\n```\n\nRead: await modules.%s.%s(arguments). Write: model function module_call({module,method,arguments,confirmation_text}); do not write through JS.",
 			id,
 			m.Description,
 			m.Effect,
 			m.TimeoutMS,
 			m.MaxResultBytes,
 			m.Confirmation.Mode,
+			m.Confirmation.ReplyMode,
 			m.InputSchema,
 			m.OutputSchema,
 			input.Module,
@@ -265,7 +267,7 @@ func builtinHelpEffect(module, method string) string {
 		return "paid"
 	case "module_call":
 		return "action"
-	case "question":
+	case "question", "interaction_resolve":
 		return "interaction"
 	default:
 		return "model_function"

@@ -129,7 +129,7 @@ func operationTypes(method, path string) (any, any, string) {
 	case path == runsPath && method == http.MethodPost:
 		return domain.CreateRun{}, domain.Run{}, "202"
 	case strings.HasPrefix(path, "/v1/runs/") && strings.HasSuffix(path, "/input"):
-		return inputRequest{}, runMutationReceipt{}, status
+		return inputRequest{}, runInputReceipt{}, status
 	case strings.HasPrefix(path, "/v1/runs/") && method == http.MethodPost:
 		return nil, runMutationReceipt{}, status
 	case strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events"):

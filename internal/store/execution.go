@@ -297,7 +297,7 @@ func (s *Store) PendingInputs(ctx context.Context, rid, owner string, fence int6
 	}
 	rows, e := s.pool.Query(
 		ctx,
-		"SELECT id::text,doc FROM run_inputs WHERE run_id=$1 AND NOT applied ORDER BY created_at,id",
+		"SELECT id::text,doc FROM run_inputs WHERE run_id=$1 AND NOT applied ORDER BY COALESCE((doc->'context'->>'revision')::bigint,0),created_at,id",
 		rid,
 	)
 	if e != nil {
@@ -391,7 +391,6 @@ func (s *Store) AddInput(
 	})
 	return mutationReceipt(p, r), err
 }
-func inWithoutID(in domain.RunInput) domain.RunInput { in.ID = ""; return in }
 
 func (s *Store) AskApproval(ctx context.Context, rid, owner string, fence int64, a domain.Approval) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
@@ -671,30 +670,22 @@ func (s *Store) askQuestion(ctx context.Context, tx pgx.Tx, rid, owner string, f
 	if r.CancelRequested {
 		return cancelInteraction(ctx, tx, r)
 	}
-	if q.ID == "" {
-		q.ID = id()
-	}
-	if q.ExpiresAt.IsZero() {
-		q.ExpiresAt = time.Now().Add(time.Duration(r.SettingsSnapshot.QuestionTimeoutSeconds) * time.Second)
-	}
-	if r.Interaction.Questions == eventTextKey {
-		q.Choices = nil
-		q.AllowText = true
-	}
-	if r.Interaction.Questions == "choices" {
-		q.AllowText = false
-		if len(q.Choices) == 0 {
-			return domain.Conflict("question_unsupported")
-		}
+	q, e = prepareQuestion(r, q)
+	if e != nil {
+		return e
 	}
 	r.Question = &q
 	reason := ""
-	if r.Interaction.Questions == "none" {
+	if r.Interaction.Questions == "none" && r.Interaction.ReplyMode != domain.ReplyModeAgent {
 		reason = "client_interaction_disabled"
 	}
 	state := domain.WaitingInput
 	if r.PauseRequested {
 		state, reason = domain.Paused, clientPauseReason
+	}
+	state, e = s.conversationWait(ctx, tx, r, state)
+	if e != nil {
+		return e
 	}
 	_, e = tx.Exec(
 		ctx,
@@ -815,12 +806,13 @@ func (s *Store) addInput(
 	if e != nil {
 		return e
 	}
-	existing, e := idem(ctx, tx, scope(p, "input:"+rid), key, in)
+	requested := in
+	existing, e := idem(ctx, tx, scope(p, "input:"+rid), key, requested)
 	if e != nil {
 		return e
 	}
 	if existing != "" {
-		return nil
+		return replayInputReceipt(ctx, tx, r, existing)
 	}
 	if r.State.Terminal() {
 		return domain.Conflict("run_terminal")
@@ -829,6 +821,12 @@ func (s *Store) addInput(
 		return err
 	}
 	in.ID = id()
+	wake := in.Kind == "answer" || in.Kind == domain.InputApproval
+	conversationWake, e := s.recordConversationInput(ctx, tx, p, r, &in)
+	if e != nil {
+		return e
+	}
+	wake = wake || conversationWake
 	_, e = tx.Exec(ctx, "INSERT INTO run_inputs(id,run_id,doc) VALUES($1,$2,$3)", in.ID, rid, document(in))
 	if e != nil {
 		return e
@@ -836,21 +834,18 @@ func (s *Store) addInput(
 	if _, e = chatEvent(ctx, tx, r.ChatID, rid, "input."+in.Kind, in.Text, actor(p), in); e != nil {
 		return e
 	}
-	if in.Kind == "answer" || in.Kind == "approval" {
-		_, e = tx.Exec(ctx, "UPDATE runs SET state='queued',reason='',doc=$2 WHERE id=$1", rid, document(r))
-		if e != nil {
+	if wake {
+		if e = s.queueInput(ctx, tx, *r); e != nil {
 			return e
 		}
-		if s.enqueue != nil {
-			if e = s.enqueue(ctx, tx, rid); e != nil {
-				return e
-			}
-		}
 	}
-	if e = saveIdem(ctx, tx, scope(p, "input:"+rid), key, rid, inWithoutID(in)); e != nil {
+	if e = saveIdem(ctx, tx, scope(p, "input:"+rid), key, in.ID, requested); e != nil {
 		return e
 	}
 	*r, e = scanRun(tx.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1", rid))
+	if e == nil {
+		r.ConversationInput = &in
+	}
 	return e
 }
 
@@ -865,14 +860,22 @@ func (s *Store) askApproval(ctx context.Context, tx pgx.Tx, rid, owner string, f
 	if a.ID == "" || a.OperationID == "" || !a.ExpiresAt.After(time.Now()) {
 		return domain.NewError(http.StatusUnprocessableEntity, "invalid_approval")
 	}
+	if r.Approval != nil && r.Approval.Decision == "" && r.Approval.ID != a.ID {
+		return domain.Conflict("pending_approval_exists")
+	}
 	r.Approval = &a
+	r.Question = nil
 	reason := ""
-	if !r.Interaction.Approvals {
+	if !r.Interaction.Approvals && a.ReplyMode != domain.ReplyModeAgent && a.ReplyMode != domain.ReplyModeExactText {
 		reason = "client_interaction_disabled"
 	}
 	state := domain.WaitingApproval
 	if r.PauseRequested {
 		state, reason = domain.Paused, clientPauseReason
+	}
+	state, e = s.conversationWait(ctx, tx, r, state)
+	if e != nil {
+		return e
 	}
 	_, e = tx.Exec(
 		ctx,
@@ -964,35 +967,18 @@ func (s *Store) applyControl(ctx context.Context, tx pgx.Tx, r *domain.Run, comm
 }
 
 func (s *Store) applyInput(ctx context.Context, tx pgx.Tx, r *domain.Run, in *domain.RunInput) error {
-	var e error
 	switch in.Kind {
-	case "steering":
+	case domain.InputSteering:
 		if in.Text == "" {
 			return domain.NewError(http.StatusUnprocessableEntity, "invalid_input")
 		}
 	case "answer":
+		if r.Interaction.ReplyMode == domain.ReplyModeAgent {
+			return domain.Conflict("use_steering")
+		}
 		return applyAnswer(r, in)
-	case "approval":
-		a := r.Approval
-		if r.State != domain.WaitingApproval || a == nil || a.ID != in.ApprovalID || a.Decision != "" {
-			return domain.Conflict("input_conflict")
-		}
-		if !a.ExpiresAt.After(time.Now()) {
-			return domain.Conflict("approval_expired")
-		}
-		if in.Decision != "approve" && in.Decision != "reject" {
-			return domain.NewError(http.StatusUnprocessableEntity, "invalid_decision")
-		}
-		if !r.Interaction.Approvals {
-			return domain.Forbidden()
-		}
-		if s.approval == nil {
-			return domain.NewError(http.StatusServiceUnavailable, "approval_handler_unavailable")
-		}
-		if e = s.approval(ctx, tx, *r, *in); e != nil {
-			return e
-		}
-		a.Decision = in.Decision
+	case domain.InputApproval:
+		return s.applyApprovalInput(ctx, tx, r, in)
 	default:
 		return domain.NewError(http.StatusUnprocessableEntity, "invalid_input")
 	}
@@ -1076,4 +1062,61 @@ func (s *Store) resumeRun(ctx context.Context, tx pgx.Tx, r *domain.Run) error {
 		e = s.enqueue(ctx, tx, rid)
 	}
 	return e
+}
+
+func (s *Store) applyApprovalInput(ctx context.Context, tx pgx.Tx, r *domain.Run, in *domain.RunInput) error {
+	a := r.Approval
+	waiting := r.State == domain.WaitingApproval ||
+		r.Interaction.ReplyMode == domain.ReplyModeAgent && r.State == domain.WaitingInput
+	if !waiting || a == nil || a.ID != in.ApprovalID || a.Decision != "" {
+		return domain.Conflict("input_conflict")
+	}
+	if !a.ExpiresAt.After(time.Now()) {
+		return domain.Conflict("approval_expired")
+	}
+	if in.Decision != domain.DecisionApprove && in.Decision != domain.DecisionReject {
+		return domain.NewError(http.StatusUnprocessableEntity, "invalid_decision")
+	}
+	if !r.Interaction.Approvals {
+		return domain.Forbidden()
+	}
+	if a.ReplyMode == domain.ReplyModeAgent {
+		return domain.Conflict("use_steering")
+	}
+	if r.Interaction.ReplyMode == domain.ReplyModeAgent {
+		r.ConversationRevision++
+		in.Context = &domain.InputContext{Revision: r.ConversationRevision}
+		a.ConsentRevision = r.ConversationRevision
+	}
+	if s.approval == nil {
+		return domain.NewError(http.StatusServiceUnavailable, "approval_handler_unavailable")
+	}
+	if e := s.approval(ctx, tx, *r, *in); e != nil {
+		return e
+	}
+	a.Decision = in.Decision
+	return nil
+}
+
+func prepareQuestion(r domain.Run, q domain.Question) (domain.Question, error) {
+	if q.ID == "" {
+		q.ID = id()
+	}
+	if q.ExpiresAt.IsZero() {
+		q.ExpiresAt = time.Now().Add(time.Duration(r.SettingsSnapshot.QuestionTimeoutSeconds) * time.Second)
+	}
+	if r.Interaction.Questions == eventTextKey {
+		q.Choices = nil
+		q.AllowText = true
+	}
+	if r.Interaction.Questions == "choices" && r.Interaction.ReplyMode != domain.ReplyModeAgent {
+		q.AllowText = false
+		if len(q.Choices) == 0 {
+			return q, domain.Conflict("question_unsupported")
+		}
+	}
+	if r.Interaction.ReplyMode == domain.ReplyModeAgent {
+		q.AllowText = true
+	}
+	return q, nil
 }

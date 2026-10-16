@@ -60,7 +60,7 @@ func (e *Engine) compactActive(ctx context.Context, run domain.Run, model domain
 	}
 	request := provider.Request{Provider: model.Provider, Model: model.ProviderModel,
 		Effort: run.Effort, Input: turn.items, Tools: tools, MaxOutputTokens: model.MaxOutputTokens,
-		Instructions: agentInstructions}
+		Instructions: conversationInstructions(run)}
 	request, raw, err := e.encodeMemoryRequest(ctx, run, principal, request)
 	if err != nil {
 		return false, err

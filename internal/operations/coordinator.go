@@ -225,13 +225,14 @@ func (c *Coordinator) ApproveTx(ctx context.Context, tx pgx.Tx, id string, a App
 	if op.State != statePrepared {
 		return Operation{}, ErrState
 	}
-	if !op.Preparation.ExpiresAt.After(time.Now()) {
+	if a.Approve && !op.Preparation.ExpiresAt.After(time.Now()) {
 		return Operation{}, ErrExpired
 	}
 	op.State = stateRejected
 	if a.Approve {
 		op.State = stateApproved
 	}
+	op.ConsentRevision = a.ConsentRevision
 	if err = updateTx(ctx, tx, op); err != nil {
 		return Operation{}, err
 	}
@@ -300,6 +301,15 @@ func (c *Coordinator) Dispatch(
 	if !valid {
 		return op, ErrLease
 	}
+	var revision int64
+	var inputPending bool
+	if err = tx.QueryRow(ctx, `SELECT COALESCE((doc->>'conversation_revision')::bigint,0), EXISTS(SELECT 1 FROM run_inputs WHERE run_id=$1 AND NOT applied AND doc->>'kind'='steering') FROM runs WHERE id=$1`, op.RunID).
+		Scan(&revision, &inputPending); err != nil {
+		return op, err
+	}
+	if inputPending {
+		return op, ErrApprovalRequired
+	}
 	op, err = locked(ctx, tx, id)
 	if err != nil {
 		return op, err
@@ -309,6 +319,9 @@ func (c *Coordinator) Dispatch(
 	}
 	if op.State != stateApproved {
 		return op, nil
+	}
+	if op.ConsentRevision != 0 && op.ConsentRevision != revision {
+		return op, ErrApprovalRequired
 	}
 	bindingHash, sealErr := seal(op)
 	if sealErr != nil || op.BindingHash != bindingHash {

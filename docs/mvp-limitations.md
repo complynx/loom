@@ -1,3 +1,5 @@
+# Ограничения MVP
+
 Proxy SSO panel: [local checks and remaining target-IAM acceptance](validation/2026-10-15-proxy-sso/README.md).
 
 Automatic startup: [local acceptance and unverified deployment boundaries](validation/2026-10-15-automatic-startup/README.md).
@@ -7,8 +9,6 @@ Temporary-file acceptance: [8 groups PASS](validation/2026-10-12-temporary-files
 Temporary-file policy supersedes former long artifact retention. Default TTL is 24 hours; raw files are not included in long-term backups. Expiry denies access immediately; minute-based physical collection may be delayed by database/disk outages or recovery mode. Metadata, excerpts in chat history, and financial receipts remain independent of file bytes. Source services own durable originals. Service-backed references with `fetch_method` recover the exact version for agent tools and initial attachments within the same run. Raw uploads, derived outputs without a refetch contract and legacy imports cannot recover automatically. See [file contract](file-tools.md).
 
 **File API acceptance, 12 October:** 21 local functional scenario groups PASS through API/River/Goja/worker: streaming and model attachment, ownership/handle isolation, real ENOSPC, quotas, cancellation, automatic worker restart and unknown transcription reconciliation without redispatch. No product code or production change; no paid calls. [Evidence and exact remaining boundaries](validation/2026-10-12-file-api-acceptance/README.md).
-
-# Ограничения MVP
 
 **File tools and live limits, 12 October:** implemented private streamed PDF/image/video/text/document/archive worker and durable paid transcription. [Contract and bounds](file-tools.md), [worker rollout and licenses](file-worker.md). Local component/PG/Unix-worker tests cover bounded reads, handles, ownership/disclosure denial, exact settlement, unknown holds, manual reconciliation and replay without redispatch. Live limits cover admission plus next-script/next-model boundaries; lowering does not interrupt in-flight work. Production media processing and real OpenAI transcription are not accepted yet. OpenTelemetry traces, operation metrics and correlated logs are implemented with bounded best-effort export. [Current local acceptance and remaining gates](validation/2026-10-12-files-otel/README.md); [collector configuration](opentelemetry.md).
 
@@ -23,6 +23,8 @@ Temporary-file policy supersedes former long artifact retention. Default TTL is 
 Ниже разделены проверенное поведение, реализованные механизмы с открытой приёмкой и отсутствующие возможности. Локальный тест компонента не означает проверку полного сценария на настоящем issuer или сервере. В разделе 3 существующий механизм указан только для объяснения границы отсутствующей функции.
 
 ## 1. Реализовано и проверено
+
+- **Разговорный ввод, локальная детерминированная приёмка.** Один steering-поток, пробуждение того же run, уточнения с заблокированным действием, новый prepare после изменения параметров, бинарные callbacks и точная локализованная фраза без кодов. Проверены binding/revision, устаревшие presentation, rollback очереди, повторные квитанции и продолжение новым worker. Linux/PG race и Golden PASS; независимый review loop завершён. [Протокол](conversational-input.md), [доказательства и границы](validation/2026-10-16-conversational-input/README.md).
 
 Область проверки указана у каждого пункта; production-приёмка не выполнена.
 
@@ -50,6 +52,8 @@ Temporary-file policy supersedes former long artifact retention. Default TTL is 
 - Уменьшение прав проверяется на следующих границах. Модель и оплаченные действия существующего run не заменяются молча.
 
 ## 2. Реализовано, но соответствующая проверка не выполнена
+
+- **Свободная интерпретация согласия.** Runtime и инструменты реализованы, но понимание русских/английских формулировок живой моделью, неоднозначной отмены и поздних ответов не проверялось этим прогоном. Scripted provider доказывает транспорт и детерминированные ограничения. Отдельно не приняты адаптер Зинуси, порядок доставки и смешанный UI.
 
 Для частично проверенных механизмов раздел 1 описывает пройденную область, а здесь — открытый сценарий.
 
@@ -84,6 +88,8 @@ Temporary-file policy supersedes former long artifact retention. Default TTL is 
 - **Readiness не проверяет writable capacity.** `/healthz` и `/readyz` могут возвращать 200 при ENOSPC или read-only роли, хотя запись возвращает 500. Нужны отдельные storage/SQL error alerts и контроль свободного места. Host OOM, поддерживаемая нагрузка, restore/PITR и доставка alerts на целевом сервере не приняты.
 
 ## 3. Не реализовано или находится за границей MVP
+
+- **Дополнительные возможности диалога.** Нет передачи согласия между старым и исправленным prepare: новое предложение требует нового сообщения. Нет отдельного delivery-ack протокола, доказывающего, что пользователь видел текущую форму. Без reply reference нельзя отличить одинаковый поздний текст от нового; клиент обязан последовательно доставлять сообщения и показывать одно ожидающее действие.
 
 - **Production login → token → harness flow не принят.** Resource-server API принимает готовый access token. Прямой authorization-code/PKCE login для operator panel имеет focused и настоящий локальный browser PASS, включая отзыв роли; восстановление grant, fresh SSO login и Disconnect также PASS. Широкие gates последних правок PASS. Production client отсутствует, rollout pending. Остальной клиентский flow остаётся A01/B03.
 - **Разрешённая cross-org delegation отсутствует и намеренно запрещена.** Текущий контракт требует одинаковую resourceowner org у actor и пользователя, включая восстановление сессии. Live-проверка двух org настоящего локального Zitadel подтвердила отказ. Внедрение поддержки требует отдельного решения о доверии и правах.

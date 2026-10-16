@@ -31,6 +31,11 @@ type bookingService struct {
 
 func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.Registry) {
 	t.Helper()
+	return newBookingServiceMode(t, lostReply, "")
+}
+
+func newBookingServiceMode(t *testing.T, lostReply bool, replyMode string) (*bookingService, *modules.Registry) {
+	t.Helper()
 	raw, err := os.ReadFile("../examples/manifest.json")
 	require.NoError(t, err)
 	var manifest modules.Manifest
@@ -38,6 +43,7 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 	manifest.Modules = manifest.Modules[:1]
 	manifest.Modules[0].Methods = manifest.Modules[0].Methods[1:]
 	manifest.Modules[0].Methods[0].TimeoutMS = 100
+	manifest.Modules[0].Methods[0].Confirmation.ReplyMode = replyMode
 	service := &bookingService{}
 	service.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/manifest" {
@@ -63,8 +69,9 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 			service.mu.Lock()
 			service.prepared = append(service.prepared, envelope.OperationID)
 			service.mu.Unlock()
+			description := bookingDescription(envelope.Arguments)
 			_ = json.NewEncoder(w).
-				Encode(map[string]any{"status": "prepared", "operation_id": envelope.OperationID, "confirmation_id": "prepared-slot-confirmation", "arguments": json.RawMessage(`{"slot_id":"slot-15"}`), "expires_at": time.Now().Add(time.Minute), "description": "Book Andrey at 15:00"})
+				Encode(map[string]any{"status": "prepared", "operation_id": envelope.OperationID, "confirmation_id": "prepared-slot-confirmation", "arguments": envelope.Arguments, "expires_at": time.Now().Add(time.Minute), "description": description})
 		case "/internal/agent/massage/book-slot":
 			if envelope.OperationID != envelope.IdempotencyKey ||
 				envelope.Confirmation["confirmation_id"] != "prepared-slot-confirmation" {
@@ -129,6 +136,11 @@ func mutationWorker(t *testing.T, f *fixture, registry *modules.Registry) (*mode
 		}
 		return finalResponse("Booked Andrey at 15:00, booking-15")
 	})
+	return model, mutationEngine(t, f, registry, model)
+}
+
+func mutationEngine(t *testing.T, f *fixture, registry *modules.Registry, model *modelFixture) *runs.Engine {
+	t.Helper()
 	authorize := func(context.Context, domain.Run) (domain.Principal, string, error) {
 		return domain.Principal{
 			Issuer:  "https://test.identity",
@@ -151,9 +163,10 @@ func mutationWorker(t *testing.T, f *fixture, registry *modules.Registry) (*mode
 		f.repository,
 		client,
 		runs.Options{
-			Owner:      "mutation-worker",
-			Authorize:  authorize,
-			ModuleCall: bridge.Call,
+			Owner:       "mutation-worker",
+			Authorize:   authorize,
+			ModuleCall:  bridge.Call,
+			DiscardCall: bridge.Discard,
 			Tools: func(context.Context, domain.Run, domain.Principal, string) ([]provider.Tool, error) {
 				return []provider.Tool{
 					{
@@ -166,7 +179,7 @@ func mutationWorker(t *testing.T, f *fixture, registry *modules.Registry) (*mode
 			},
 		},
 	)
-	return model, engine
+	return engine
 }
 func TestHTTPMutationRequiresApprovalAndExecutesStableOperationOnce(t *testing.T) {
 	t.Parallel()
@@ -260,4 +273,14 @@ func TestUnknownMutationRecoversWithStatusAndNeverRepeatsEffect(t *testing.T) {
 	require.Equal(t, service.prepared, service.executed)
 	require.Equal(t, service.prepared, service.status)
 	service.mu.Unlock()
+}
+
+func bookingDescription(arguments json.RawMessage) string {
+	var args struct {
+		SlotID string `json:"slot_id"`
+	}
+	if json.Unmarshal(arguments, &args) == nil && args.SlotID == "slot-16" {
+		return "Book Andrey at 16:00"
+	}
+	return "Book Andrey at 15:00"
 }

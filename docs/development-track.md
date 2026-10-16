@@ -1,9 +1,9 @@
+# Дальнейший трек разработки
+
 **QA finding, 15 October:** investigate intermittent `TestExhaustedQueueRecoveryPreservesUncertaintyAndLiveWork`: one full Linux race run observed 2 recovered rows instead of 3; 10 isolated repeats passed. Capture candidate states/leases and lock evidence under parallel load before changing recovery semantics. No causal link to browser organization selection has been established.
 Temporary-file policy (2026-10-12): default 24 hours; finite configurable YAML TTL, fixed deadlines for imports/uploads/derived files, expiry independent of active runs, external-ID service fetch, removal of raw JS byte reads and legacy checkpoint copies. Full Windows integration and Golden lint PASS; Linux race PASS; [8-group real container lifecycle acceptance](validation/2026-10-12-temporary-files/README.md) PASS. Service-backed references now support exact-version refresh and the serializable JS file helper, including initial attachment continuation in the same run. Raw uploads and derived outputs without a source refetch contract remain manual. Current refresh acceptance is recorded separately.
 
 **File API acceptance, 12 October:** [21 functional groups PASS](validation/2026-10-12-file-api-acceptance/README.md). Next gates: minimal real provider pilot, production OIDC/telemetry/storage rollout and target load envelope.
-
-# Дальнейший трек разработки
 
 **File tools and live limits, 12 October:** implemented private streamed PDF/image/video/text/document/archive worker and durable paid transcription. [Contract and bounds](file-tools.md), [worker rollout and licenses](file-worker.md). Local component/PG/Unix-worker tests cover bounded reads, handles, ownership/disclosure denial, exact settlement, unknown holds, manual reconciliation and replay without redispatch. Live limits cover admission plus next-script/next-model boundaries; lowering does not interrupt in-flight work. Production media processing and real OpenAI transcription are not accepted yet. OpenTelemetry traces, operation metrics and correlated logs are implemented with bounded best-effort export. [Current local acceptance and remaining gates](validation/2026-10-12-files-otel/README.md); [collector configuration](opentelemetry.md).
 
@@ -126,3 +126,10 @@ File refresh acceptance: [same-run TTL/restart, helper and initial image](valida
 On-demand method help implemented: permission-filtered searchable index and bounded per-method cards with examples, limits and service input/output schemas. [Local API/sandbox acceptance](validation/2026-10-12-method-help/README.md) PASS; Windows integration, Linux race/integration, Golden and two independent review passes complete. Developer contract: [usable method help](modules.md#developer-requirement-usable-method-help).
 
 Caller-restart classification (issue #2): implemented; PostgreSQL HTTP/session proof, Windows/Linux race integration, Golden, two independent reviews and [actual-Zitadel isolated acceptance](validation/2026-10-13-caller-recovery/README.md) PASS. Full Shuttle/Telegram rerun remains pending. [Retry and explicit reauthorization contract](caller-recovery.md).
+
+## Разговорный ввод: дальнейшая приёмка
+
+- [x] Один поток steering; сохранение контекста и пробуждение того же run; runtime resolution обычных действий; отдельные бинарные callbacks и строгая локализованная фраза для критических действий. Linux/PG race, Golden и review loop PASS. [Контракт](conversational-input.md), [проверенная область](validation/2026-10-16-conversational-input/README.md).
+- [ ] Реальная модель: русский и английский, согласие, отказ, условное согласие, неоднозначная отмена и поздние ответы. Scripted provider подтверждает только транспорт и runtime gates.
+- [ ] Адаптер Зинуси: упорядоченная входящая доставка, одинаковая семантика набранного текста и обычной кнопки, удаление старых подсказок, закрытие формы без потери обычного действия, смешивание чата с отдельными критическими callbacks.
+- [ ] Клиентская приёмка границ: поправка до dispatch, фактический/неизвестный исход после dispatch, expiry, перезапуск и повтор HTTP-квитанции. Не объявлять интеграцию принятой по наличию этого кода.
