@@ -1,2 +1,0 @@
-PASS real stopped Zitadel returns ErrUnavailable
-PASS HTTP stopped identity provider returns 503

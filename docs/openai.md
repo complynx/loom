@@ -22,7 +22,7 @@ Current history compaction uses conservative byte bounds, so it may summarize ea
 
 Before a new run, more than four passive actions since the previous active start are reduced in the model view to the first action, a count/provenance placeholder and the last three actions. With no prior dialogue, the placeholder states the total count and precedes the last three actions and first request. Up to four actions stay complete. Compression happens before pagination; full events remain searchable, including by regexp. Passive events never start a run.
 
-Existing installations change model and tariff settings through the authorized settings API. Review rates and capabilities before changing an existing catalog. Per-user selections remain intact. Preset and tariff tests use fixtures. A separate [minimal live QA](validation/2026-10-11-openai-live-qa/LIVE-RESULT.md) completed one paid text call; it does not validate every preset, live tools, images or compaction quality.
+Existing installations change model and tariff settings through the authorized settings API. Review rates and capabilities before changing an existing catalog. Per-user selections remain intact. Preset and tariff tests use fixtures. Use [QA](qa.md) to verify live tools, images, usage and compaction quality separately from preset fixtures.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk

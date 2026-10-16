@@ -40,10 +40,15 @@ func endpoint(t *testing.T, address, id string) modules.Endpoint {
 }
 func principal() modules.Principal {
 	return modules.Principal{
-		Issuer:      "https://id.example",
-		Subject:     "user",
-		Token:       "delegated-token",
-		Permissions: []string{"zns.massage.access", "zns.massage.read", "zns.massage.book", "zns.orders.access"},
+		Issuer:  "https://id.example",
+		Subject: "user",
+		Token:   "delegated-token",
+		Permissions: []string{
+			"booking.massage.access",
+			"booking.massage.read",
+			"booking.massage.book",
+			"booking.orders.access",
+		},
 	}
 }
 func TestReadBrokerFiltersAndValidates(t *testing.T) {
@@ -98,7 +103,7 @@ func TestReadBrokerFiltersAndValidates(t *testing.T) {
 	require.ErrorIs(t, err, modules.ErrWriteDisabled)
 	require.EqualValues(t, 1, calls.Load())
 	p := principal()
-	p.Permissions = []string{"zns.massage.access"}
+	p.Permissions = []string{"booking.massage.access"}
 	tools, err = registry.List(context.Background(), p)
 	require.NoError(t, err)
 	require.Empty(t, tools)
@@ -306,7 +311,7 @@ func TestLiveBrokerRevocationPreventsDispatch(t *testing.T) {
 	_, err = broker.Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
 	require.NoError(t, err)
 	require.EqualValues(t, 1, reads.Load())
-	current.Permissions = []string{"zns.massage.access"}
+	current.Permissions = []string{"booking.massage.access"}
 	_, err = broker.Call(context.Background(), "massage", "list_slots", json.RawMessage(`{"specialist_id":"andrey"}`))
 	require.ErrorIs(t, err, modules.ErrForbidden)
 	require.EqualValues(t, 1, reads.Load())
@@ -376,7 +381,7 @@ func TestReadArtifactUsesTrustedImportBoundary(t *testing.T) {
 	defer server.Close()
 	importer := func(ctx context.Context, p modules.Principal, d modules.ArtifactDescriptor, source modules.ArtifactSource) (json.RawMessage, error) {
 		require.Equal(t, "user", p.Subject)
-		require.Equal(t, "zns-chatbot", source.ServiceID)
+		require.Equal(t, "booking-service", source.ServiceID)
 		require.Equal(t, "run-artifact", source.RunID)
 		require.False(t, source.ExternalDisclosure)
 		require.Equal(t, "Bearer delegated-token", source.Headers.Get("Authorization"))

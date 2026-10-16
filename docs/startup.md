@@ -68,7 +68,7 @@ files in Git. Changing a credential requires restarting the process.
 
 CI publishes `complynx/loom:latest` and `complynx/loom:file-worker-latest` before
 sending its deployment event. Commit tags remain available for operator rollback.
-The receiving deployment uses its shared Compose rollout. Container startup owns
+Your deployment system pulls and starts the selected images. Container startup owns
 configuration validation, migrations and session-key checks. A Compose init service
 owns data directory preparation. Configure an API healthcheck with
 `["CMD", "/usr/local/bin/loom", "healthcheck"]`; it requests the local `/readyz`

@@ -207,9 +207,6 @@ as tool data, for example `interaction_conflict`, `input_conflict`,
 See [API](api.md), [trust boundaries](security.md), [storage](data.md) and
 [failure behavior](failures.md#сообщения-и-подтверждения-при-сбоях).
 
-## Verification boundary
+## QA requirements
 
-Deterministic HTTP/PostgreSQL tests cover transport, resolution and effect gates.
-Scripted providers do not prove language interpretation. Real-model Russian/English
-QA and Zinusya delivery/keyboard behavior remain separate acceptance. Deterministic
-tests make no paid provider calls. [Local evidence and remaining gates](validation/2026-10-16-conversational-input/README.md).
+Use [QA](qa.md) to verify transport, persistence and effect gates. Scripted providers do not prove language interpretation. Exercise RU/EN consent, refusal, amendments and late replies with a real model separately from client ordering and keyboard delivery. Older protocol-mode consumer acceptance does not accept the new conversational mode.

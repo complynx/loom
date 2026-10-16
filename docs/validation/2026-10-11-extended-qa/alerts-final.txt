@@ -1,4 +1,0 @@
-Checking /qa/alerts.yaml
-  SUCCESS: 10 rules found
-
-promtool_exit_code=0

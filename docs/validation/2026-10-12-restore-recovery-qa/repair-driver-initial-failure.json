@@ -1,5 +1,0 @@
-{
-  "status": "FAIL",
-  "stage": "QA driver empty counter",
-  "detail": "Restarted fixture returns JSON null before first model call; driver now treats it as an empty request list."
-}

@@ -2,94 +2,28 @@
 
 Этот документ описывает действующие границы и отдельно целевой refreshable flow. Текущий MVP использует access-token sessions с explicit reauthorization; автоматический Token Exchange/refresh и deployment-bound secret authentication не реализованы. [PKCE panel login](operator-login.md) — отдельный действующий механизм.
 
+Read the topic you need below. Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
+
 ## Identity и доступ
 
-Внешний access token проверяется по ожидаемому issuer, signature/alg, audience, exp/nbf и обязательным claims. JWKS URL берётся из доверенного issuer discovery, не из jku заголовка JWT. ID token не принимается вместо access token. Opaque access token проверяется через introspection.
-
-Harness различает пользователя (`subject`), вызывающий сервис (`actor`), организацию и плательщика. Credentials сервиса не разрешают произвольный user_id. В v1 сервисные run без пользователя не входят; позже возможен отдельный тип machine principal.
-
-Для сервиса необходимы одновременно:
-
-1. Актуальная Docker registration с caller binding.
-2. Доказательство личности сервиса: проверенный Zitadel service access token. Deployment-bound secret остаётся будущим режимом и не принимается MVP.
-3. Сервисное право на конкретную операцию.
-4. Пользовательская делегация в допустимой области.
-5. Пользовательские права, если операция затрагивает предметный API.
-
-Manifest не может назначить права пользователю и не позволяет зарегистрировать caller с неизвестным issuer/audience. Admin API не может изменить trust roots, raw secret bindings или ключи шифрования.
-
-Прямой пользовательский запрос проверяет собственные права и владение ресурсом. Для сервисного запроса к истории достаточно service `chat.read` и делегации соответствующего пользователя. Этот выбор намеренно позволяет чтение общего чата с событиями разных сервисов. `chat.events.append` не подразумевает чтение. Без `chat.read` создание run также запрещено: итог может использовать прежнюю историю. Такой сервис может только добавлять пассивные события.
-
-Подписка SSE, результат run, вопросы и артефакты проверяют те же права чтения. Подписки периодически переавторизуются и закрываются при отзыве; последнее уже отправленное сообщение отозвать невозможно. ID ресурса не является разрешением на доступ.
+Read [Identity permissions](security/identity-permissions.md).
 
 ## Права harness
 
-| Право | Действие |
-|---|---|
-| `runs.create` | Запуск собственного поручения |
-| `runs.control` | Steering, ввод, pause/resume/cancel в своей области |
-| `chat.read` | Чтение истории, поиска и ответов |
-| `chat.events.append` | Запись пассивных событий |
-| `chat.delete` | Удаление своего чата |
-| `artifacts.read/write` | Чтение/загрузка разрешённых артефактов |
-| `preferences.self.write` | Выбор своей доступной модели/effort |
-| `preferences.other.write` | Выбор модели другого пользователя в административной области |
-| `users.policy.write` | Изменение лимитов и entitlements пользователя |
-| `settings.read/write` | Чтение/изменение несекретных системных настроек |
-| `billing.adjust` | Начисления и корректировки с причиной |
-| `operations.reconcile` | Ручная сверка неизвестных результатов с доказательством |
-| `diagnostics.read` | Организационная read-only диагностика и вход в панель |
-| `chat.embeddings.write` | Индексация внешних векторов; также требуется `chat.read` |
-
-Zitadel roles отображаются в эти права явной конфигурацией. Административные права проверяются для целевой организации; произвольного глобального доступа нет. Предметные категории модулей имеют namespace сервиса. Список категорий означает AND; более сложную логику выполняет сам backend.
-
-[Личная память](user-memory.md) доступна каждому авторизованному пользователю без memory roles. Проверки владельца, организации, свежей авторизации и run lease сохраняются; это не cross-user admin доступ.
+Read [Identity permissions](security/identity-permissions.md).
 
 ## Целевой refreshable flow — не реализован
 
-Остальной текст раздела задаёт будущий протокол, а не наличие refresh leases или refresh tokens в текущем коде. Сейчас encrypted session хранит access credentials; при expiry/denial требуется `/v1/auth/sessions/{id}/reauthorize` с той же identity. `refreshable_exchange_enabled: true` отклоняется конфигурацией. Положительная introspection кешируется на 120 секунд по умолчанию (0 отключает, максимум 300), не дольше exp. Чувствительные действия требуют свежей проверки. См. [cache contract](identity-cache.md), включая общую админскую очистку.
-
-
-Предпочтительный путь — confidential harness OAuth client и собственная ограниченная authorization session. Bootstrap принимает действительный subject token. Token Exchange запрашивает существующие допустимые scopes/audiences и, если доступно, offline_access; не расширяет исходные полномочия. Service credentials доказываются отдельно. Actor token не добавляется автоматически: его использование может требовать impersonation permission и должно пройти отдельную настройку.
-
-Текущая документация Zitadel описывает refresh token в ответе exchange при offline_access. Это не доказательство поддержки на установленном v4.16.3. До интеграционной проверки непрерывная авторизация считается незакрытым release gate. Если exchange не выдаёт пригодный refresh token, безопасный альтернативный bootstrap — отдельный Authorization Code + PKCE login в harness. Refresh token другого OAuth client не копируется и не используется без предусмотренной протоколом привязки.
-
-Каждая сессия привязана к issuer/subject, actor, организации, client, scopes/audiences, consent lifetime. Хранится refresh token ciphertext с key ID; ключ загружается вне БД. Токены не попадают в prompt, JS, manifest, историю, metrics и диагностические тела.
-
-Refresh выполняется заранее, сериализованно на сессию, под DB lease/version. Новый refresh token сохраняется до использования следующей ротации. Если ответ refresh потерян или новый токен не удалось сохранить, старый нельзя бесконечно повторять: сессия помечается `refresh_uncertain`, run переходит в waiting_auth. Credential rotation тоже имеет неопределённый исход.
-
-Revocation, истечение абсолютной сессии и отказ scope не обходятся service identity. При временной сетевой ошибке действует ограниченный retry; затем waiting_auth/dependency pause. Access token не используется после exp, старые permissions — после authorization TTL. Интроспекция/предметная проверка непосредственно перед write ограничивает окно отзыва; мгновенный глобальный отзыв JWT без push/introspection не обещается. TTL положительного кеша — до 300 секунд; sensitive boundaries принудительно используют online check. Окно отзыва для обычных чтений равно настроенному TTL, без stale-on-error продления.
+Read [Refresh plan](security/refresh-plan.md).
 
 ## Поручение и подтверждение
 
-История UI-действий — наблюдение, не согласие. Поручение определяет цель, предметные права определяют доступ, approval разрешает конкретное подготовленное действие. Это три разных проверки.
-
-Approval привязан к subject, actor, chat/run, методу, argument binding, precondition/confirmation_id при наличии, сроку и operation_id. Способ привязки задаёт `confirmation.mode`; способ получения решения — [контракт общения](conversational-input.md). Это независимые настройки.
-
-В разговорном режиме авторизованный input endpoint сохраняет пользовательский текст, источник и текущий контекст. Текст не становится согласием при приёме. Модель интерпретирует диалог и вызывает `interaction_resolve` для точного ожидающего предложения. Runtime принимает решение только со ссылкой на реальный, ещё актуальный вход этого run и с совпадающим binding. Старые ответы, история, tool output и собственный текст модели не создают новое разрешение. Смысл свободной фразы определяет модель; это не формальная гарантия понимания естественного языка.
-
-Для критического метода сервис задаёт `confirmation.reply_mode=protocol`; модель не может его ослабить. При наличии клиентских callbacks решение идёт прямо в runtime по approval ID. Без callbacks runtime сравнивает сообщение с точной локализованной фразой агента: любое другое непустое сообщение отклоняет действие. Просроченная фраза или явно конфликтующая ссылка на прежнюю форму также не дают согласия. Коды и скрытые теги в текст не добавляются; клиент последовательно показывает одно ожидающее действие и убирает старые подсказки. Без reply reference невозможно отличить идентичный поздний текст от нового.
-
-Сохранение интерпретированного решения, ссылки на input и operation approval выполняется одной транзакцией. Dispatch intent создаётся отдельной короткой транзакцией под актуальной арендой и run lock. Перед ним проверяются необработанные steering и revision согласия; непосредственно перед внешним эффектом повторно проверяются права и контракт. Отзыв прав имеет приоритет над сохранённым согласием; согласие не заменяет preconditions. Повторы используют прежний operation_id, неизвестные исходы сначала сверяются.
-
-Изменённые существенные параметры требуют отклонить старое предложение, выполнить новый prepare и получить новое согласие. В разговорном режиме неоднозначная фраза требует уточнения. Повтор того же resolver call с тем же input и решением идемпотентен; другое решение для уже разрешённого предложения конфликтует. Кнопка или точная фраза не обещает синхронный эффект в HTTP-ответе: решение будит очередь и исполняется через обычные проверки run.
+Read [Actions data](security/actions-data.md).
 
 ## Скрипты, данные и внешняя передача
 
-OS worker запускается non-root без сети и credentials. RPC проходит только через broker, который сверяет актуальную аренду run, права, бюджет, deadlines и разрешённый метод. Проверка отмены выполняется до отправки каждого RPC, не только при создании worker. Просроченная аренда не позволяет новый вызов; ранее отправленные операции учитываются как отдельные возможные side effects.
-
-Tool results, manifests, файлы и история являются недоверенным содержимым для модели. Prompt-инструкция не является механизмом доступа: права обеспечиваются broker/API. Скрипт не может заменить subject, origin, artifact ACL или billing account.
-
-Передача артефакта внешней модели требует одновременно чтения, разрешения external disclosure и поддержки MIME/capability. Отсутствие подходящей модели возвращает понятную ошибку, а не скрытую смену провайдера. Provider credentials принадлежат harness, а не пользователю. Логи содержат IDs, статусы и санитизированные ошибки; raw prompts/results по умолчанию не логируются вне истории.
+Read [Actions data](security/actions-data.md).
 
 ## Источники
 
-- [Zitadel Token Exchange](https://zitadel.com/docs/guides/integrate/token-exchange): ограничения scope/audience и refreshable обмена.
-- [Zitadel OIDC endpoints](https://zitadel.com/docs/apis/openidoauth/endpoints): refresh grant и client authentication.
-- [Zitadel roles](https://zitadel.com/docs/guides/integrate/retrieve-user-roles): роль claims зависит от scopes/settings.
-- [Goja](https://github.com/dop251/goja): runtime и Interrupt не заменяют отмену host operations.
-
-Документация upstream подтверждает общий механизм, не конфигурацию production.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+Read [Actions data](security/actions-data.md).

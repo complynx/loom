@@ -1,5 +1,0 @@
-cancelled|3
-completed|95
-0
-0
-transcription|completed|4

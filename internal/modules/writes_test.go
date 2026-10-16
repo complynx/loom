@@ -95,7 +95,7 @@ func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
 	require.EqualValues(t, 1, effects.Load())
 	require.EqualValues(t, 1, status.Load())
 	revoked := p
-	revoked.Permissions = []string{"zns.massage.access"}
+	revoked.Permissions = []string{"booking.massage.access"}
 	liveBackend := modules.WriteBackend{
 		Registry:         registry,
 		Principal:        p,

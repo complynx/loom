@@ -1,59 +1,57 @@
 # Loom
 
-Loom — агентский API-сервис для инфраструктуры Complynx. Язык приложения — Go, основное хранилище — PostgreSQL. Модель выполняет задачи через ограниченную JS-песочницу и модули других сервисов.
+Loom is an agent API service built with Go and PostgreSQL. It accepts a request and a Zitadel identity, runs a model-driven task, calls authorized service modules, and records history, results and credit usage.
 
-Репозиторий содержит реализацию MVP и проектную спецификацию. API, PostgreSQL, inference, очередь River, подтверждения, история и отдельная JS-песочница проверяются поведенческими тестами. Изолированные local Zitadel и минимальный live OpenAI call имеют отдельные отчёты; production deployment и production identity/client integration требуют проверки с реальными настройками.
+Clients use HTTP requests and durable SSE events. A client can answer questions, send steering messages, approve an action, or resume a paused run. JavaScript runs in a separate sandbox process. File tools pass temporary IDs instead of complete files through JavaScript.
 
-Кодовое название проекта — **Loom**. Репозиторий и Go module — `github.com/complynx/loom`, executable и Docker image — `loom` и `complynx/loom`. Существующие `CLX_*` env variables, права и протокольные `clx.harness.*` labels сохранены для совместимости.
+## Start here
 
-Схема до первого production release объединена в `migrations/00001_loom.sql`. Она предназначена для новой БД; старые QA/dev базы с цепочкой 00001–00012 не обновляйте этой baseline поверх существующей схемы. Сохраните их со старым образом или перенесите данные отдельным проверенным процессом. Объединение не изменяет River migrations.
+| Your task | Read |
+| --- | --- |
+| Work on the code | [Contributing and code map](CONTRIBUTING.md) |
+| Run a development instance | [Local setup](docs/running.md), [startup and keys](docs/startup.md) |
+| Build a client | [HTTP API](docs/api.md), [conversation and confirmation](docs/conversational-input.md) |
+| Add a service module | [Module contract and help requirements](docs/modules.md) |
+| Operate an installation | [Operations](docs/operations.md), [diagnostics](docs/diagnostics.md) |
+| Test a change | [QA guide](docs/qa.md), [integration fixtures](integration/README.md) |
+| Check scope | [Limitations](docs/mvp-limitations.md), [development track](docs/development-track.md) |
 
-## Разработка
+## Request path
 
-Требуется Go 1.27.2. `go test ./...` запускает дешёвые тесты; проверки SQL и транзакций используют отдельную PostgreSQL, заданную через `CLX_TEST_DATABASE_DSN`. Linux-проверки с race detector запускаются через `scripts/linux-tests.sh`. Команды сборки и проверки находятся в `Makefile`.
+```mermaid
+flowchart LR
+  Client[Client or service] --> API[HTTP API and SSE]
+  API --> IAM[Zitadel authorization]
+  API --> DB[(PostgreSQL and River)]
+  DB --> Run[Agent run]
+  Run --> Model[Model provider]
+  Run --> JS[Sandbox worker]
+  JS --> Broker[Authorized module broker]
+  Broker --> Services[External services]
+  Run --> Files[Temporary files and file worker]
+```
 
-Версии Go-модулей закреплены в `go.mod`, контрольные суммы — в `go.sum`. Контейнеры и CI actions закреплены digest/commit. Обновления проходят review и проверки.
+The database owns durable state. The broker checks authority before each module call; the sandbox receives no credentials.
 
-## Документы
+## Runtime
 
-- [Ограничения MVP](docs/mvp-limitations.md)
-- [Дальнейший трек разработки](docs/development-track.md)
-- [Запуск, настройка и восстановление MVP](docs/running.md)
-- [Запуск, миграции и ключи](docs/startup.md)
-- [Review всего кода и итоговые gates](docs/validation/2026-10-11-full-review/README.md)
-- [Личная память пользователя](docs/user-memory.md)
-- [Diagnostics API и панель](docs/diagnostics.md)
-- [Hybrid retry](docs/hybrid-retry.md)
-- [Active-run compaction и platform recovery](docs/active-compaction.md)
-- [OpenAI, тарифы и компактификация](docs/openai.md)
-- [Тестовые провайдеры](docs/test-providers.md)
-- [CI, Docker Hub и триггер серверного деплоя](docs/ci.md)
-- [Результаты локальной проверки MVP](docs/validation/2026-10-11/README.md)
-- [Поддерживаемые настройки](internal/config/SUPPORT.md)
-- [Ротация ключей сессий](docs/session-key-rotation.md)
-- [Метрики, уровни логов и подключение Alloy](docs/observability.md)
-- [Аудит реализованных зависимостей](docs/dependency-audit/2026-10-11-mvp/README.md)
+The deployment target is Linux/amd64 with Docker. PostgreSQL stores run state, River jobs, history, authorization sessions and the credit ledger. Zitadel supplies identities and roles. OpenAI is the default model provider; development providers are available for manual and deterministic tests.
 
-- [Архитектура и принятые решения](docs/architecture.md)
-- [Клиентский HTTP API](docs/api.md)
-- [Единый поток сообщений и подтверждение действий](docs/conversational-input.md)
-- [Discovery и контракт модулей](docs/modules.md)
-- [Авторизация и подтверждения](docs/security.md)
-- [Данные, история, контекст и кредиты](docs/data.md)
-- [Недоступности, отказы и восстановление](docs/failures.md)
-- [Конфигурация, эксплуатация и план реализации](docs/implementation.md)
-- [Зависимости, лицензии, аудит и фиксация коммитов](docs/dependencies.md)
-- [Пример manifest](examples/manifest.json)
-- [JSON Schema manifest v1](schemas/manifest.schema.json)
-- [Пример конфигурации](examples/config.yaml)
+The API, sandbox supervisor and file worker have separate roles. Workers do not receive identity or provider secrets. A restricted Docker API proxy supplies module discovery. One nonterminal run owns a chat; different chats can run concurrently. Passive user actions add history but do not start a run.
 
-Термины «должен» и «нельзя» задают целевой обязательный контракт v1. Реализованный срез и следующие этапы перечислены в ограничениях MVP и треке разработки. Значения таймаутов и лимитов в примерах — предлагаемые defaults, а не измеренные характеристики.
+Use the [development Compose](compose.yaml) and [configuration template](deploy/config.example.yaml) for local setup. They require your issuer, credentials, model policy and roles. They are not a complete production profile. Hostnames, ingress, secrets, backups and collector configuration belong to the operator. No specific hosting provider or deployment repository is required.
 
-Первая версия: один активный run на чат, несколько чатов пользователя, пассивные события от сервисов, вопросы и steering, свободные подтверждения с отдельным режимом для критических действий, два способа привязки prepare/execute, Docker discovery, учёт кредитов, сохраняемое исполнение. Проактивные запуски и субагенты в v1 не входят.
+## Contracts and configuration
 
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+- [Architecture](docs/architecture.md), [trust boundaries](docs/security.md), [data and accounting](docs/data.md).
+- [Startup and migrations](docs/startup.md), [configuration rules](docs/implementation.md), [supported fields](internal/config/SUPPORT.md).
+- [Manifest example](examples/manifest.json) and [manifest schema](schemas/manifest.schema.json).
+- [User memory](docs/user-memory.md), [file tools](docs/file-tools.md), [file worker](docs/file-worker.md).
+- [OpenAI settings and cost](docs/openai.md), [context compaction](docs/active-compaction.md), [test providers](docs/test-providers.md).
+- [Failures](docs/failures.md), [retry policy](docs/hybrid-retry.md), [caller recovery](docs/caller-recovery.md).
+- [Operator login](docs/operator-login.md), [session-key rotation](docs/session-key-rotation.md), [restore barrier](docs/recovery-mode.md).
+- [Logs and metrics](docs/observability.md), [OpenTelemetry](docs/opentelemetry.md), [CI and images](docs/ci.md).
 
-Go linting: [Golden configuration and commands](docs/linting.md).
+The Go module is github.com/complynx/loom. Existing CLX_* settings and clx.harness.* discovery labels are stable interface names. Go dependencies use go.mod/go.sum; there is no separate dependency lock. Base images and CI actions use reviewed digests/commits.
 
-Personal user memory: [layout, HTTP API and agent tools](docs/user-memory.md).
+The repository contains reproducible tests and QA instructions. Store run reports, screenshots and dumps outside source control. Required dependency notices remain in the repository and images.

@@ -72,7 +72,7 @@ docker build --target file-worker-sources --output type=tar,dest=management.loca
 ```
 
 Review the bundle for complete source, license text, patches, and build
-instructions before the first public release and after changing runtime
+instructions for a release and after changing runtime
 packages. This automated bundle is release input, not legal certification.
 
 Changing `packages.lock` requires rerunning the worker behavior tests, source

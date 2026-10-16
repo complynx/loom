@@ -1,5 +1,0 @@
-{
-  "status": "FAIL",
-  "stage": "QA driver helper",
-  "detail": "Acceptance service scratch image has no cat. Read its fixture volume through read-only alpine helper instead."
-}

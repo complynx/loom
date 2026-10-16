@@ -51,11 +51,9 @@ Focused HTTP tests cover manifest registration, permission filtering, dynamic di
 go test ./internal/acceptance ./cmd/clx-acceptance
 ```
 
-## Independent local QA
+## QA use
 
-The HTTP API run path was checked against the Docker fixture with real PostgreSQL, production registry/ModuleBridge/coordinator and artifact import, actual Inline JavaScript, and a deterministic Responses HTTP provider. Dynamic lookup and imported blob passed. The write path passed approval, duplicate approval, lost reply, retained-volume Docker restart and explicit resume/status recovery. Counters showed one write RPC and one status RPC; completed-run execution caused no additional inference or effect.
-
-See [QA report and replay sources](validation/2026-10-11-acceptance-qa/REPORT.md). This uses test authentication and an explicit trusted registry endpoint. Live Zitadel, Docker metadata discovery, River scheduling, supervisor IPC and complete application startup remain outside this scoped QA.
+Use this fixture for manifest discovery, bounded reads, temporary artifacts, prepare/approve/execute/status and lost-reply recovery. Verify one effect after replay and retained-volume restart. Follow [QA](qa.md) for the full runtime lane: real Zitadel, Docker metadata discovery, River and supervisor IPC need their own stand. This fixture does not replace a real business-service adapter.
 
 ## Limits
 
@@ -63,7 +61,7 @@ The fixture performs no business operation. Its committed value is test state. P
 
 State writes synchronize a temporary file and rename it before acknowledging a write. Parent-directory synchronization is not implemented; power-loss durability has not been proven. Restart tests cover ordinary process restart. There is no cancellation endpoint or arbitrary format/media support; the exported artifact is a fixed text blob.
 
-The fixture's HTTP contract is tested through the real module registry and write backend. Focused tests also pass with the race detector on Linux. The merged Compose configuration validates; the pinned Linux image builds and starts with a read-only root filesystem, and preparation writes successfully into an anonymous state volume. The temporary container was stopped and removed after this check. Running it on Daniel's server, connecting it through server Docker discovery, and exercising the full live Zitadel/provider path are separate acceptance steps.
+Run the fixture with a read-only root and writable state volume. Verify permissions, counters and retained receipts; use a real service for business acceptance.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk

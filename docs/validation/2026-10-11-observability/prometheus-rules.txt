@@ -1,3 +1,0 @@
-Checking /work/alerts.yaml
-  SUCCESS: 8 rules found
-

@@ -1,157 +1,61 @@
-# Ограничения MVP
+# Возможности, проверки и ограничения
 
-Proxy SSO panel: [local checks and remaining target-IAM acceptance](validation/2026-10-15-proxy-sso/README.md).
+Этот документ отделяет поддерживаемые возможности от непроверенных сценариев. Приёмку установленного сервиса выполняет оператор. Прежнее имя файла сохранено для совместимости ссылок.
 
-Automatic startup: [local acceptance and unverified deployment boundaries](validation/2026-10-15-automatic-startup/README.md).
+## Реализовано и проверено
 
-Temporary-file acceptance: [8 groups PASS](validation/2026-10-12-temporary-files/README.md); full Linux race and Golden lint PASS; 2-pass independent review closed.
+| Область | Подтверждённая граница |
+| --- | --- |
+| API, River, PostgreSQL | Поведенческие тесты транзакционности inputs/jobs, idempotency, одного run на чат, истории, SSE и billing. Linux race, Golden и Docker build входят в CI. |
+| Разговорный ввод | Детерминированные тесты steering, уточнений с blocked action, нового prepare, native callbacks, exact-text, stale consent и restart. Живая интерпретация отдельно. |
+| Zitadel | Настоящий локальный issuer: JWT/introspection, cross-org отказ, live role removal, signing-key rotation и API/River restart → reauthorize после отзыва credentials. Proxy SSO поддерживается отдельно от direct PKCE. |
+| OpenAI | Минимальный live Responses вызов и settlement. Expanded tools/vision/compaction quality этим не подтверждены. |
+| Внешний клиент | Выделенный стенд: Telegram → делегированный run → ответ, история следующего обращения, фильтрация методов по правам и восстановление того же run. Provider — manual mailbox. |
+| Write через внешний сервис | Локальная consumer-приёмка: nested prepare → restart → approval → реальный write; replay/status сохраняют один receipt/эффект. Это protocol-mode сценарий. |
+| Внешние файлы | Native import из внешнего сервиса, читаемый PDF render/text, video frame/audio extraction, audio metadata и явный refetch внешнего ID после expiry artifact. Автоматический refresh helper проверен отдельно локально. |
+| Память, поиск, контекст | Owner isolation, micro до 500 Unicode characters, literal/fulltext/RE2, bounded read, vector-only API, prefix reuse и durable compaction проверены fixtures/PG. |
+| Отказы | Изолированные стенды: disk-full/read-only, отмена, потерянные ответы, worker kill/OOM и bounded restore/recovery barrier. Это не нагрузочные пределы production-хоста. |
+| Диагностика | API/agent functions, logs/metrics и bounded OTel export проверены локально. |
 
-Temporary-file policy supersedes former long artifact retention. Default TTL is 24 hours; raw files are not included in long-term backups. Expiry denies access immediately; minute-based physical collection may be delayed by database/disk outages or recovery mode. Metadata, excerpts in chat history, and financial receipts remain independent of file bytes. Source services own durable originals. Service-backed references with `fetch_method` recover the exact version for agent tools and initial attachments within the same run. Raw uploads, derived outputs without a refetch contract and legacy imports cannot recover automatically. See [file contract](file-tools.md).
+Consumer-приёмка закрывает отсутствие реального адаптера и ограниченные read/write/file сценарии. Она относится к конкретным сборкам, а не автоматически к каждой следующей версии. Порядок повторной проверки — в [QA](qa.md).
 
-**File API acceptance, 12 October:** 21 local functional scenario groups PASS through API/River/Goja/worker: streaming and model attachment, ownership/handle isolation, real ENOSPC, quotas, cancellation, automatic worker restart and unknown transcription reconciliation without redispatch. No product code or production change; no paid calls. [Evidence and exact remaining boundaries](validation/2026-10-12-file-api-acceptance/README.md).
+## Реализовано, но соответствующая проверка открыта
 
-**File tools and live limits, 12 October:** implemented private streamed PDF/image/video/text/document/archive worker and durable paid transcription. [Contract and bounds](file-tools.md), [worker rollout and licenses](file-worker.md). Local component/PG/Unix-worker tests cover bounded reads, handles, ownership/disclosure denial, exact settlement, unknown holds, manual reconciliation and replay without redispatch. Live limits cover admission plus next-script/next-model boundaries; lowering does not interrupt in-flight work. Production media processing and real OpenAI transcription are not accepted yet. OpenTelemetry traces, operation metrics and correlated logs are implemented with bounded best-effort export. [Current local acceptance and remaining gates](validation/2026-10-12-files-otel/README.md); [collector configuration](opentelemetry.md).
-
-**Дополнение 12 октября — fault/recovery:** [SIGKILL и три OOM атакующих](validation/2026-10-12-supervisor-fault-qa/README.md) приняты локально без повторного вызова/списания. Реализован `execution.recovery_mode`: dispatch и фоновые изменения выключены, доступны диагностика и ограниченная сверка. [Restore PG/blobs/keyring](validation/2026-10-12-restore-recovery-qa/README.md), защита нового/удалённого service caller, идемпотентная сверка и контролируемый выход приняты на fixture. Операторская подготовка теперь реализована штатной recovery-only ручкой с evidence/lease/fence guard и [принята на отдельной копии снимка](validation/2026-10-12-recovery-prepare-qa/README.md); прежняя QA one-shot приёмка сохранена как историческая. **Не сделано:** автоматическое восстановление потерянных после snapshot effects, PITR/off-host backup. После restart recovery нужен полный `identity.service_subjects` inventory, включая сервисы после точки backup. Production restore и произвольная OOM isolation не проверены.
-
-**Обновление 12 октября:** текущая браузерная приёмка fixture теперь PASS после установки Daniel тестового CA и перезапуска Codex: login, фильтры, detail, refresh и Disconnect. [Follow-up](validation/2026-10-12-browser-qa/README.md). Упоминания TLS BLOCKED ниже описывают сохранённый результат 11 октября; production/real issuer и остальные открытые gates этим не закрыты.
-
-Состояние рабочего дерева на 11 октября 2026 года: базовый MVP `25e3850` и последующие незакоммиченные изменения. После всех memory/scope/retry исправлений полные Windows integration и Linux/Docker race gates PASS, Golden 0 findings PASS. Шестой свежий retry review завершён без actionable findings; всего шесть review passes, найденные ошибки исправлены. Три выявленных дефекта исправлены и локально приняты: cancellation checkpoint, shutdown при PG outage и health IPC capacity handshake. Исходные FAIL сохранены; свежие review чистые после исправлений, финальные общие Windows/Linux race/Golden gates PASS. [Исправления и доказательства](validation/2026-10-11-fault-fixes/README.md). На текущем reviewed image вручную проверены artifact/PG ENOSPC, DB read-only и восстановление; readiness остаётся connectivity-only. [Текущая приёмка](validation/2026-10-11-full-manual-qa/README.md). 362 notices, govulncheck и 10 promtool rules PASS. [Расширенный статус](validation/2026-10-11-extended-qa/README.md), [дальнейший трек](development-track.md). Production-приёмка не выполнена.
-
-Полный source review loop: четыре прохода, по три независимых направления (correctness, quality, readability); 17 дефектов исправлены, последний проход чистый. Финальные Windows integration, Linux race, Golden и Docker build PASS. [Снимок и evidence](validation/2026-10-11-full-review/README.md). Документация повторно сверена с реализацией. Текущий браузерный вход на общем QA стенде блокирует недоверенный fixture TLS certificate; предупреждение не обходилось. Предыдущая настоящая Zitadel browser-приёмка остаётся исторической, не новым браузерным PASS.
-
-Ниже разделены проверенное поведение, реализованные механизмы с открытой приёмкой и отсутствующие возможности. Локальный тест компонента не означает проверку полного сценария на настоящем issuer или сервере. В разделе 3 существующий механизм указан только для объяснения границы отсутствующей функции.
-
-## 1. Реализовано и проверено
-
-- **Разговорный ввод, локальная детерминированная приёмка.** Один steering-поток, пробуждение того же run, уточнения с заблокированным действием, новый prepare после изменения параметров, бинарные callbacks и точная локализованная фраза без кодов. Проверены binding/revision, устаревшие presentation, rollback очереди, повторные квитанции и продолжение новым worker. Linux/PG race и Golden PASS; независимый review loop завершён. [Протокол](conversational-input.md), [доказательства и границы](validation/2026-10-16-conversational-input/README.md).
-
-Область проверки указана у каждого пункта; production-приёмка не выполнена.
-
-- **API/runtime, локальные тесты и Compose.** Проверены владение чатами, один нетерминальный run на чат, независимые чаты, idempotency, durable history/SSE replay, вопросы, steering, approvals, credit settlement, неизвестные исходы, отмена и ограничения доступа. В локальном Compose запрос исполнил JS через настоящий sidecar; остановка/перезапуск sandbox восстановили run. Issuer/provider в этом Compose были тестовыми HTTPS-серверами. [Приёмка](validation/2026-10-11/README.md).
-- **Настоящий Zitadel, локальный стенд.** На v4.16.3 с PostgreSQL получены 27 PASS: JWT/opaque, claims, роли, same-org service delegation и пересечение прав, expiry, deactivation пользователя, отказ issuer, encrypted session и HTTP 401/403. Это identity/HTTP/store, а не полный runtime с настоящим issuer. Нужен scope `urn:zitadel:iam:user:resourceowner`; org нельзя выводить из параметров запроса. [QA](validation/2026-10-11-zitadel/README.md).
-- **Настоящий Zitadel, расширенные границы: ещё 18 PASS.** На отдельном v4.16.3 стенде проверены отказ cross-org delegation для валидных токенов двух org, live role removal для ранее выданного JWT и sealed delegated session, expiry/fresh credentials, настоящая signing-key rotation и fail-closed при остановке issuer. Ротация проверена через WebKeyService и новый `kid`; warm/cold authenticator при отказе issuer возвращают unavailable, HTTP — 503. Это identity/session/HTTP, без очереди и полного runtime. [Расширенный QA](validation/2026-10-11-zitadel-extended-qa/README.md).
-- **Reauthorize, компоненты хранения.** PostgreSQL-тесты проверяют version conflict и успешное конкурентное обновление credentials при re-encryption. Дополнительно полный API/River restart → reauthorize → завершение того же run прошёл с настоящим Zitadel и deterministic provider: отзыв старого JWT, fresh credentials, CAS, изоляция пользователей/org, 220 spent и 0 reserve. TTL expiry не использовался. [Runtime reauthorize QA](validation/2026-10-11-full-manual-qa/reauthorize/README.md). [Тест конфликта](../internal/store/store_test.go), [конкурентное обновление](../internal/store/session_keys_test.go).
-- **Keyring сессий, локально.** Bounded re-encryption проверена с rollback/resume, expiry/revocation и сохранением auth version. Это ключи шифрования credentials, не signing keys Zitadel. [Доказательства](validation/2026-10-11-d02/README.md).
-- **Провайдеры/accounting, fixtures.** OpenAI Responses, default gpt-6-luna/medium, каталог и API-тарифы реализованы. Engine/ledger проверены тестовыми провайдерами; mock mailbox и opt-in Codex exec сохраняют API accounting. Codex subprocess fixture проверяет schema file, cancellation и usage; живой CLI inference не выполнялся.
-- **Контекст, локальные поведенческие тесты.** Проверены история, оплачиваемая summary, fulltext/RE2 regex, per-model limits и сокращение блоков пассивных действий. Defaults hard/trigger/target: 272000/244800/204000. При более четырёх действиях — первое, число скрытых и последние три; до первого диалога — общее число и последние три перед первым сообщением. Pagination/checkpoints сохраняют результат, полная история доступна поиску. Пассивная запись не запускает агента.
-- **Active-run compaction и platform-paid recovery, fixtures.** Native OpenAI compact сохраняет каноническое окно; другие transports используют текстовую выжимку. PostgreSQL/race тесты проверяют checkpoint/resume, сохранение истории, отсутствие повторных tools и учёт успешной usage. Неизвестный сетевой исход или expired lease может освобождать пользовательский резерв с отдельным platform exposure; default limit — два исхода на run, затем пауза. Fresh authorization обязательна; client pause/cancel и неопределённые writes не повторяются. [Контракт](active-compaction.md).
-- **Модельный сервис и полный Linux runtime, локально.** API → River → настоящий sandbox supervisor/worker, ограниченный Docker proxy и Docker metadata discovery прошли с тестовыми HTTPS issuer/provider. Проверены dynamic JS lookup, импорт blob и HTTP handle/download с совпадающими bytes/hash, approval/idempotency → lost reply → restart acceptance container → status recovery, question/text answer, steering и обычная отмена. Запись восстановилась с одним сохранённым эффектом; точное число HTTP попыток этим runtime-прогоном не измерялось. После остановки PostgreSQL readiness стала 503; после restart PG/API новый run завершился. Это локальный acceptance fixture, не реальный production-сервис или модель. [Полный runtime QA](validation/2026-10-11-full-runtime-qa/REPORT.md), [предыдущий сервисный QA](validation/2026-10-11-acceptance-qa/REPORT.md).
-- **Персональная память пользователя, focused, общие gates и два независимых review PASS / production pending.** PostgreSQL store, API и sandbox JS проверены; micro обновляется перед каждым inference, включая current run и previous-run reuse. Изоляция пользователей проверена. Личная память доступна каждому авторизованному пользователю без отдельных ролей. Owner — authenticated issuer/subject/org; память общая для чатов пользователя в этой org. Иерархия: index → notes → sources; отдельная micro память ограничена 500 Unicode characters и подставляется в inference для авторизованного пользователя. Нет automatic extraction, embeddings, admin memory UI или production acceptance. Два независимых review не нашли actionable findings; последние полные Windows/Linux race/Golden gates с памятью PASS. [Memory QA](validation/2026-10-11-user-memory/README.md). [Контракт](user-memory.md).
-- **DB API/данные, локально.** Проверены preferences/catalog/policy, privacy guards, квоты, display-history/blob retention и удаление. DB API меняет права моделей, тарифы и per-model context limits; явный patch нужен для существующей БД.
-- **Наблюдаемость/CI, локально.** Exporter, JSON log levels/redaction, backlog/reserve age и 10 alert rules реализованы; exposition, alert fixtures, Alloy/Compose patch и локальная workflow/build проверка прошли. Серверная доставка и remote pipeline сюда не входят. [Наблюдаемость](observability.md), [CI](ci.md).
-
-- Healthy SIGTERM полного runtime: API 296.02 мс и supervisor 47.82 мс от сигнала до выхода контейнера. Историческая проверка при остановленной PostgreSQL показала выход за лимит. Исправление оставляет запас для выхода процесса; локальная повторная приёмка прошла по времени signal → container State.FinishedAt. Docker `die` notification может приходить позже фактического выхода; обе метрики сохранены в [новом отчёте](validation/2026-10-11-shutdown-fix/README.md). Artifact/PG ENOSPC и DB read-only локально проверены; выход при полном PG измерен отдельно, 437 мс. Это не host OOM или отказ всего диска сервера. При потере БД нельзя обещать сохранение последнего ответа: recovery опирается на ранее записанный intent. [Доказательства](validation/2026-10-11-full-runtime-qa/REPORT.md).
-
-- Реальное завершение engine subprocess после model dispatch и после committed service-write до tool checkpoint проверено на Windows и Linux с `-race`: потерянный inference восстановился с отдельным platform exposure, неопределённый tool остался reconciling без повторного эффекта. Provider и service callback тестовые, эффект сохранён в настоящей PostgreSQL; это не kill всего deployment. Исторический deterministic cancellation probe выявил пропуск terminal checkpoint при отмене `ExecutionRun`. Дефект исправлен: сохраняется последний fence, interruption checkpoint учитывает authoritative control; исходный оплаченный сценарий теперь даёт cancelled/client_cancel, spent 15/reserved 0. [Repair QA](validation/2026-10-11-cancel-fix/README.md). [Failure QA](validation/2026-10-11-failure-qa/report.md).
-
-- Основной transport — OpenAI Responses, default gpt-6-luna/medium. Автоматический preset включает Luna, Sol и Astra с capabilities и Standard global API тарифами, зафиксированными 11 октября 2026 года. Это snapshot, а не live pricing feed; специализированные модели с другими API в каталог не входят. Явный YAML catalog и существующая БД не перезаписываются. Совместимость произвольного endpoint требует проверки. [Каталог и стоимость](openai.md).
-
-- Добавлены opt-in mock mailbox для QA и локальный Codex exec. Оба сохраняют API тариф и credit ledger. Mock usage задаёт QA; Codex usage берётся из событий CLI и включает его overhead, поэтому не равна точной оценке того же прямого Responses запроса и не описывает цену подписки. Обе development-конфигурации text-only, без artifact counting; это не trusted private inference. [Настройка и ограничения](test-providers.md).
-
-- Уменьшение прав проверяется на следующих границах. Модель и оплаченные действия существующего run не заменяются молча.
-
-## 2. Реализовано, но соответствующая проверка не выполнена
-
-- **Свободная интерпретация согласия.** Runtime и инструменты реализованы, но понимание русских/английских формулировок живой моделью, неоднозначной отмены и поздних ответов не проверялось этим прогоном. Scripted provider доказывает транспорт и детерминированные ограничения. Отдельно не приняты адаптер Зинуси, порядок доставки и смешанный UI.
-
-Для частично проверенных механизмов раздел 1 описывает пройденную область, а здесь — открытый сценарий.
-
-| Сценарий | Что есть в коде | Что не проверено |
+| Сценарий | Что есть | Что остаётся |
 | --- | --- | --- |
-| Live role removal | Online introspection; на настоящем локальном Zitadel удаление grant убрало права из ранее выданного JWT и sealed delegated session. | Целевая конфигурация issuer и полный текущий run: остановка запрещённых действий на следующих границах. |
-| Signing-key rotation | Настоящая локальная Zitadel rotation прошла; warmed authenticator принял новый `kid`, старый токен оставался валиден при сохранённом ключе. Issuer outage с warm/cold cache блокировал доступ. | Операционный график rotation и target acceptance; отдельный отказ JWKS во время ротации при доступной introspection. |
-| Queue restart → reauthorize после TTL expiry | Полная цепочка после настоящего отзыва credentials уже прошла на Zitadel/API/River, включая CAS и однократный settlement. | Полная цепочка именно с TTL expiry и целевая серверная конфигурация; provider и внешние writes в identity lane тестовые/отсутствуют. |
+| PKCE | Прямой authorization-code/PKCE реализован, проверен с локальным настоящим Zitadel. | Настроить и принять выбранный режим установки; proxy SSO не требует прямого PKCE-клиента. |
+| Live role removal | Online authority, bounded positive cache, sensitive bypass и purge через PG generation. | Отзыв/purge в текущем issuer/cache профиле установки. Warm cache может задержать обычный отзыв до TTL; stale-on-error нет. |
+| Signing-key rotation | JWT/JWKS refresh и локальная настоящая rotation. | Операционная rotation и отдельный отказ JWKS при доступной introspection в текущем серверном профиле. |
+| Queue restart → reauthorize | Сохранение run/CAS и локальная цепочка после настоящего отзыва JWT. | Полная цепочка именно при TTL expiry и клиентском flow установки. |
+| Свободное согласие | Runtime связывает решение с последним input и точной операцией. | Live RU/EN, условные/поздние ответы и интеграция UI клиента. Старые бинарные approval-тесты этого не доказывают. |
+| Модель/файлы | Image attachment, native compaction и paid transcription реализованы. | Live vision, качество/стоимость compaction, платная транскрипция и unattended выбор инструментов. |
+| Эксплуатация | Startup, telemetry, keyring и recovery guards реализованы. | Сквозной backend/alert acceptance, target load/host OOM, off-host/PITR restore и backup key rotation. |
 
-Исходники: [introspection/roles](../internal/identity/auth.go), [JWT/JWKS](../internal/identity/signed.go), [VerifySession](../internal/identity/session.go), [reauthorize API](../internal/api/api.go), [CAS/requeue](../internal/store/history_auth.go), [runtime](../internal/app/runtime.go). PKCE и разрешённая cross-org delegation в эту группу не входят: их статус — в разделе 3.
+## Не реализовано
 
-- Есть история, оплачиваемая summary, fulltext и ограниченный RE2 regex. По моделям настроены hard input 272000, trigger 244800 и target 204000. Сборка истории использует консервативные byte bounds: компактификация может начаться раньше номинального token trigger, а target ограничивает сохраняемый recent suffix, не итоговую usage. Активный run теперь сжимает завершённые model/tool шаги: OpenAI native /responses/compact, текстовая выжимка для остальных transports, durable оплачиваемый checkpoint и точный token count непрозрачного окна. Это проверено fixture на PostgreSQL; живой платный OpenAI и оценка качества остаются открыты. Native output size выбирает провайдер; target 204000 не гарантирует конечный размер. [Контракт и восстановление](active-compaction.md).
+- Разрешённая cross-org delegation: запрещена намеренно. Для поддержки нужен отдельный trust contract.
+- Автоматический token exchange/offline refresh/refresh rotation внутри Loom. Expiry требует reauthorize; run может ждать в waiting_auth.
+- Входящие opaque service secrets. Сервисы используют Zitadel access tokens и trusted caller binding.
+- Model token deltas/WebSocket. SSE передаёт durable run events; steering применяется на границах шагов.
+- Универсальный scheduler параллельных model calls. Parallel host RPC доступны внутри JS.
+- Embeddings-сервис, автоиндексация и ANN. Semantic API принимает готовые векторы и делает exact cosine ranking; выключенный режим скрывает инструмент.
+- Provider previous_response_id и полный transcript reuse. previous_run_id — совместимый локальный history-prefix hint до 15 минут, не resume и не гарантия cache hit.
+- Общий circuit breaker всех зависимостей, автоматическое получение поздней usage и global platform spend cap. Provider hybrid retry и bounded sponsored recovery уже есть.
+- Remote cancellation через manifest cancel_path. Cancel не означает rollback внешнего эффекта.
+- Object storage/chunk upload sessions/перенос blobs между hosts и native PDF/audio/video model input. Картинки передаются напрямую; остальные форматы обрабатывает worker.
+- Доказанная private-inference граница, automatic memory extraction, memory admin UI, субагенты и proactive runs.
+- Privileged retention migration существующих данных и secure erase всех checkpoint/audit/backup следов.
 
-- Один реальный OpenAI Responses вызов прошёл: gpt-6-luna/medium вернул LIVE_OK, 664 input и 6 output tokens, settlement 70 microcredits и 0 reserve. Начальный disclosure_denied дал 0 dispatch; после явного исправления только QA стенда выполнен один explicit resume и один model call, без inference retry. [Live report](validation/2026-10-11-openai-live-qa/LIVE-RESULT.md). Это connectivity/accounting PASS; tools, encrypted reasoning continuation, images, compaction и quality acceptance остаются открыты. Живой Codex inference не проверен.
+## Эксплуатационные границы
 
-- Compose — локальный deployment template. Он не заменяет серверную конфигурацию Traefik, отдельные runtime/migration роли PostgreSQL, секреты, backup и восстановление. Локальный PostgreSQL создаётся через образ с привилегированным bootstrap-пользователем; эти credentials нельзя переносить в production runtime.
+Один нетерминальный run занимает чат, включая паузу/ожидание. Пассивные события не запускают inference. Ожидающие действия показываются последовательно; без reply reference одинаковый поздний текст неотличим от нового. Исправленный prepare требует нового согласия.
 
-- CI настроен на build/push Linux image в Docker Hub после успешных проверок на push/merge в main и затем dispatch `updated-loom` в server_configs. Проверены локальные workflow и сборка; удалённый pipeline, Hub push и rollout в этой работе не выполнялись. Нужны GitHub secrets, поставка receiver patch и отсутствующий profile `configs/loom`. Receiver пока использует image из Compose, а не digest из payload. [Контракт CI](ci.md).
+Файлы временные: default 24 часа, конечный TTL до 7 дней. Активный run не продлевает expiry. Raw uploads/derived outputs без внешнего refetch-контракта не восстанавливаются автоматически. Долгоживущий оригинал хранит сервис-владелец.
 
-- Добавлен keyring и bounded re-encryption сохранённых сессий: [порядок ротации](session-key-rotation.md). Смена активного ключа требует rolling restart и остановки всех старых writers перед миграцией. Guard проверяет текущую БД; исторические backup требуют отдельного хранения нужных ключей и restore rehearsal (C02).
+Readiness не является writable-capacity probe: при ENOSPC/read-only соединение с БД может работать. Контролируйте свободное место и ошибки записи отдельно. Sandbox limits общие для контейнера; это не per-worker memory isolation или HA.
 
-- Codex transport проверен subprocess fixture, включая реальный schema file, отмену и usage. Живой CLI inference не выполнялся. Требуются отдельно установленный CLI и выделенный authenticated CODEX_HOME; production image CLI не содержит. Встроенные отключения tools не заменяют OS isolation; совместимость после обновления CLI требует проверки. Mock mailbox содержит историю запросов и требует приватного доступа и явной очистки.
+OpenAI hard/trigger/target defaults — 272000/244800/204000 на модель. Byte bounds могут запустить compaction раньше. Native output выбирает provider; target не гарантирует итоговую usage. Compaction оплачивается; reservation может потребовать полный возможный output window.
 
-- Реализованы приватный Prometheus exporter, JSON-логи debug/info/warn/error и debug-only payload redaction, агрегаты backlog/reserve age и 8 alert rules. Alloy/Compose patch под сервер, exposition и alert fixtures локально проверены. На сервере ещё не приняты scrape, Prometheus/Loki delivery, публикация правил и notification route; нужен C01. DEBUG может содержать пользовательский текст и JWT claims; маскирование подписи/известных credentials не распознаёт произвольный секрет в свободном тексте. [Наблюдаемость и доказательства](observability.md).
+Все model endpoints считаются внешними и требуют disclosure. Секреты не выдаются JS. Debug payload logs могут содержать пользовательский текст/JWT claims; маскирование известных credentials не распознаёт произвольный секрет в тексте.
 
-- Административная диагностика/API, утилитарные agent functions и hybrid retry реализованы с focused и общими Windows/Linux race/Golden PASS для проверенного снимка. Diagnostics JS и browser connect/filter/detail/disconnect прошли. Прямой [Zitadel panel login](validation/2026-10-11-panel-login-qa/README.md) прошёл на настоящем локальном issuer: authorization-code/PKCE, resourceowner org scope, 51 metadata run, pagination 50+1, сохранение второй страницы после 30 секунд auto-refresh, detail. Удаление настоящего grant заставило старый токен получить 403 и очистило данные; fresh SSO login без роли также дал 403. Grant восстановлен; fresh SSO login вернул первую страницу из 50 строк, Disconnect очистил таблицы/detail и отключил Refresh. Стенд сохранён для демонстрации на [localhost:58380/admin](http://localhost:58380/admin); provider/worker/queue отсутствуют, model calls = 0. Четыре свежих auth review чистые. Третий retry review выявил duration overflow при насыщенном Retry-After; исправление и focused test PASS. Все выявленные retry findings исправлены; шестой review чистый, последний общий gate PASS. Atomic schedule claim выполняется под run lock с typed River snooze; pause/cancel сохраняет Retry-After, преждевременный explicit resume даёт 409 даже при длинном deadline, saturated waits безопасны, inference timeout штатный. Общий circuit breaker и recovery остальных dependencies отдельно не приняты. Production OIDC client отсутствует, rollout pending. Старый runtime image новых функций не принимал. Load/SSE/fairness acceptance остаётся открытой.
-
-- Один sandbox container делит 128 MiB и 128 PID между supervisor и четырьмя workers. Это не per-worker memory isolation. Исправлен доказанный PID starvation при прежнем пределе 32; локально приняты четыре concurrent scripts, CPU timeout, настоящий worker OOM при активном здоровом соседе и последующее выполнение ([QA](validation/2026-10-12-sandbox-resource-qa/README.md)). Multi-attacker OOM, sustained fairness и host OOM не приняты.
-
-- Реализован [положительный permission cache](identity-cache.md): TTL 120 секунд по умолчанию, 0..300, без stale-on-error, sensitive boundaries online, общая очистка через PG generation. Новый cache/outage контракт проверяется deterministic IAM и PostgreSQL тестами; прежняя настоящая Zitadel outage-приёмка относится к online-only режиму. Target/runtime acceptance нового кэша остаётся открытой. Просроченный trust snapshot discovery также блокирует текущую классификацию callers, включая обычные запросы.
-
-- **Readiness не проверяет writable capacity.** `/healthz` и `/readyz` могут возвращать 200 при ENOSPC или read-only роли, хотя запись возвращает 500. Нужны отдельные storage/SQL error alerts и контроль свободного места. Host OOM, поддерживаемая нагрузка, restore/PITR и доставка alerts на целевом сервере не приняты.
-
-## 3. Не реализовано или находится за границей MVP
-
-- **Дополнительные возможности диалога.** Нет передачи согласия между старым и исправленным prepare: новое предложение требует нового сообщения. Нет отдельного delivery-ack протокола, доказывающего, что пользователь видел текущую форму. Без reply reference нельзя отличить одинаковый поздний текст от нового; клиент обязан последовательно доставлять сообщения и показывать одно ожидающее действие.
-
-- **Production login → token → harness flow не принят.** Resource-server API принимает готовый access token. Прямой authorization-code/PKCE login для operator panel имеет focused и настоящий локальный browser PASS, включая отзыв роли; восстановление grant, fresh SSO login и Disconnect также PASS. Широкие gates последних правок PASS. Production client отсутствует, rollout pending. Остальной клиентский flow остаётся A01/B03.
-- **Разрешённая cross-org delegation отсутствует и намеренно запрещена.** Текущий контракт требует одинаковую resourceowner org у actor и пользователя, включая восстановление сессии. Live-проверка двух org настоящего локального Zitadel подтвердила отказ. Внедрение поддержки требует отдельного решения о доверии и правах.
-
-- Есть отдельный модельный сервис для приёмки контракта. Интеграция реального соседнего production-сервиса с этим протоколом ещё не поставлена; модельный стенд использует выделенные тестовые токены.
-
-- Сессия хранит зашифрованные access credentials, но не обновляет их автоматически. Истёкшая авторизация требует reauthorize; run может перейти в `waiting_auth`.
-
-- Автоматические exchange/offline refresh и refresh rotation в harness не реализованы. QA не получила рабочий refresh flow: actor exchange с offline_access вернул actor_token invalid. RFC7009 revoke обмененных JWT/opaque также вернул 401 invalid_client, несмотря на совпадающий introspection client_id. Deactivation и online introspection прошли. Нужны сравнение с обычным authorization-code токеном и проверка установленного issuer; эти результаты нельзя считать подтверждением token-level revocation или refresh.
-
-- Входящие непрозрачные сервисные секреты не поддерживаются. Сервисы используют проверенные Zitadel access tokens и доверенный caller binding.
-
-
-
-
-- SSE доставляет durable события run. Потоковых token deltas от модели нет; WebSocket отсутствует. Steering применяется на границах шагов.
-
-- Parallel host RPC доступны внутри JS. План исполнения верхнеуровневых model tool calls не является универсальным параллельным scheduler.
-
-
-- Есть literal/fulltext/RE2 поиск, bounded snippets и постраничное чтение. Oversized regex events пропускаются с partial/cursor. Опциональный vector-only semantic API использует pgvector exact cosine scan; генератора embeddings и ANN индекса нет. Выключенный semantic search не анонсируется модели.
-
-- `previous_run_id` нового run сохраняется и может использовать совместимый локальный history prefix до 15 минут. Проверяются owner/org/actor/chat/model/effort/settings; retention инвалидирует кеш. Это cache hint, не продолжение прежнего run и не гарантия OpenAI cache hit. Полный tool transcript или provider previous_response_id не переиспользуются.
-
-- DB API меняет каталог, preferences, права моделей, обычные/cache-write/long-context тарифы и per-model input/compaction limits. В существующей БД defaults обновляются явным авторизованным patch; bootstrap их не мигрирует. Provider alias, transport kind, credentials и hard ceilings остаются deployment-настройками. DB API меняет total active-run limit, script timeout, parallel RPC и global context budget в пределах hard ceilings. Admission применяет новые значения сразу; следующий script/model turn использует min(snapshot, current, hard), не прерывая уже начатый вызов.
-
-
-- Все model endpoints считаются внешними, включая локальные. Нужны разрешение текущей политики и snapshot run; отдельного режима доверенного локального inference нет. По умолчанию передача выключена.
-
-- Временные blob хранятся на локальном volume. Object storage, отдельный upload/download chunk session API и перенос между hosts не реализованы. Сырые байты через JS не выдаются; legacy artifacts.read удалён. Файлы имеют конечный expires_at (24 часа по умолчанию); expired files нельзя читать даже до GC. Handle streaming не проходит через JS. HTTP byte ranges, HEAD и conditional reads реализованы для artifact/handle content; fresh ownership/TTL checks остаются обязательными. Artifact tools и JS namespace (open/fetch) скрыты без текущего artifacts.read ([QA](validation/2026-10-12-artifact-permissions/README.md)). Приёмка текущего этапа: [Range QA](validation/2026-10-12-artifact-range/README.md).
-
-- Модель получает поддерживаемые картинки из `input.artifact_ids`. Произвольные PDF, аудио и видео как native input не поддержаны. Временный handle можно явно приложить через artifact_attach; модель получает поддерживаемую картинку напрямую, с повторной проверкой прав и disclosure. Через HTTP content handle сервис получает исходные bytes без JS.
-
-- Артефакт с запрещённой внешней передачей не отдаётся модели; builtin чтение в агентском скрипте также проверяет этот флаг. Изолированной обработки приватного blob с доказанным исключением утечки в модель пока нет.
-
-- Display history и blobs имеют retention, но recovery checkpoints, credentials metadata, financial ledger и audit не очищаются общей политикой чата. Удаление чата закрывает доступ и очищает отображаемую историю, но не является secure erase всех следов или backup.
-
-- Retention фиксируется при создании ресурсов. Обычный patch действует на будущие ресурсы; отдельной операции применения нового срока ко всем существующим данным нет. Отдельный persisted trace stream отсутствует, duration trace retention отклоняется.
-
-- Автоматического получения поздней достоверной usage у provider и global platform spend cap нет. При включённом platform-paid recovery неизвестный paid attempt сохраняется как exposure платформы, пользовательский резерв освобождается. При отключённом recovery или client pause/cancel резерв остаётся занят до привилегированной сверки receipt/attestation.
-
-- Известный отказ provider вне разрешённого retry allowlist или после исчерпания retry budget приводит к остановке/паузе. Разрешённые временные отказы повторяются по hybrid policy. Provider hybrid retry локально принят: focused и общие gates PASS, шестой независимый review чистый. Общий circuit breaker и recovery других dependencies остаются отдельной работой. Unknown writes нельзя считать безопасными для повторного dispatch. После исчерпания принятых попыток River безопасный run ждёт явного resume.
-
-- Cancel не является rollback внешней операции. Обычный runtime-сценарий прошёл, cancellation checkpoint gap при отменённом DB read исправлен и принят локально. `cancel_path` manifest валидируется, отдельный вызов remote cancellation не реализован.
-
-- Discovery использует polling, без Docker event stream. Обновления регистраций не мгновенны.
-
-- HA/multi-host эксплуатация не принята. В частности, subscriber tracking локален процессу API, а blobs локальны volume. Наличие PG leases само по себе не доказывает корректную работу нескольких реплик.
-
-- Полный аудит transitive/native зависимостей development tools остаётся отдельной работой. Завершённый аудит лицензий и vulnerabilities относится к используемому приложением графу; whitelist и явно разрешённое исключение для линтера сохраняются.
-
-- **Production backup/restore и multi-host infrastructure не поставлены.** Runbook, Compose template и PG leases не заменяют серверные backup jobs/restore rehearsal, shared blob storage или distributed subscriber tracking. Локальный ограниченный restore проверен; серверный restore/PITR и полноценная HA-схема отсутствуют. C02/E04.
-
-## Принятые границы продукта
-
-Один нетерминальный run на чат, включая паузу и ожидание; другие чаты могут исполняться параллельно. Запись пользовательского действия пассивна. Проактивные запуски и субагенты отложены по принятому решению. Развивать их следует отдельными задачами, а не считать отсутствующими частями MVP.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
-
-File refresh acceptance: [same-run TTL/restart, helper and initial image](validation/2026-10-12-file-refresh/README.md), two container groups PASS; Windows integration, Linux race/integration and Golden PASS. Two independent review passes; no unresolved findings. Real-service/target-server acceptance remains pending by scope.
-
-On-demand method help implemented: permission-filtered searchable index and bounded per-method cards with examples, limits and service input/output schemas. [Local API/sandbox acceptance](validation/2026-10-12-method-help/README.md) PASS; Windows integration, Linux race/integration, Golden and two independent review passes complete. Developer contract: [usable method help](modules.md#developer-requirement-usable-method-help).
-
-Caller-restart classification (issue #2): implemented; PostgreSQL HTTP/session proof, Windows/Linux race integration, Golden, two independent reviews and [actual-Zitadel isolated acceptance](validation/2026-10-13-caller-recovery/README.md) PASS. Full Shuttle/Telegram rerun remains pending. [Retry and explicit reauthorization contract](caller-recovery.md).
+Startup применяет pending migrations; старые workers должны быть остановлены. Автоматического down migration нет. БД/ключи сохраняются между заменами контейнеров. Серверные конфиги и инструкции конкретной установки находятся вне репозитория.

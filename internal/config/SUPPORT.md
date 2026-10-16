@@ -9,9 +9,10 @@ Each public value is enforced, rejected as unsupported, or explicitly assigned t
 | HTTP listen, request limit, synchronous wait, disconnect grace | Application HTTP/API options. |
 | HTTP SSE buffer size | Database-backed replay batch size, wired from YAML and bounded to at most 200 events. |
 | Database DSN, connection count, statement/lock deadlines | PostgreSQL pool startup. |
-| Operator client_id / redirect_uri | Separate public PKCE client for `/admin`; both empty disables login, partial configuration is rejected. Redirect is fixed to `/admin`, HTTPS except literal loopback. Deployment settings; no client secret. See [rollout](../../docs/operator-login.md). |
+| Operator client_id / redirect_uri | Separate public PKCE client for `/admin`; both empty disables login, partial configuration is rejected. Redirect is fixed to `/admin`, HTTPS except literal loopback. Deployment settings; no client secret. See [operator login](../../docs/operator-login.md). |
+| Operator proxy_origin | Reuse OIDC ingress at a fixed origin; require admin_organization_id and diagnostics.read. Mutually exclusive with direct PKCE. No access token is returned to browser JavaScript. |
 | Identity issuer, audience, client credentials, JWKS TTL, role permissions | Authenticator: fixed algorithms, signature checks, trusted discovery, online introspection and organization-scoped role mapping. |
-| Identity permission-cache TTL | Online introspection currently runs on each authorization. This is a cache ceiling, not a minimum; current effective cache TTL is zero. |
+| Identity permission-cache TTL | Positive claims cache: default 120 seconds, allowed 0..300 and capped by token expiry. Zero disables reuse. Sensitive boundaries require fresh authority; no stale-on-error. Database generation permits a shared purge. See [cache contract](../../docs/identity-cache.md). |
 | Identity encryption file/key ID and previous_encryption_keys | Startup loads the active AES256 write key and previous read keys. Envelopes authenticate principal, expiry, purpose, OAuth client and audience. Startup rejects missing keys referenced by stored sessions; rotate-session-keys commits bounded authenticated re-encryption batches. See [rotation runbook](../../docs/session-key-rotation.md). |
 | Identity refreshable exchange | Rejected while the installed Zitadel integration gate remains open. |
 | Identity admin organization | API administrative scope check. |

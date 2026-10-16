@@ -1,6 +1,6 @@
 # Restore recovery mode
 
-Operator-controlled restore quarantine. Acceptance evidence is recorded separately.
+Operator-controlled restore quarantine. Use a separate stand to rehearse this procedure.
 
 Enable execution.recovery_mode before starting an API against a restored database. Default is false. It is deployment configuration; no HTTP endpoint disables it. Exit requires an operator-controlled configuration change and restart after external effects are reviewed.
 
@@ -35,11 +35,11 @@ After preparation, use the existing owner cancel and evidenced provider reconcil
 
 Before disabling recovery, stop every other writer/replica, inspect all restored nonterminal runs and external effects since the restore point, settle evidenced provider receipts, and cancel or otherwise freeze unsafe pending work. Disabling the flag does not automatically determine whether old queued work is safe: ordinary mode can process retained River jobs. The operator must not release quarantine until that review is complete. Unknown writes are never resolved by inference retry.
 
-Local acceptance will restore PostgreSQL, blob bytes and session keys from one explicit snapshot; then verify no provider calls or module write repeats while recovery is enabled, rejection of mutating/default-chat/SSE routes, authenticated diagnostics, manual receipt settlement/cancellation, clean restart/shutdown, and successful deliberate operation after review and recovery exit. A model service effect performed after the snapshot remains external evidence; missing post-snapshot records are not silently reconstructed.
+A restore rehearsal must restore PostgreSQL, blob bytes and session keys from one explicit snapshot; then verify no provider calls or module write repeats while recovery is enabled, rejection of mutating/default-chat/SSE routes, authenticated diagnostics, manual receipt settlement/cancellation, clean restart/shutdown, and successful deliberate operation after review and recovery exit. A model service effect performed after the snapshot remains external evidence; missing post-snapshot records are not silently reconstructed.
 
 This initial mode is a dispatch barrier with controlled repair, not full PITR automation or a distributed freeze. Backups, WAL policy, RPO/RTO, key retention, effect inventory and target-server rehearsal remain deployment work. Shared PostgreSQL alone does not prevent another ordinary-mode replica from writing; all writers must be stopped before restore.
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk
 
-Local bounded acceptance: [original restore report](validation/2026-10-12-restore-recovery-qa/README.md) and [shipped preparation API rehearsal](validation/2026-10-12-recovery-prepare-qa/README.md).
+Restore scenarios and criteria: [QA](qa.md).

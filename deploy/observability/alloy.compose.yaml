@@ -1,7 +1,8 @@
-# Merge with server_configs/configs/alloy/docker-compose.prod.yml.
+# Merge with your collector Compose profile; retain its existing networks.
 services:
   alloy:
-    networks: [traefik-net, clx-observability]
+    networks:
+      clx-observability: {}
 networks:
   clx-observability:
     external: true

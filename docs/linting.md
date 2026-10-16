@@ -50,8 +50,7 @@ SDK generation, authentication, and configuration code. Those project specific
 exclusions are not used here. This repository uses the current Golden settings
 and its own existing context and deprecated cryptography checks.
 
-The completed cleanup and checks are recorded in
-[the validation report](validation/2026-10-11-golden-lint/README.md).
+Run lint alongside the behavioral gates in [QA](qa.md).
 
 Written by Codex (gpt-6/Codex desktop)
 on behalf of Daniel Drizhuk

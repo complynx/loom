@@ -1,3 +1,0 @@
-PASS: all 12 legacy Up migrations and one Loom baseline yield identical pg_dump schema (only dump guard nonces excluded).
-PASS: combined Down leaves zero public tables; Up recreates identical schema.
-No existing QA/production database was changed.

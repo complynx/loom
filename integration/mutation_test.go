@@ -148,10 +148,10 @@ func mutationEngine(t *testing.T, f *fixture, registry *modules.Registry, model 
 			Actor:   "alice",
 			OrgID:   "test-org",
 			Permissions: map[string]bool{
-				"runs.create":        true,
-				"chat.read":          true,
-				"zns.massage.access": true,
-				"zns.massage.book":   true,
+				"runs.create":            true,
+				"chat.read":              true,
+				"booking.massage.access": true,
+				"booking.massage.book":   true,
 			},
 		}, "delegated-user-token", nil
 	}

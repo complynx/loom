@@ -1,9 +1,0 @@
---- FAIL: TestSupervisorHealthAtCapacityWaitsForRequest (0.00s)
-    sandbox_test.go:248: 
-        	Error Trace:	/src/internal/sandbox/sandbox_test.go:248
-        	Error:      	An error is expected but got nil.
-        	            	expected: net.Error
-        	Test:       	TestSupervisorHealthAtCapacityWaitsForRequest
-FAIL
-FAIL	github.com/complynx/clx-scripter/internal/sandbox	0.018s
-FAIL

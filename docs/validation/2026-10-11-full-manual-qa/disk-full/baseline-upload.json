@@ -1,4 +1,0 @@
-{
-  "status": 201,
-  "body": "{\"external_disclosure_allowed\":true,\"artifact_id\":\"b0aeec39757bb149942b234bb4b11ef6\",\"owner_id\":\"558a97f0-6110-4a2c-bef2-d60b920fd6f0\",\"org_id\":\"qa-org\",\"mime\":\"application/octet-stream\",\"sha256\":\"cb984e84a31fccfbc1b665cc6aaeabb601aa4c960270753855ea90277a05b56e\",\"size\":26,\"created_at\":\"2026-10-11T17:56:25.262764444Z\"}\n"
-}

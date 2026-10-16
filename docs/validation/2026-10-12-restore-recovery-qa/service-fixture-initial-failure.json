@@ -1,5 +1,0 @@
-{
-  "status": "FAIL",
-  "stage": "QA manifest setup",
-  "detail": "Caller permissions intentionally allow only delegated chat/run/artifact rights; diagnostics.read is rejected by the manifest schema. Use chat.read and assert delegated admin diagnostics/settings stay forbidden."
-}

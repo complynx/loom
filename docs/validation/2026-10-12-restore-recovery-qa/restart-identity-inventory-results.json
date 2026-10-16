@@ -1,8 +1,0 @@
-{
-  "status": "PASS",
-  "removed_post_snapshot_subject_in_deployment_service_subjects": true,
-  "after_recovery_restart": {
-    "bare": 401,
-    "delegated": 401
-  }
-}

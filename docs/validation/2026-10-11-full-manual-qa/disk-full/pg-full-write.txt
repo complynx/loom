@@ -1,2 +1,0 @@
-ERROR:  could not extend file "base/16384/17012": No space left on device
-HINT:  Check free disk space.

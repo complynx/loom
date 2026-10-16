@@ -1,9 +1,0 @@
-=== RUN   TestDockerFixtureDynamicScriptAndDurableBlob
-    fixture_qa_test.go:126: PASS actual API run, mock Responses, real PG, dynamic JS read, production blob import, permission filtering
---- PASS: TestDockerFixtureDynamicScriptAndDurableBlob (0.94s)
-=== RUN   TestDockerFixtureApprovalLostReplyAndPersistentRestart
-2026/10/11 15:49:57 http: proxy error: EOF
-    fixture_qa_test.go:176: PASS actual API approval, duplicate approval, lost reply, reconciling, Docker restart on retained volume, status recovery, completed-run replay
---- PASS: TestDockerFixtureApprovalLostReplyAndPersistentRestart (3.27s)
-PASS
-ok  	github.com/complynx/clx-scripter/docs/validation/2026-10-11-acceptance-qa	6.152s

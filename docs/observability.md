@@ -2,7 +2,7 @@
 
 Identity-cache counters, claim-age histogram, purge event and operational limits are described in the [cache contract](identity-cache.md).
 
-Deployment receiver and collector configuration are maintained outside this repository. The receiver must accept `updated-loom`.
+Deployment workflows and collector configuration are maintained by the operator.
 
 Loom exposes Prometheus metrics and JSON logs. Collect them with your private collector. Optional OpenTelemetry export is described in [OTel](opentelemetry.md).
 A fixed Prometheus 0.0.4 exporter uses standard Go; there is no general registry,
@@ -34,24 +34,13 @@ personal content and claims: keep it disabled during normal operation and respec
 Docker/Loki retention. Redaction cannot recognize an arbitrary opaque secret
 written into free text; do not use debug payload mode for unrestricted secrets.
 
-## Server wiring
+## Collector integration
 
-1. Create the dedicated external network `clx-observability` on the deployment
-   host before using the Compose overlays. This is an operator deployment step.
-2. Merge [harness overlay](../deploy/observability/harness.compose.yaml) with the
-   harness profile, preserving any existing application networks. Only Alloy and
-   the API need this metrics network. No host port or Traefik route exposes 9090.
-   Port 8080 serves the authenticated API; `/metrics` is absent there.
-3. Configure your collector to scrape `loom:9090` over the private network.
-4. Collect JSON stdout through Docker log ingestion. Do not add a
-   second log source. Query JSON fields at read time instead of indexing run,
-   operation, request or user IDs as Loki labels.
-5. Import [alert rules](../deploy/observability/alerts.yaml) into the existing
-   Grafana Cloud Prometheus ruler or Grafana-managed alerts. Enable only once the
-   scrape target is deployed. No alerts or notification routes were published.
+Keep port 9090 private. Connect the collector and API over an existing trusted network and scrape the API service name on that network. Do not expose metrics through public ingress; the authenticated API on 8080 has no /metrics route.
 
-No production deployment or restart was performed. The local server configuration
-patch is included with [validation evidence](validation/2026-10-11-observability/README.md).
+The [Alloy scrape example](../deploy/observability/loom.alloy) requires a configured remote-write receiver. The optional [development overlay](../deploy/observability/harness.compose.yaml) demonstrates a separate clx-observability network. It is not required for a server profile that already provides private connectivity. Preserve existing application networks.
+
+Collect JSON stdout through one Docker log source. Query request/run/operation/user IDs at read time; do not index them as Loki labels. Load the [alert rules](../deploy/observability/alerts.yaml) only for metrics present in the installation, then verify evaluation and actual notification delivery separately using [QA](qa.md).
 
 ## Metrics and diagnostics
 
