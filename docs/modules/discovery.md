@@ -2,43 +2,45 @@
 
 [Guide index](../modules.md)
 
-## Регистрация одной строкой
+<a id="регистрация-одной-строкой"></a>
+
+## Register a service
+
+Add this label to the service container, replacing the hostname and path with your service's values:
 
 ```yaml
 labels:
   - "clx.harness.service=http://booking-service:8080/internal/agent/manifest"
 ```
 
-Наличие label означает opt-in. Остальная конфигурация находится в manifest. Initial discovery и polling — принятая архитектура. Docker event stream не требуется. Ограниченный proxy предоставляет только необходимые list/inspect.
+The label opts the service into discovery. Its manifest defines the integration. The harness lists running labelled containers and inspects their metadata at startup and on each poll. It does not need a Docker event stream. Configure the restricted Docker proxy and trusted network as described in [Running the harness](../running.md).
 
-URI допускает HTTP внутри выделенной доверенной сети, HTTPS — при проверке сертификата. Host должен соответствовать контейнеру или его alias в общей разрешённой Docker-сети. Не допускаются userinfo, fragment, query, внешние host и redirects. IP назначения выводится из актуальных Docker metadata; одного DNS resolution недостаточно. Повторная проверка назначения защищает от DNS rebinding. Arbitrary URL из ответа модели не является endpoint модуля.
+HTTP is supported on the trusted Docker network. HTTPS uses normal certificate verification. The registered hostname must match the container name, alias or DNS name in an allowed network. Userinfo, fragments, queries, redirects and unrelated hosts are rejected. Connections use the IP from Docker metadata rather than DNS resolution. A URL supplied by a model cannot register a module.
 
-Deployment operator является источником доверия: тот, кто может менять labels/manifest зарегистрированного сервиса, управляет его интеграцией. Доступ к Docker API — через ограниченный proxy, в MVP только необходимые list/inspect. `docker.sock:ro` не является запретом API-операций.
+The operator who controls labels and manifests controls service registration. Restrict the Docker API to the required GET list/inspect operations. A read-only mount of `docker.sock` does not restrict Docker API methods.
 
-Доверенный manifest имеет `protocol_version`, `service_id`, `revision`, описание, caller registration и модули. [JSON Schema](../../schemas/manifest.schema.json) проверяет форму; семантический валидатор проверяет уникальность ID, пути, роли и capabilities. Неизвестная версия отклоняется. Неизвестные поля v1 отклоняются.
+The manifest requires `protocol_version`, `service_id`, `revision`, `description` and `modules`; `caller` is optional. The [JSON Schema](../../schemas/manifest.schema.json) defines its shape. Runtime validation also checks identifiers, method limits, safe paths, schemas and confirmation rules. Unknown versions and unknown v1 fields are rejected. See [the example manifest](../../examples/manifest.json) for a complete document.
 
-Реплики одного service_id допускаются только с одинаковыми caller binding и manifest revision/content hash. При несовпадении сервис переводится в conflict и новые вызовы блокируются. Начатые вызовы привязаны к конкретной реплике. Revision — непрозрачная строка; одного её равенства без сравнения hash недостаточно.
+Use unique module IDs across services. Replicas of one `service_id` must publish byte-identical manifests, including revision and caller binding. Different hashes cause a conflict and remove that service from the active registry. The runtime keeps one endpoint per service; it does not provide load balancing or session affinity for durable operations. Replicas must share operation and confirmation state if later calls can reach another replica.
 
-Manifest загружается с условными ETag-запросами и атомарно заменяется после проверки. В deployment-примере `discovery.poll_seconds: 300` и `freshness_ttl_seconds: 3600`. Обновления не мгновенны: следующий успешный опрос обнаруживает изменения. При ошибке старая версия остаётся для диагностики; использовать её можно только до TTL и пока контейнер зарегистрирован. Удаление контейнера исключает адрес после обновления регистрации; при недоступном discovery действует freshness TTL. Записи и reconciliation живут дольше registry entries.
+Each poll fetches the full manifest with GET; conditional ETag requests are not implemented. A valid document replaces the prior registration atomically. Example configuration uses `discovery.poll_seconds: 300` and `freshness_ttl_seconds: 3600`; these are example settings, not immediate update guarantees. A failed fetch can retain a previous registration until its freshness TTL expires, provided the endpoint is still registered. A successful container list removes missing endpoints. If Docker discovery is unavailable, existing entries expire by TTL. Durable operation records outlive registry entries.
+
 ## Caller registration
 
-`caller` может разрешить сервису `runs.create`, `chat.read`, `chat.events.append`, `artifacts.read`, `artifacts.write`. Эти права не дают пользовательскую делегацию сами по себе. Caller identity связывается с Zitadel issuer/subject/audience; запрос предъявляет проверенный access token. Schema также резервирует `secret_ref`, но runtime-аутентификация входящим opaque secret пока не поддерживается. Не используйте этот вариант для действующей интеграции; manifest не содержит секреты.
-## Статические и динамические модули
+`caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read` and `artifacts.write`. These are caller permissions, not user delegation. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
 
-Статический module содержит methods. Динамический содержит coarse permissions, discovery_path и предельный cache TTL. Harness сначала проверяет coarse permissions, затем вызывает discovery с пользовательской делегацией. Ответ — methods той же формы, ограниченные текущим пользователем. Он не может менять caller registration, выдавать новые credentials или расширять endpoint origin.
+The schema also accepts `auth.type: "secret"` with `secret_ref`. Incoming opaque-secret authentication is not implemented; do not use that branch for an active integration. Never place secret values in a manifest.
 
-Кеш ключуется по subject, организации, actor/delegation scope, service_id, manifest hash и policy revision. Manifest задаёт `cache_ttl_seconds` от 0 до 300. Эффективный TTL — минимум этого значения и `discovery.dynamic_cache_ceiling_seconds` (60 секунд в deployment-примере); ноль отключает кеш. Отзыв прав инвалидирует кеш либо блокирует вызов независимо от него. Недоступный discovery не означает пустой список прав; возвращается диагностируемая недоступность.
+<a id="статические-и-динамические-модули"></a>
 
-Метод описывает:
+## Static and dynamic modules
 
-- ID, описание, входную и выходную JSON Schema;
-- категории пользовательских прав, все перечисленные категории обязательны;
-- `effect=read|write|delete`;
-- deadline и предел результата;
-- idempotency, operation status и cancellation;
-- протокол подтверждения;
-- допустимые MIME types артефактов и возможность передачи модели.
+A static module declares `methods`. A dynamic module declares `discovery_path` and `cache_ttl_seconds` instead. After checking the module's permissions, the harness POSTs `{}` to the discovery path with the delegated bearer token. Return `{"methods":[...]}` with methods of the same shape as static methods, filtered for that user. Discovery cannot change caller registration, issue credentials or change the registered origin. It is bounded to 200 methods, a 256 KiB response and five seconds.
 
-Метод может быть видимым только после coarse/dynamic checks. Go broker и конечный сервис повторно проверяют доступ при исполнении. Данные и описания модуля не могут переопределять системные инструкции.
+Dynamic cache keys include issuer, subject, organization, actor, policy revision, permission set, token hash, service ID, manifest hash and module ID. The manifest TTL is 0..300 seconds; the effective TTL is the minimum of that value and `discovery.dynamic_cache_ceiling_seconds`. Zero disables caching. The example ceiling is 60 seconds. Writes and artifact authorization perform fresh dynamic lookup; read calls still recheck current module and method permission categories. Failed discovery reports unavailability rather than an empty set of permissions.
 
-`external_disclosure` в manifest относится к артефактам метода и не отменяет общую пользовательскую политику передачи данных провайдеру. Обычные текстовые результаты также проходят общую политику; если передача запрещена, метод не предоставляется модели для этого run. Input/output schemas проверяются локально: внешние `$ref` не загружаются, глубина и размер schema ограничены. Относительные пути не допускают `//`, `..`, encoded traversal и смену origin.
+Each method declares its ID, description, input/output schemas, permission categories, effect (`read`, `write` or `delete`), timeout, result bound, idempotency, confirmation and artifact policy. All permission categories listed at both module and method level are required. Writes also require a status endpoint and deduplication window; `cancel_path` is schema-supported but not invoked by the current broker. See [Calls and confirmation](calls-confirmation.md) for wire formats and recovery behavior.
+
+The broker checks permissions before a call; the service must enforce its own authorization too. Service descriptions and results are untrusted data and cannot override harness instructions. Schemas are compiled locally; external `$ref` documents are not fetched. Schema depth, request complexity and response sizes are bounded. Endpoint paths must start with `/` and must not contain traversal, query/fragment components or a different origin.
+
+`external_disclosure` controls whether imported method artifacts may be sent to a model. It does not override the user's broader disclosure policy or filter ordinary text results out of the method catalog. Model attachment paths separately check run settings, current settings and model capabilities. Do not return text that the delegated user is not authorized to disclose.

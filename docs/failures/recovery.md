@@ -1,38 +1,46 @@
-# Recovery
+<a id="recovery"></a>
+
+# Shutdown, crash recovery and backups
 
 [Guide index](../failures.md)
 
-## Остановка
+<a id="остановка"></a>
+## Shutdown
 
-На SIGINT/SIGTERM:
+On SIGINT/SIGTERM, Loom closes admission/readiness, blocks new dispatch and requests durable pauses. It cancels active contexts, checkpoints known results and uncertain operations, and stops HTTP/SSE and workers within the configured shutdown budget. A `run.resumable` event is valid only when its matching state was persisted.
 
-1. Зафиксировать monotonic deadline `now + 5s`, убрать readiness, закрыть admission.
-2. Поставить durable pause flags, заблокировать новые broker dispatch, отменить provider/host contexts.
-3. Сохранить завершённые результаты, текущие причины и известные/unknown operation states короткими транзакциями с независимым shutdown context.
-4. Отправить `run.resumable` подключённым клиентам, только если соответствующая запись сохранена. Клиент уже знает run_id из создания.
-5. Дать workers краткий cleanup, затем kill; HTTP/SSE shutdown ограничен оставшимся временем. Завершить процесс до общего deadline.
+The example configuration sets `execution.shutdown_deadline_ms` to 5000; validation permits a smaller positive deadline, but not a larger one. Cleanup leaves exit headroom within that budget. The example `shutdown_target_ms` of 1000 is an operational target, not a guarantee. Set the container stop timeout above the application deadline, for example eight seconds for the example configuration.
 
-Happy path 1 секунда — целевой измеряемый SLO, не доказанный факт. Hard bound 5 секунд относится к завершению процесса. При недоступной БД, зависшем kernel I/O или SIGKILL нельзя гарантировать финальный commit/доставку события; гарантией recovery остаётся заранее сохранённое намерение. Контейнерный stop timeout должен быть больше внутреннего срока, например 8 секунд. Перезапуск всего host может дополнительно остановить PostgreSQL — проверяется отдельно.
-## Recovery после crash
+Database failure, SIGKILL or blocked kernel I/O can prevent a final commit or event delivery. Recovery then relies on intent persisted before dispatch. Check the final shutdown log and rehearse database/host shutdown separately.
 
-Новый координатор получает expired lease, увеличивает fencing token и читает последний durable шаг. Running model generation помечается interrupted; usage — known либо uncertain. Отправленные write operations сначала переводятся в reconciliation. Не начатые intents можно выполнять; сохранённые результаты повторно не исполняются. Вопросы/approvals сохраняются до expiry, JS запускается заново только с известными результатами и запретом повторных write без сверки.
+<a id="recovery-после-crash"></a>
+## Crash recovery
 
-Pause восстанавливается как pause. Running/queued run после аварии автоматически восстанавливается, если действуют authorization session, бюджет и контракт; иначе получает соответствующее ожидание. Recovery не создаёт новое поручение и не меняет модель молча.
+A new coordinator takes an expired lease, advances the fence and reads the last durable step. Interrupted model work can have uncertain usage. Sent writes require reconciliation; saved results must not execute again.
 
-Скрипт с отправленными изменяющими RPC автоматически целиком не переигрывается. После сверки всех operations координатор передаёт агенту исходный код, известные результаты и факт прерывания; агент формирует продолжение. Повтор исходного скрипта допустим только для read-only исполнения либо при специально проверенном replay протоколе, которого в v1 нет. Это предотвращает дубли даже тогда, когда повторный скрипт мог бы создать новые operation IDs.
-## Backups и disaster recovery
+A paused run stays paused. Queued/running work can recover automatically while authorization, budget and contracts permit it; otherwise it enters the appropriate wait or reconciliation state. Recovery preserves the run and does not silently switch its model.
 
-Предлагаемые цели: RPO не более 5 минут, RTO 60 минут при исправном резервном host/storage. Они требуют согласованного backup плана PostgreSQL с WAL, blobs, encryption key versions и deletion/revocation tombstones. Backup вне того же сервера обязателен для этих целей. При утрате ключа ciphertext не восстанавливается из одной БД; при компрометации ключа сессии отзываются и перевыпускаются.
+A script with dispatched writes is not automatically replayed as a whole. After operation reconciliation, the agent receives the interrupted source and known outcomes to form a continuation. Read-only replay still requires the applicable contract and budget. There is no general write-script replay protocol that makes new operation IDs safe.
 
-После PITR нельзя сразу продолжать write: действия после точки восстановления могли уже произойти. В recovery режиме блокируются mutations, собираются операции/результаты из внешних сервисов, сверяются provider usage и ledger, затем оператор разрешает admission. Требуется долговременный журнал operation IDs во внешних сервисах. Без него абсолютная защита от дублей после утраты БД невозможна.
-## Критерии QA изменений
+<a id="backups-и-disaster-recovery"></a>
+## Backups and disaster recovery
 
-- Обрыв до dispatch, после dispatch и после backend commit: одно бизнес-действие, известный/unknown исход без ложного успеха.
-- DB down во время shutdown: процесс завершается в срок, recovery сверяет intent, клиент не получает ложный durable status.
-- SIGKILL worker и coordinator, OOM JS, зависший host RPC: нет новых вызовов от потерявшего lease owner.
-- Два run одного чата, параллельный reauthorize одной сессии, повтор input/approval: инварианты выдерживаются.
-- Потерянный reauthorize ответ: стабильный idempotency key и read-back, без повторной подмены credentials.
-- Provider usage loss/429: бюджет не списывается дважды и не освобождается без оснований.
-- Discovery stale/конфликт, permission revoke: доступ закрывается согласно TTL/online policy.
-- SSE disconnect/replay и pause policy: события восстанавливаются, preview не выдаётся за итог.
-- Restore backup на изолированном стенде: ключи/blobs/ledger согласованы, write gated до сверки.
+Define RPO/RTO in the deployment's backup plan. Loom does not configure PostgreSQL WAL archiving, off-host retention or automated PITR. Back up PostgreSQL, session-key versions, source references and deletion/revocation records consistently. Database ciphertext cannot be decrypted without its referenced key versions. Long-term backups exclude temporary file bytes; durable originals belong to source services. Any short-lived snapshot of temporary bytes must preserve their original expiry.
+
+Stop every writer before restore. Start the restored API with [recovery mode](../recovery-mode.md), inventory external operations since the restore point, reconcile usage and effects, then decide whether to release quarantine. An external operation-ID journal is needed to identify effects missing from the restored database. Without that evidence, database restore alone cannot prevent duplicate external actions.
+
+Use a separate environment for a restore rehearsal. Record the snapshot and keys used, verify that recovery mode blocks dispatch, check that expired temporary files remain unavailable, and test deliberate operation only after the review is complete. Retrieve required source files again through their external IDs and normal authorization.
+
+<a id="критерии-qa-изменений"></a>
+## Verification
+
+Select the affected [QA scenarios](../qa.md), including:
+
+- Disconnect before dispatch, after dispatch and after backend commit: preserve one action identity and report uncertainty accurately.
+- Database loss during shutdown: bounded exit and no false durable status.
+- Worker/coordinator kill or lease loss: no new dispatch from a stale owner.
+- Duplicate input, approval and reauthorization: preserve transactional and idempotency boundaries.
+- Provider usage loss: no duplicate settlement or unsupported reserve release.
+- Stale discovery or revoked permissions: enforce the applicable freshness and online checks.
+- SSE reconnect: replay durable events without presenting a partial preview as a final answer.
+- Restore: keep keys, blobs and ledger consistent and block writes until review.

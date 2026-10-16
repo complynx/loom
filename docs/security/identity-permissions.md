@@ -4,7 +4,7 @@
 
 ## Identity и доступ
 
-Внешний access token проверяется по ожидаемому issuer, signature/alg, audience, exp/nbf и обязательным claims. JWKS URL берётся из доверенного issuer discovery, не из jku заголовка JWT. ID token не принимается вместо access token. Opaque access token проверяется через introspection.
+При online verification подписанный JWT сначала проходит проверку signature/alg, issuer, audience, exp/nbf и обязательных claims. JWKS URL берётся из доверенного issuer discovery, не из `jku` заголовка JWT. Затем и JWT, и opaque access token проходят introspection; успешная локальная проверка JWT сама по себе недостаточна. ID token не является поддерживаемым credential для API. Обычные запросы могут повторно использовать [положительные проверенные claims](../identity-cache.md), поэтому не каждый запрос вызывает issuer. Sensitive boundaries обходят этот cache.
 
 Harness различает пользователя (`subject`), вызывающий сервис (`actor`), организацию и плательщика. Credentials сервиса не разрешают произвольный user_id. В v1 сервисные run без пользователя не входят; позже возможен отдельный тип machine principal.
 
@@ -42,4 +42,4 @@ Manifest не может назначить права пользователю 
 
 Zitadel roles отображаются в эти права явной конфигурацией. Административные права проверяются для целевой организации; произвольного глобального доступа нет. Предметные категории модулей имеют namespace сервиса. Список категорий означает AND; более сложную логику выполняет сам backend.
 
-[Личная память](../user-memory.md) доступна каждому авторизованному пользователю без memory roles. Проверки владельца, организации, свежей авторизации и run lease сохраняются; это не cross-user admin доступ.
+[Личная память](../user-memory.md) доступна каждому авторизованному пользователю без memory roles. HTTP проверяет владельца и организацию; callback агента дополнительно проверяет текущую авторизацию и run lease. Эти проверки могут использовать positive claims cache и не дают cross-user admin доступ.

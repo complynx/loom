@@ -1,6 +1,6 @@
 # Данные, контекст и бюджет
 
-Read the topic you need below. Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
+Этот раздел описывает сохранённое состояние Loom. [Schema invariants](data/schema-invariants.md) связывает таблицы с правилами целостности; [History and billing](data/history-billing.md) объясняет контекст модели и стоимость; [Retention](data/retention.md) задаёт сроки хранения и фактические границы удаления.
 
 ## Сущности PostgreSQL
 

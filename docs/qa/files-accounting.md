@@ -2,6 +2,25 @@
 
 Use [file tools](../file-tools.md), the [isolated worker](../file-worker.md), [memory](../user-memory.md) and [billing contract](../data.md). Pass IDs and metadata through JS, not complete files.
 
+## Repeatable fixture checks
+
+Prepare the disposable database in [setup](setup.md), then run from the repository root:
+
+```sh
+go test -v -race -parallel=4 -tags=integration -count=1 ./integration \
+  -run 'Test(ArtifactRangeAndConditionalDelivery|HandleStreamsOriginalBytesAndDeniesForeignCaller|PaidAudioDispatchSettlesOrRetainsHoldWithoutRestartReplay|PersonalMicroMemoryReloadsWithinRunAndPreviousRun)$'
+go test -v -race -parallel=4 -count=1 ./internal/fileproc
+```
+
+Media tests skip when required CLIs are absent. Use the pinned media test command
+in [CI](../../.github/workflows/ci.yml) to exercise Poppler and FFmpeg in Linux.
+Passing processor tests does not prove container isolation; verify the deployed
+worker's limits and security settings separately using [worker setup](../file-worker.md).
+
+For manual cases, use synthetic inputs with recorded hashes, known text or signals,
+and explicit dimensions/duration. Record artifact/reference IDs, the test owner's
+identity, quota before/after and the expected expiry. Do not use private user media.
+
 ## Files and media
 
 - Import/upload: compare byte length and hash. Check foreign-owner/disclosure denial, quota/size bounds, range/HEAD/ETag and partial-read cursors.

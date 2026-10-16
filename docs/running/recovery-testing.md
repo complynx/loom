@@ -17,11 +17,10 @@ Write сверяется через status API модуля с прежним op
 
 ```sh
 go test ./...
-CLX_TEST_DATABASE_DSN='postgres://...' sh scripts/linux-tests.sh
+CLX_TEST_DATABASE_DSN='postgres://USER:PASSWORD@host.docker.internal:54329/TEST_DATABASE?sslmode=disable' sh scripts/linux-tests.sh
 go mod verify
 ```
 
-Без тестового DSN SQL/integration проверки пропускаются. Для acceptance нужен отдельный PostgreSQL и Linux `-race` gate. Обычные тесты используют fixtures. Для live IAM/model и аварийных границ используйте [QA-руководство](../qa.md). Unit/integration fixtures не подтверждают эти внешние свойства.
+Use a dedicated disposable test database. Replace the DSN placeholders above. The Linux test script runs Go inside Docker, so the DSN must be reachable from that container; its localhost is not the host. The script adds host.docker.internal for host-published ports. Do not point it at an application or production database.
 
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+Без тестового DSN SQL/integration проверки пропускаются. Для acceptance нужен отдельный PostgreSQL и Linux `-race` gate. Обычные тесты используют fixtures. Для live IAM/model и аварийных границ используйте [QA-руководство](../qa.md). Unit/integration fixtures не подтверждают эти внешние свойства.

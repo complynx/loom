@@ -46,8 +46,6 @@ Changing the issuer, audience or OAuth client is a separate migration.
 Restore the key versions from the time of the database backup before starting the
 service or running rotation. The startup guard checks the live database; it cannot
 prove that historical backups or still-running writers no longer need an old key.
-Keep recovery mode and the full backup rehearsal in track C02. Restoring a backup
-must not silently dispatch uncertain external operations.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+Use [recovery mode](recovery-mode.md) and rehearse the complete backup restore
+procedure. Restoring a backup must not silently dispatch uncertain external
+operations.

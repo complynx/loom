@@ -1,6 +1,6 @@
 # Quality assurance
 
-Test observable behavior. Prefer happy paths and critical paths over assertions about internal structure. A running installation does not accept a new feature automatically.
+Test observable behavior. Prefer happy paths and critical paths over assertions about internal structure. A running installation alone does not prove that a feature meets its acceptance criteria.
 
 | Task | Guide |
 | --- | --- |
@@ -9,7 +9,10 @@ Test observable behavior. Prefer happy paths and critical paths over assertions 
 | Test files, usage and context | [Files and accounting](qa/files-accounting.md) |
 | Test failures and service integration | [Recovery and integration](qa/recovery.md) |
 
-Use fixtures for most checks. Use real PostgreSQL, Zitadel, media tools or service clients for the boundary under test. Keep paid calls and destructive faults out of routine tests.
+Start with [setup and gates](qa/setup.md). Each scenario page includes focused
+fixture commands and a separate checklist for installation checks. Use real
+PostgreSQL, Zitadel, media tools or service clients for the boundary under test.
+Keep paid calls and destructive faults out of routine tests.
 
 Store run reports, receipts, screenshots and dumps in private CI artifacts or ignored local storage. Keep reproducible tests and instructions in the repository. Dependency notices and corresponding-source materials are distribution requirements, not QA reports.
 

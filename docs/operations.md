@@ -22,6 +22,7 @@ Use [logs/metrics](observability.md) and [OTel](opentelemetry.md) to locate a fa
 | waiting_auth | Obtain fresh authorization for the same party and use reauthorize. Do not create a replacement run to bypass denial. |
 | paused/shutdown | Read current status, then resume the same run with a stable idempotency key. |
 | paused/queue_attempts_exhausted | Restore the dependency, then explicitly resume safe work. |
+| paused/provider_retry_limit | Inspect the persisted provider wait and rejection code. Correct the dependency, wait until due, then explicitly resume. An early resume returns `409 retry_not_due`. |
 | reconciling | Verify effect or usage first. Use the same operation ID and service status or privileged reconcile API. Do not repeat an unknown write. |
 | waiting_input/waiting_approval | Follow the selected reply mode, expiry and current action binding. |
 
@@ -36,6 +37,8 @@ Temporary files expire independently of runs, after 24 hours by default. Read a 
 ## Backup and restore
 
 Back up the database and required session-key versions. Rehearse your RPO/RTO on a separate stand. Start a restored database behind the [recovery barrier](recovery-mode.md). Verify external effects since the backup before allowing dispatch. Do not generate a new key to replace a lost key while stored sessions still need it.
+
+Include deletion/revocation records and external source references in the backup plan. Keep an off-host copy and record which key versions belong to each restore point. Long-term backups exclude temporary file bytes; source services own durable originals. A short-lived restore snapshot that includes bytes must retain their original `expires_at` and must not turn them into an archive. [Shutdown and backup recovery](failures/recovery.md) describes the application boundaries; the deployment must supply backup scheduling, retention and WAL/PITR tooling.
 
 ## Verify changes
 

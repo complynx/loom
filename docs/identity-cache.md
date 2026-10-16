@@ -1,6 +1,6 @@
 # Identity permission cache
 
-`identity.permissions_cache_ttl_seconds` defaults to **120** when omitted. Set **0** to disable; the maximum is **300**. Restart Loom after a configuration change. The cache holds verified positive token claims in each process, keyed by SHA-256 of the exact token. Raw credentials are not stored in cache entries or metrics. Actor and subject tokens have separate entries. At most 10,000 entries and 64 concurrent normal cache fills are admitted per process; excess cold requests return retryable 503. Concurrent requests for the same token share one bounded fill. Cancelling one waiter does not cancel the others.
+`identity.permissions_cache_ttl_seconds` defaults to **120** when omitted. Set **0** to disable; the maximum is **300**. Restart Loom after a configuration change. The cache holds verified positive token claims in each process, keyed by SHA-256 of the exact token. Raw credentials are not stored in cache entries or metrics. Different actor and subject tokens use separate entries. Each process retains at most 10,000 entries and evicts the least recently used entry when full. It permits at most 64 concurrent normal cache fills; a cold request that needs another fill returns retryable 503. Concurrent requests for the same token share one bounded fill. Cancelling one waiter does not cancel the others.
 
 TTL is absolute, starts when verification completes and never slides on reads. It cannot exceed introspection `exp` or a signed JWT's `exp`. Denials and errors are not cached. There is no stale-on-error extension. A warm entry can cover a short Zitadel outage; a cold or expired entry requires online verification and returns retryable 503 if the issuer is unavailable. Normal IAM role/token revocation can therefore take up to the configured TTL to appear.
 
@@ -33,7 +33,4 @@ Apply migrations using the migration principal before starting the new binary. E
 
 Prometheus exposes `clx_identity_cache_total{result="hit|miss|joined|fresh|denied|error|cleared"}` and `clx_identity_cache_age_seconds{cache="permissions"}`. A request can contribute both a lookup and an error outcome; these are event counters, not mutually exclusive request counts. Age measures reused claims, not dependency latency. Existing authorization spans/logs cover authentication duration and failures; successful API purge emits an info event with the generation. No token/subject labels are emitted.
 
-Behavioral tests cover outage reuse, expiry, disabled cache, fresh revocation, permission-map isolation, concurrent fill/cancel, cross-instance purge and in-flight purge rejection, fail-closed generation reads, administrative gates and atomic PostgreSQL generations. Actual target-server outage/load acceptance remains separate; no production setting or live IAM grant was changed for this feature.
-
-Written by Codex (gpt-6/Codex desktop), developer of Loom
-on behalf of Daniel Drizhuk
+The repository's cache tests cover outage reuse, expiry, disabled cache, fresh revocation, permission-map isolation, concurrent fill/cancel, cross-instance purge, in-flight purge rejection, fail-closed generation reads, administrative gates and atomic PostgreSQL generations. These tests do not establish outage or load acceptance for a deployment.

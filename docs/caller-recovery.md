@@ -1,18 +1,49 @@
 # Caller restart and delegated authorization
 
-[GitHub issue #2](https://github.com/complynx/loom/issues/2) is an error-classification defect. Removing a caller that disappears from fresh Docker discovery is intentional fail-closed behavior. Reporting that absence as an opaque credential rejection was the bug.
+A delegated service needs a current trusted caller registration as well as valid
+tokens or a saved authorization session. Discovery removes a caller that is no
+longer registered. Loom does not borrow permissions from its old registration.
 
-For valid authenticated actor/user credentials, a missing current caller binding returns HTTP 503 with `error.code: caller_binding_unavailable` and `error.retryable: true`. No current permissions are borrowed from an old registration. A conflicting/ambiguous actor binding remains unauthorized. Other identity/discovery outages can still return retryable dependency_unavailable.
+## Distinguish absence from denial
 
-Live actor/user token verification, stored session lookup and subject/org/actor checks precede the temporary binding error. Invalid/inactive tokens remain 401; a missing/revoked stored session remains a definitive non-retryable lookup denial (currently 404). With a current binding, missing caller harness permissions deny the route with 403. Harness operation rights belong to the service; business/module categories belong to the delegated user. Removing a user module role removes that category, not the service's independent chat-read right.
+For otherwise valid actor/user credentials, a missing current caller binding
+returns HTTP `503` with `error.code: caller_binding_unavailable` and
+`error.retryable: true`. Conflicting or ambiguous actor bindings remain denied.
+Other identity/discovery outages can return retryable `dependency_unavailable`.
 
-Clients should preserve run/session IDs, immutable request and idempotency keys, and earlier uncertain effects. Retry 503 with bounded backoff and a persisted availability deadline appropriate to the configured discovery polling interval (production default 300 seconds). Do not retry 401/403/404 as if they were this availability condition. Do not create a replacement run or renew a wait budget on each caller restart. Intentional removal and temporary absence cannot be inferred from the missing registration alone; 503 does not promise future recovery.
+Actor/user token verification, session lookup and subject/organization/actor checks
+precede the temporary binding error. Invalid or inactive tokens return 401. A
+missing, expired or revoked saved session returns a definitive lookup denial
+(currently 404). With a current binding, missing caller permissions return 403.
+Do not treat those denials as temporary caller absence.
 
-On discovery recovery, the same valid session can read its existing run. Already authorized in-flight work may finish; new execution requires a current binding. If a worker authorization check put the run into waiting_auth, explicitly reauthorize the existing session using fresh same-user/same-actor credentials and its current version. That schedules retained work; no new run is needed. Unknown paid operations/writes still require their existing reconciliation rules, never blind replay.
+Harness operation rights belong to the service; business/module categories belong
+to the delegated user. Removing a user's module role removes that category, not
+the service's independent chat-read permission.
 
-Verify same-run recovery, combined revocation/absence and real caller discovery using [QA](qa.md). A client mitigation for an older opaque 401 does not change the current 503 contract. No database migration or new setting is required for this classification.
+## Retry the existing work
 
-Other findings in the original file are confirmed integration contracts: dynamic discovery accepts only the strict `{"methods":[...]}` envelope, and module administrative categories require an explicit deployment/user-role mapping. Loom does not accept an adapter-added `$schema` field or grant administrative rights automatically.
+Persist run/session IDs, original request bodies, idempotency keys and records of
+uncertain effects. Retry the 503 with bounded backoff and a persisted availability
+deadline sized for the deployment's discovery polling interval. Do not reset the
+wait budget on every restart or create a replacement run. Missing registration
+alone cannot distinguish temporary absence from intentional removal; 503 does not
+promise future recovery.
 
-Written by Codex (gpt-6/Codex desktop), developer of Loom
-on behalf of Daniel Drizhuk
+Once discovery recovers, the same valid session can read the existing run. Already
+authorized in-flight work may finish; new execution needs a current binding. If the
+worker put the run in `waiting_auth`, reauthorize its existing session with fresh
+same-user/same-actor credentials and the current session version. This schedules
+retained work. See [Session requests](api/history-events.md#sessions-and-versions)
+for the exact headers and body.
+
+Unknown paid operations and writes still need their existing reconciliation
+procedure. Do not replay them blindly after availability recovers. See
+[Failure behavior](failures.md) and [Recovery mode](recovery-mode.md).
+
+## Registration contract
+
+Dynamic discovery accepts the strict `{"methods":[...]}` envelope. Do not add a
+`$schema` field. Module administrative categories require explicit deployment and
+user-role mappings; Loom does not grant administrative rights automatically.
+See [Module discovery](modules/discovery.md).

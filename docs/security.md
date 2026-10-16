@@ -2,7 +2,7 @@
 
 Этот документ описывает действующие границы и отдельно целевой refreshable flow. Текущий MVP использует access-token sessions с explicit reauthorization; автоматический Token Exchange/refresh и deployment-bound secret authentication не реализованы. [PKCE panel login](operator-login.md) — отдельный действующий механизм.
 
-Read the topic you need below. Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
+Для интеграции начните с [identity и permissions](security/identity-permissions.md), затем прочитайте [approval и границы данных](security/actions-data.md). [Refresh plan](security/refresh-plan.md) описывает будущий протокол и не является инструкцией для действующей интеграции. Ключи сохранённых сессий описаны в [key rotation](session-key-rotation.md).
 
 ## Identity и доступ
 

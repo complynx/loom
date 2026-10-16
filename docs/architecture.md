@@ -2,7 +2,7 @@
 
 Авторизация использует [ограниченный positive cache и общую инвалидацию](identity-cache.md). Финальные permissions и локальные ограничения пересчитываются на существующих границах; sensitive operations обходят кэш.
 
-Read the topic you need below. Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
+Начните с [runtime](architecture/runtime.md): он объясняет границы API, координатора, БД, моделей и sandbox. [Execution](architecture/execution.md) описывает состояния run, подтверждение действий, аренды исполнения и сроки. Для расположения кода см. [Contributing](../CONTRIBUTING.md).
 
 ## Цель и контекст
 

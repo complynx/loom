@@ -1,61 +1,59 @@
-# Возможности, проверки и ограничения
+# Capabilities and limitations
 
-Этот документ отделяет поддерживаемые возможности от непроверенных сценариев. Приёмку установленного сервиса выполняет оператор. Прежнее имя файла сохранено для совместимости ссылок.
+This page separates implemented behavior, verification scope and missing features. Operators accept their own installation. The legacy filename remains stable for links.
 
-## Реализовано и проверено
+## Implemented and checked
 
-| Область | Подтверждённая граница |
+| Area | Verified scope |
 | --- | --- |
-| API, River, PostgreSQL | Поведенческие тесты транзакционности inputs/jobs, idempotency, одного run на чат, истории, SSE и billing. Linux race, Golden и Docker build входят в CI. |
-| Разговорный ввод | Детерминированные тесты steering, уточнений с blocked action, нового prepare, native callbacks, exact-text, stale consent и restart. Живая интерпретация отдельно. |
-| Zitadel | Настоящий локальный issuer: JWT/introspection, cross-org отказ, live role removal, signing-key rotation и API/River restart → reauthorize после отзыва credentials. Proxy SSO поддерживается отдельно от direct PKCE. |
-| OpenAI | Минимальный live Responses вызов и settlement. Expanded tools/vision/compaction quality этим не подтверждены. |
-| Внешний клиент | Выделенный стенд: Telegram → делегированный run → ответ, история следующего обращения, фильтрация методов по правам и восстановление того же run. Provider — manual mailbox. |
-| Write через внешний сервис | Локальная consumer-приёмка: nested prepare → restart → approval → реальный write; replay/status сохраняют один receipt/эффект. Это protocol-mode сценарий. |
-| Внешние файлы | Native import из внешнего сервиса, читаемый PDF render/text, video frame/audio extraction, audio metadata и явный refetch внешнего ID после expiry artifact. Автоматический refresh helper проверен отдельно локально. |
-| Память, поиск, контекст | Owner isolation, micro до 500 Unicode characters, literal/fulltext/RE2, bounded read, vector-only API, prefix reuse и durable compaction проверены fixtures/PG. |
-| Отказы | Изолированные стенды: disk-full/read-only, отмена, потерянные ответы, worker kill/OOM и bounded restore/recovery barrier. Это не нагрузочные пределы production-хоста. |
-| Диагностика | API/agent functions, logs/metrics и bounded OTel export проверены локально. |
+| API, River and PostgreSQL | Behavioral tests for transactional input/jobs, idempotency, one run per chat, history, SSE and billing. CI includes Linux race tests, Golden lint and Docker builds. |
+| Conversation | Deterministic steering, clarification with a blocked action, replacement prepare, native callbacks, exact text, stale consent and restart. Live interpretation is separate. |
+| Zitadel | Real isolated issuer checks for JWT/introspection, cross-org denial, role removal, signing-key rotation and API/River restart followed by reauthorization after credential revocation. Proxy SSO and direct PKCE are separate modes. |
+| OpenAI | One minimal live Responses call and settlement. This does not accept expanded tools, vision or compaction quality. |
+| External client and writes | Bounded real-service checks: delegated run, subsequent history, permission-filtered discovery, result delivery and same-run recovery. Protocol-mode prepare/restart/approval/replay/status preserves one effect. The provider was manual. |
+| Files | Native service import, readable PDF text/rendering, video frame/audio extraction, audio metadata and explicit source refetch after artifact expiry. Automatic reference refresh has separate local tests. |
+| Memory, search and context | Owner isolation, micro-memory, literal/fulltext/RE2, partial reads, vector API, compatible prefix reuse and durable compaction use fixtures/PostgreSQL. |
+| Failures and diagnostics | Isolated disk-full/read-only, cancellation, lost responses, worker kill/OOM, bounded restore barrier, diagnostics, logs/metrics and bounded OTel export. This does not establish host load limits. |
 
-Consumer-приёмка закрывает отсутствие реального адаптера и ограниченные read/write/file сценарии. Она относится к конкретным сборкам, а не автоматически к каждой следующей версии. Порядок повторной проверки — в [QA](qa.md).
+Checks apply to their recorded builds and boundaries. They do not automatically accept each later release or installation. Keep run evidence outside the repository; use the [QA guides](qa.md) for repeatable criteria.
 
-## Реализовано, но соответствующая проверка открыта
+## Implemented, with acceptance still open
 
-| Сценарий | Что есть | Что остаётся |
+| Scenario | Existing implementation | Remaining check |
 | --- | --- | --- |
-| PKCE | Прямой authorization-code/PKCE реализован, проверен с локальным настоящим Zitadel. | Настроить и принять выбранный режим установки; proxy SSO не требует прямого PKCE-клиента. |
-| Live role removal | Online authority, bounded positive cache, sensitive bypass и purge через PG generation. | Отзыв/purge в текущем issuer/cache профиле установки. Warm cache может задержать обычный отзыв до TTL; stale-on-error нет. |
-| Signing-key rotation | JWT/JWKS refresh и локальная настоящая rotation. | Операционная rotation и отдельный отказ JWKS при доступной introspection в текущем серверном профиле. |
-| Queue restart → reauthorize | Сохранение run/CAS и локальная цепочка после настоящего отзыва JWT. | Полная цепочка именно при TTL expiry и клиентском flow установки. |
-| Свободное согласие | Runtime связывает решение с последним input и точной операцией. | Live RU/EN, условные/поздние ответы и интеграция UI клиента. Старые бинарные approval-тесты этого не доказывают. |
-| Модель/файлы | Image attachment, native compaction и paid transcription реализованы. | Live vision, качество/стоимость compaction, платная транскрипция и unattended выбор инструментов. |
-| Эксплуатация | Startup, telemetry, keyring и recovery guards реализованы. | Сквозной backend/alert acceptance, target load/host OOM, off-host/PITR restore и backup key rotation. |
+| PKCE | Direct authorization-code/PKCE tested with a real isolated Zitadel. | Accept the selected installation mode. Proxy SSO does not require a direct PKCE client. |
+| Role removal | Online authority, bounded positive cache, sensitive-operation bypass and shared purge generation. | Verify revocation and purge in the installation's issuer/cache profile. Warm ordinary checks can delay removal up to TTL; there is no stale-on-error. |
+| Signing-key rotation | Signature/JWKS refresh and isolated real rotation. | Operational rotation and independent JWKS failure while introspection remains available. |
+| Queue restart → reauthorize | Same run, CAS and a real local credential-revocation chain. | The complete chain for token TTL expiry and the deployed client. |
+| Conversational consent | Resolution binds the latest accepted input and exact prepared action. | Live RU/EN, conditional/late answers and client UI ordering. Older binary callbacks do not accept this mode. |
+| Models and media | Image attachment, native compaction and paid transcription. | Live vision, compaction quality/cost, paid speech transcription and unattended tool selection. |
+| Operations | Startup, telemetry, keyring and recovery guards. | End-to-end backend/alerts, target load/host OOM, off-host/PITR restore and historical-backup key rotation. |
 
-## Не реализовано
+## Not implemented
 
-- Разрешённая cross-org delegation: запрещена намеренно. Для поддержки нужен отдельный trust contract.
-- Автоматический token exchange/offline refresh/refresh rotation внутри Loom. Expiry требует reauthorize; run может ждать в waiting_auth.
-- Входящие opaque service secrets. Сервисы используют Zitadel access tokens и trusted caller binding.
-- Model token deltas/WebSocket. SSE передаёт durable run events; steering применяется на границах шагов.
-- Универсальный scheduler параллельных model calls. Parallel host RPC доступны внутри JS.
-- Embeddings-сервис, автоиндексация и ANN. Semantic API принимает готовые векторы и делает exact cosine ranking; выключенный режим скрывает инструмент.
-- Provider previous_response_id и полный transcript reuse. previous_run_id — совместимый локальный history-prefix hint до 15 минут, не resume и не гарантия cache hit.
-- Общий circuit breaker всех зависимостей, автоматическое получение поздней usage и global platform spend cap. Provider hybrid retry и bounded sponsored recovery уже есть.
-- Remote cancellation через manifest cancel_path. Cancel не означает rollback внешнего эффекта.
-- Object storage/chunk upload sessions/перенос blobs между hosts и native PDF/audio/video model input. Картинки передаются напрямую; остальные форматы обрабатывает worker.
-- Доказанная private-inference граница, automatic memory extraction, memory admin UI, субагенты и proactive runs.
-- Privileged retention migration существующих данных и secure erase всех checkpoint/audit/backup следов.
+- Cross-org delegation is intentionally denied. Supporting it needs a separate trust contract.
+- Automatic token exchange, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth.
+- Incoming opaque service secrets. Services use verified Zitadel tokens and trusted caller bindings.
+- Provider token deltas and WebSocket. SSE contains durable run events; steering applies at step boundaries.
+- A general parallel scheduler for model tool calls. Scripts can use parallel host RPC.
+- An embedding generator, automatic vector indexing or ANN. The optional vector API ranks supplied vectors exactly and is hidden when disabled.
+- Provider previous_response_id or complete transcript reuse. previous_run_id is a compatible local history-prefix hint, not resume or a guaranteed provider cache hit.
+- A common dependency circuit breaker, automatic late-usage retrieval or a global platform spend cap. Bounded provider retry and sponsored recovery already exist.
+- Remote cancellation through manifest cancel_path. Cancel is not rollback.
+- Object storage, chunk-upload sessions, cross-host blob transfer or native PDF/audio/video model input. The worker processes these formats; supported images can attach directly.
+- A proven private-inference boundary, automatic memory extraction, memory administration UI, subagents or proactive runs.
+- Privileged retention changes for all existing resources or secure erasure of every checkpoint/audit/backup trace.
 
-## Эксплуатационные границы
+## Operating limits
 
-Один нетерминальный run занимает чат, включая паузу/ожидание. Пассивные события не запускают inference. Ожидающие действия показываются последовательно; без reply reference одинаковый поздний текст неотличим от нового. Исправленный prepare требует нового согласия.
+One nonterminal run owns a chat, including pauses and waits. Passive events do not start inference. Clients serialize pending actions. Identical delayed text cannot be distinguished from fresh text without a reply reference. Replacement prepares need fresh consent.
 
-Файлы временные: default 24 часа, конечный TTL до 7 дней. Активный run не продлевает expiry. Raw uploads/derived outputs без внешнего refetch-контракта не восстанавливаются автоматически. Долгоживущий оригинал хранит сервис-владелец.
+Files have finite expiry, 24 hours by default and at most seven days. Active runs do not extend it. Uploads and derived outputs without a source-refetch contract cannot recover automatically. External services own long-lived originals.
 
-Readiness не является writable-capacity probe: при ENOSPC/read-only соединение с БД может работать. Контролируйте свободное место и ошибки записи отдельно. Sandbox limits общие для контейнера; это не per-worker memory isolation или HA.
+Readiness is not a write-capacity probe. A read-only or full database can still accept connections. Monitor storage and write errors separately. Sandbox limits cover the shared container, not each worker; they do not establish HA.
 
-OpenAI hard/trigger/target defaults — 272000/244800/204000 на модель. Byte bounds могут запустить compaction раньше. Native output выбирает provider; target не гарантирует итоговую usage. Compaction оплачивается; reservation может потребовать полный возможный output window.
+Default OpenAI hard/trigger/target values are 272000/244800/204000 per model. Byte bounds can compact earlier. The provider controls native compacted output size. Compaction is billed; its reservation can require the full possible output window.
 
-Все model endpoints считаются внешними и требуют disclosure. Секреты не выдаются JS. Debug payload logs могут содержать пользовательский текст/JWT claims; маскирование известных credentials не распознаёт произвольный секрет в тексте.
+All model endpoints require external-disclosure permission. Secrets do not enter JS. Debug payload logs can contain user text and JWT claims; credential masking cannot recognize every secret written in free text.
 
-Startup применяет pending migrations; старые workers должны быть остановлены. Автоматического down migration нет. БД/ключи сохраняются между заменами контейнеров. Серверные конфиги и инструкции конкретной установки находятся вне репозитория.
+Startup applies pending migrations and does not downgrade schemas. Stop incompatible older workers and preserve database/session keys between container replacements. Host profiles belong outside this repository.

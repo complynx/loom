@@ -1,39 +1,30 @@
-# Недоступности, отказы и восстановление
+<a id="недоступности-отказы-и-восстановление"></a>
 
-Read the topic you need below. Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
+# Failures and recovery
 
-## Реализованный срез
+Use these guides to distinguish a failed request from an uncertain external effect. Commands and source paths use the repository root unless stated otherwise.
 
-Read [Policy](failures/policy.md).
+<a id="реализованный-срез"></a>
+<a id="базовые-правила"></a>
+## Policy
 
-## Базовые правила
+[Failure policy](failures/policy.md) defines safe retry and reconciliation boundaries.
 
-Read [Policy](failures/policy.md).
+<a id="матрица-зависимостей"></a>
+## Dependencies
 
-## Матрица зависимостей
+[Dependency failures](failures/dependencies.md) maps symptoms to checks and recovery actions.
 
-Read [Dependencies](failures/dependencies.md).
+<a id="сообщения-и-подтверждения-при-сбоях"></a>
+<a id="retry-policy"></a>
+## Inputs and retries
 
-## Сообщения и подтверждения при сбоях
+[Conversation retry](failures/conversation-retry.md) covers lost receipts, approvals and interrupted actions. [Hybrid provider retry](hybrid-retry.md) defines the separate provider rejection policy.
 
-Read [Conversation retry](failures/conversation-retry.md).
+<a id="остановка"></a>
+<a id="recovery-после-crash"></a>
+<a id="backups-и-disaster-recovery"></a>
+<a id="критерии-qa-изменений"></a>
+## Recovery procedures
 
-## Retry policy
-
-Read [Conversation retry](failures/conversation-retry.md).
-
-## Остановка
-
-Read [Recovery](failures/recovery.md).
-
-## Recovery после crash
-
-Read [Recovery](failures/recovery.md).
-
-## Backups и disaster recovery
-
-Read [Recovery](failures/recovery.md).
-
-## Критерии QA изменений
-
-Read [Recovery](failures/recovery.md).
+[Shutdown, crash recovery and backups](failures/recovery.md) explains the recovery process. Use [restore recovery mode](recovery-mode.md) before starting a restored database. [Operations](operations.md) covers installation checks; [QA](qa.md) covers acceptance.

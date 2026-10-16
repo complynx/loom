@@ -74,6 +74,8 @@ For dependencies, use normal go.mod/go.sum versions. Follow the [dependency poli
 
 Write technical documentation. State prerequisites, exact inputs, outputs, limits, errors and recovery. Prefer short sentences, active voice, consistent terms and explicit subjects. Use Simplified Technical English (STE) where practical. Preserve exact identifiers and established technical terms. Depart from STE when it would make the explanation harder to understand or reduce readability; use the clearest precise wording. Do not force a mechanical translation or a restricted word list onto code examples or domain terms.
 
+Do not add sign-off or agent-attribution footers to documentation. Follow [AGENTS](AGENTS.md) for signed commit, PR/MR, issue and comment messages. Preserve third-party license and copyright notices.
+
 Keep instructions separate from run reports. Document supported behavior and how to verify it. Put private receipts, logs, screenshots and acceptance reports in CI artifacts or ignored local storage. A guide must not depend on a developer's private path, test port, account or server. Use example.com, explicit placeholders and reusable commands. Do not publish filled configuration or secrets.
 
 Use one authoritative document per contract. Link to it instead of repeating defaults and endpoint details. Keep README as the entry point. Keep each page focused on one task or boundary. Split a long guide into named topics and provide a short index; do not make readers scan a full API or QA manual for one operation. Update built-in module/tool help and schemas with the implementation; models must be able to find the same usable method documentation as developers.

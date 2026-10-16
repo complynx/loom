@@ -1,28 +1,39 @@
 # OpenAI catalog and context
 
-Reviewed on 2026-10-11 against the [official model catalog](https://developers.openai.com/api/docs/models) and model pages. These are bootstrap defaults, not a live pricing feed. Explicit YAML catalogs and existing PostgreSQL settings are not replaced.
+The `openai` provider uses the Responses API. When its bootstrap catalog is omitted, Loom seeds `gpt-6-luna` with effort `medium` as the default, plus `gpt-6.1-sol` and `gpt-6-astra`. Explicit catalogs and settings already stored in PostgreSQL take precedence.
 
-The default provider alias is `openai`; the default model is `gpt-6-luna`, effort `medium`. The preset contains the three latest general-purpose agent models supported through Responses. Specialized audio, image-generation and restricted research models require other APIs and are outside this catalog.
+## Preset tariffs
 
-Standard global prices, USD per million tokens:
+These rates are the repository snapshot dated 2026-10-11 in `internal/config/openai.go`. They are not a live pricing feed. Check the [official OpenAI pricing](https://developers.openai.com/api/docs/pricing) before changing an installed catalog.
+
+USD per million tokens:
 
 | Model | Input | Cached input | Cache write | Output |
 | --- | ---: | ---: | ---: | ---: |
-| [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) | 0.10 | 0.01 | 0.125 | 0.50 |
-| [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 2.00 | 0.10 | 2.50 | 10.00 |
-| [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) | 10.00 | 1.00 | 12.50 | 50.00 |
+| `gpt-6-luna` | 0.10 | 0.01 | 0.125 | 0.50 |
+| `gpt-6.1-sol` | 2.00 | 0.10 | 2.50 | 10.00 |
+| `gpt-6-astra` | 10.00 | 1.00 | 12.50 | 50.00 |
 
-Preset tariff units are micro-USD: one USD is 1000000 microcredits. Cached reads and cache writes are disjoint subsets of total input; neither is charged again as ordinary input. Above 272000 input tokens, the entire request uses 2x input/cache rates and 1.5x output rates. Exactly 272000 uses the short-context rate. The OpenAI transport explicitly requests Standard (`service_tier=default`). Regional and Fast-mode premiums are not enabled by this preset. Usage without a required write tariff fails closed and retains the reservation.
+The preset uses micro-USD: 1000000 microcredits represent one USD. Cached reads and cache writes are disjoint parts of total input. Ordinary input equals total input minus both cache counts. Settlement rounds the combined input charge and the output charge up separately to whole microcredits. A missing required cache-write tariff prevents settlement and leaves the reservation for reconciliation.
 
-See [upstream context research](context-research.md) for Codex/OpenClaw comparison.
+For input above 272000 tokens, the preset applies 2x input/cache rates and 1.5x output rates to the whole request. Exactly 272000 uses the short-context rates. The transport requests Standard service with `service_tier=default`. Regional and Fast-mode premiums are outside this preset. See [history and billing](data/history-billing.md) for the ledger lifecycle.
 
-Each model has `compaction_threshold_tokens` and `compaction_target_tokens`. Current defaults are 244800 and 204000, with a separate per-model `input_token_limit` of 272000. The trigger follows the verified Codex default (90% of 272000); the target remains our earlier headroom heuristic. These are harness settings, not a published training constraint. The process `context_input_token_budget` is an additional hard ceiling. A model can lower the hard ceiling through `input_token_limit`; raising it also requires raising the process ceiling. Older catalogs without this field retain the compaction threshold as their hard bound. All instructions, tools and input items count toward the ceiling, not only chat text.
+## Input limits
 
-Current history compaction uses conservative byte bounds, so it may summarize earlier than the nominal token threshold. It summarizes complete earlier events, preserving a recent suffix and full stored history. Between turns, [active-run compaction](active-compaction.md) replaces the model input window after outstanding tool results are saved. Durable tool/model checkpoints remain intact. If the resulting complete input exceeds its ceiling, the run pauses. The trigger is applied before compaction. The target bounds the retained recent suffix after compaction; it is not a guarantee that provider usage will equal that number. Output has its own limit, 4000 by default in the deployment template.
+The default model policy is:
 
-Before a new run, more than four passive actions since the previous active start are reduced in the model view to the first action, a count/provenance placeholder and the last three actions. With no prior dialogue, the placeholder states the total count and precedes the last three actions and first request. Up to four actions stay complete. Compression happens before pagination; full events remain searchable, including by regexp. Passive events never start a run.
+| Setting | Tokens | Purpose |
+| --- | ---: | --- |
+| `input_token_limit` | 272000 | Hard input ceiling |
+| `compaction_threshold_tokens` | 244800 | Start compaction before the ceiling |
+| `compaction_target_tokens` | 204000 | Bound the recent history retained by history summarization |
 
-Existing installations change model and tariff settings through the authorized settings API. Review rates and capabilities before changing an existing catalog. Per-user selections remain intact. Preset and tariff tests use fixtures. Use [QA](qa.md) to verify live tools, images, usage and compaction quality separately from preset fixtures.
+These are Loom settings, not upstream model limits. The process `context_input_token_budget` adds a hard ceiling. The lower ceiling applies; raising the model limit alone cannot raise the process limit. For older catalogs without `input_token_limit`, the compaction threshold also acts as the model input ceiling. Live settings reductions apply before the next provider request.
 
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+Instructions, tools and all input items count toward the ceiling. Ordinary text uses conservative byte bounds, so history summarization can start before the nominal token threshold. Provider token counting is used when needed, and is required for opaque compaction items. Output has a separate limit: the deployment template sets `output_token_limit: 4000`.
+
+History summarization keeps complete recent events and a summary of earlier events. [Active-run compaction](active-compaction.md) replaces the model window between turns, after outstanding tool results are saved. The native endpoint chooses its replacement size; the 204000 target does not control it. If the complete replacement input cannot fit, the run pauses. Stored history and execution checkpoints remain available.
+
+Before a new run, more than four passive actions in a history gap become the first action, a count/provenance placeholder and the last three actions in the model view. Before the first request, the placeholder gives the total count and only the last three actions follow. Up to four actions remain complete. This compression happens before pagination; full stored events remain searchable. Passive actions do not start runs.
+
+Change an installed catalog and tariffs through the authorized settings API. See [context policy](context-research.md) for the rationale and [development providers](test-providers.md) for testing without direct Responses inference.

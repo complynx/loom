@@ -1,38 +1,68 @@
 # Behavioral integration tests
 
-These tests use a real PostgreSQL server and exercise the HTTP API, durable storage, the run engine, and the Responses HTTP adapter. Each test creates a unique PostgreSQL schema, runs the embedded migrations, and removes only that schema during cleanup. Tests do not change production data. Independent fixtures run in parallel; use `-parallel` to bound concurrent PostgreSQL connections on smaller test hosts.
+These tests exercise the HTTP API, PostgreSQL persistence, the run engine and the
+Responses HTTP adapter. Each fixture creates a unique schema, runs embedded
+migrations and drops that schema during cleanup. Use a disposable database whose
+role can create schemas. The DSN is trusted configuration; tests do not detect
+whether it points to production.
 
-Set `CLX_TEST_DATABASE_DSN` to a disposable PostgreSQL database, then run:
+## Run the suite
+
+Follow [QA setup](../docs/qa/setup.md) to start disposable PostgreSQL and set
+`CLX_TEST_DATABASE_DSN`. Run from the repository root with the Go version in
+[go.mod](../go.mod) and a C compiler for race detection:
 
 ```sh
-go test -tags=integration ./integration -count=1
+go test -v -race -parallel=4 -tags=integration -count=1 ./integration
 ```
 
-If the variable is absent, the suite skips. A skipped suite is not evidence that the PostgreSQL paths work.
+Fixtures use `t.Parallel()`. `-parallel=4` limits active test functions in this
+package, not the total number of database connections. Lower it on a small host.
+If the DSN is absent, database fixtures skip; a skipped suite does not prove the
+PostgreSQL paths. Check verbose output for skips and cleanup errors.
 
-Covered client behaviors:
+For one scenario, retain the same options and add its exact test name:
 
-- Default chat stability, run creation and replay, conflicting idempotency requests.
-- One active run per chat under concurrent HTTP requests, independent chats, and cross-user denial.
-- Durable history, SSE replay cursors and Last-Event-ID, revocation, last-subscriber disconnect grace, reconnection, passive activity deduplication, and regular expression search.
-- Revision-checked preference updates.
-- Request to final agent result, durable history, credit settlement, and completed-run recovery without another inference.
-- Choice question, invalid answer rejection, accepted answer, and continuation on a new worker.
-- Steering, pause, and resume.
-- Budget exhaustion and revoked execution authorization before provider dispatch.
-- Graceful shutdown and provider cancellation; uncertainty retains reservations when sponsored recovery is disabled or excluded. Separate provider-recovery tests cover bounded platform-sponsored inference retries, release of user reserves and platform exposure accounting.
-- Paid history compaction that preserves user constraints and provenance, pins the current request, and reuses the summary after a question and worker restart without a duplicate charge.
-- Full mutation flow through the production module bridge: service manifest discovery, preparation, explicit HTTP approval, passive activity that cannot approve, stable operation ID, and one verified external effect.
-- Mutation reply loss after an external effect, followed by explicit run resume and a status lookup with the same operation ID, without repeating execution.
-- Privileged HTTP provider-receipt reconciliation: organization isolation, validated tariffs, sanitized responses, one settlement, and continuation from verified output without another inference.
-- Owner-authorized chat deletion: repeated deletion is safe, deleted history and runs become inaccessible, and a replacement default chat accepts the next request.
-- Deleted chats reject original run-create, control, and input idempotency keys without returning retained private content.
-- Control and input receipts remain content-free after chat-read permission is revoked, including idempotent replay.
-- Paid incomplete model responses preserve usage but execute no tool call and resume without orphan function-call items.
-- Client cancellation during an outstanding HTTP inference remains authoritative over a late final answer; cancelled runs cannot resume.
+```sh
+go test -v -race -parallel=4 -tags=integration -count=1 ./integration \
+  -run '^TestHTTPMutationRequiresApprovalAndExecutesStableOperationOnce$'
+```
 
-Additional scenarios cover active-run compaction, previous-run cache compatibility, bounded search/read, disabled vector search, temporary artifact handles/direct attachment, personal micro-memory reload without separate memory roles, and persisted hybrid retry schedules. These are behavioral fixtures; they do not prove live model quality.
+The fixture starts its own HTTP servers and provider peers. It does not need a
+running Loom service, real access tokens or provider credentials. Tokens such as
+`alice` and `bob` are accepted only by the fixture authenticator.
 
-The model endpoint is an HTTP test server. The API authenticator and the engine authorization callback are explicit boundary fakes. Identity protocol behavior has separate tests in `internal/identity`. The suite invokes `Engine.Execute` directly; it does not prove River scheduling, process startup, Docker confinement, a live model provider, or production acceptance. Those boundaries require their own checks.
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+## Find a scenario
+
+| Behavior | Fixture sources |
+| --- | --- |
+| Default chat, idempotency, concurrent runs, passive history and preferences | [HTTP](http_test.go) |
+| Deletion, retained receipts and revoked read access | [Privacy](privacy_test.go) |
+| SSE cursors, revocation, disconnect grace and reconnect race | [SSE](sse_test.go), [reconnect](sse_reconnect_race_test.go) |
+| Final result, questions, pause/resume, budget and execution authorization | [Agent](agent_test.go) |
+| Conversation clarification, exact consent and amended proposals | [Conversation](conversation_test.go), [amendment](conversation_amend_test.go) |
+| Manifest discovery, approval, stable operation ID and unknown external effect | [Mutations](mutation_test.go) |
+| Provider receipt settlement, incomplete responses and cancellation | [Reconciliation](reconciliation_test.go), [critical inference](critical_inference_test.go) |
+| Bounded retry, sponsored recovery and accounting | [Hybrid retry](hybrid_retry_test.go), [provider recovery](provider_recovery_test.go), [billing](openai_billing_test.go) |
+| History and active-run compaction, context limits and cache reuse | [Summary](summary_test.go), [active compaction](active_compaction_test.go), [context limits](context_limits_test.go), [search/cache](search_reuse_test.go) |
+| Artifact ownership, ranges, temporary handles and paid transcription | [Handles](artifact_handle_test.go), [ranges](artifact_range_test.go), [file tools](file_tools_test.go) |
+| Personal memory refresh and isolation | [Memory](user_memory_test.go) |
+
+Assertions check durable state and ledger effects, not only final text. For
+example, the unknown-write scenario checks status with the same operation ID
+rather than issuing a second execution. Open the fixture for its complete request
+body, injected failure and expected receipt.
+
+## Boundary limits
+
+The model endpoint is an HTTP test server. API authentication and engine
+authorization are explicit fakes. [Identity tests](../internal/identity) exercise
+protocol behavior with controlled authority peers; a real Zitadel installation
+needs a separate contract check.
+
+The suite invokes `Engine.Execute` directly. It does not prove River scheduling,
+process startup, Docker confinement, live model quality or installation acceptance.
+The Linux [runtime fixture](../internal/app/runtime_test.go) covers the real
+River/startup path with fake external HTTP peers. Run it through
+[scripts/linux-tests.sh](../scripts/linux-tests.sh) with a reachable test DSN.
+Use the [QA guides](../docs/qa.md) for media, stand fault and external-client checks.

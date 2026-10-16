@@ -2,25 +2,27 @@
 
 [Guide index](../failures.md)
 
-## Сообщения и подтверждения при сбоях
+<a id="сообщения-и-подтверждения-при-сбоях"></a>
+## Lost receipts and interrupted actions
 
-| Ситуация | Поведение |
-|---|---|
-| Потеря HTTP-квитанции input | Повторить тот же idempotency key и body; не создавать новый run. Возвращается исходный input ID, если он доступен для этой квитанции. |
-| Ошибка вставки queue job | Транзакция приёма откатывается вместе с решением; безопасно повторить запрос. |
-| Steering принят во время формирования вопроса | Публикация ожидания замечает непроцессированный вход и оставляет run в очереди. |
-| Уточнение при обычном approval | Агент продолжает диалог тем же run; подготовленное действие остаётся заблокированным. |
-| Другая фраза при `exact_text` | Runtime сохраняет отказ, даже если сообщение было уточнением. Просроченная фраза и конфликтующий presentation также не подтверждают действие. |
-| Запоздавший callback или ответ на старое предложение | Проверить action ID/binding и доступный presentation; не переносить согласие на замену. Если обычный текст неоднозначен, агент уточняет. |
-| Поправка принята до dispatch intent | Непроцессированный steering или новая revision блокирует исполнение по старому согласию. |
-| Сообщение после dispatch intent | Не обещать откат. Сначала получить или сверить реальный исход исходной операции. |
-| Перезапуск после решения | Восстановить сохранённый input/decision и operation ID; неизвестный эффект сверить по status, не заменять новым действием. |
+| Situation | Client action and runtime boundary |
+| --- | --- |
+| Input HTTP receipt lost | Repeat the same idempotency key and body. Do not create a new run. The original input ID is returned where the receipt contract provides it. |
+| Queue insertion fails | Admission rolls back with its decision. Retry the original request. |
+| Steering arrives while a question is prepared | Unprocessed input prevents publishing a stale wait; the run remains queued. |
+| Clarification during ordinary approval | Continue the same run. The prepared action remains blocked. |
+| Reply differs from `exact_text` | The runtime records rejection, including when the reply was a clarification. An expired phrase or conflicting presentation cannot approve the action. |
+| Late callback or reply to an old proposal | Check the action ID/binding and presentation. Consent does not transfer to a replacement action. Ambiguous ordinary text requires clarification. |
+| Correction arrives before dispatch intent | Unprocessed steering or a new revision blocks execution under old consent. |
+| Message arrives after dispatch intent | Do not promise rollback. Obtain or reconcile the original operation's actual outcome first. |
+| Restart after a decision | Recover the stored input, decision and operation ID. Query unknown effects rather than creating a replacement action. |
 
-У клиента нет общего подтверждения доставки сообщений в Loom: snapshot отражает серверное состояние при приёме, `presentation` — сообщённый клиентом контекст. В текстовом канале без reply reference одинаковые поздний и новый ответы неразличимы. Поэтому ожидающие действия и показ подсказок последовательны; для строгой привязки используйте бинарные callbacks. [Полный контракт](../conversational-input.md).
+Loom has no general client message-delivery acknowledgment. A snapshot describes server state at admission; `presentation` is context reported by the client. In text channels without reply references, identical late and current replies cannot be distinguished. Present pending actions sequentially. Use binary callbacks for strict binding. See the [full input contract](../conversational-input.md).
+
 ## Retry policy
 
-Для provider действует [hybrid policy](../hybrid-retry.md); не подменяйте её общей рекомендацией о числе попыток. 401/403, invalid schema, context overflow и истёкший approval не являются transient retry. Попытки сохраняют operation identity; новые provider attempts учитываются по своей финансовой политике.
+Provider calls use the [hybrid policy](../hybrid-retry.md). Authentication failures, invalid schema, context overflow and expired approvals are not transient retry signals. Preserve operation identity; account for new provider attempts under the applicable financial policy.
 
-Общий circuit breaker и согласованная retry policy остальных dependencies — последующая работа. При их добавлении разделяйте provider/service и recovery/status/auth traffic, ограничивайте half-open probes. Unknown write не становится безопасным от наличия breaker.
+A general dependency circuit breaker is not implemented. If you add one, separate provider/service calls from recovery, status and authorization traffic, and bound half-open probes. A breaker cannot make an unknown write safe to repeat.
 
-Ручной reconciliation требует operation ID, доказательства backend результата, автора и причины. Admin не может без доказательства перевести unknown в not_started и разрешить повтор. Если доказательство получить невозможно, operation остаётся unresolved; дальнейшая задача может выполняться лишь без конфликтующего действия и с явным объяснением пользователю.
+Manual reconciliation requires the operation ID, backend evidence, author and reason. An administrator must not change `unknown` to `not_started` without evidence to permit another attempt. If evidence is unavailable, leave the operation unresolved. Further work must avoid a conflicting action and explain the uncertainty to the user.

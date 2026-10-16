@@ -24,13 +24,13 @@ A harness request must delegate one of the fixture's configured token strings fo
 
 ## Contract and acceptance scenarios
 
-`GET /manifest` publishes a static `fixture` module and a dynamic `fixture_dynamic` module. `qa.access` enables the module category. `qa.read` enables static `read` and dynamically discovered `lookup`; `qa.write` enables the confirmed `write` action.
+`GET /manifest` publishes a static `fixture` module and a dynamic `fixture_dynamic` module. `qa.access` enables the module category. `qa.read` enables static `read`, `fetch_file` and dynamically discovered `lookup`; `qa.write` enables the confirmed `write` action.
 
-Reads take `{"query":"value"}` and return a result plus a text blob descriptor. The descriptor includes MIME type, byte length, and SHA-256. `GET /blob` returns the original bytes under the delegated token. A normal harness import returns an artifact handle to the script.
+Reads take `{"query":"value"}` and return a result plus a text blob descriptor. The descriptor includes MIME type, byte length, and SHA-256. `GET /blob` returns the original bytes under the delegated token. A normal harness import returns temporary artifact IDs and metadata to the script. Call `modules.artifacts.open` to obtain a handle. `fixture.fetch_file({external_id})` also exports `fixture-file` (the text blob) and `fixture-image` (a fixed PNG); other IDs are rejected. Its descriptors include source IDs and the fetch method for exact-version refresh.
 
-Writes use `service_id` confirmation. `POST /prepare` returns a stable confirmation ID bound to the token, run ID, operation ID, and normalized arguments. `POST /write` requires the matching confirmation and uses the operation ID as its idempotency key. A conflicting argument, run, or token is rejected. `POST /status` reports the committed result without applying a write.
+Writes use `service_id` confirmation. `POST /prepare` returns a stable confirmation ID bound to the token, run ID, operation ID, and normalized arguments. `POST /write` requires the matching confirmation and uses the operation ID as its idempotency key. A conflicting argument, run, or token is rejected. `POST /status` reports the committed result for the same token without applying a write. It returns `not_found` for an unapplied, missing or differently token-bound operation; the harness treats that state as unknown, not permission to replay.
 
-To lose the next write reply after the state has been saved:
+The following shell example uses POSIX environment-variable syntax. To lose the next write reply after state has been saved:
 
 ```sh
 curl -X POST http://127.0.0.1:8090/qa/faults \
@@ -39,7 +39,7 @@ curl -X POST http://127.0.0.1:8090/qa/faults \
   -d '{"drop_next_write_reply":true}'
 ```
 
-The next successful write closes its connection after commit. The harness should reconcile through status. Restart the service without deleting its volume to test persisted deduplication:
+The next valid write closes its connection after the applied state is persisted; a deduplicated write can trigger the fault too. The harness should reconcile through status. Restart the service without deleting its volume to test persisted deduplication:
 
 ```sh
 docker compose -f compose.yaml -f examples/acceptance.compose.yaml restart acceptance-service
@@ -57,11 +57,8 @@ Use this fixture for manifest discovery, bounded reads, temporary artifacts, pre
 
 ## Limits
 
-The fixture performs no business operation. Its committed value is test state. Preparation expires after five minutes. Applied operation records remain in the volume; capacity is bounded to 1000 records and 1 MiB. This exceeds the manifest's declared 24-hour deduplication window only while the volume is retained. Clearing the volume removes this guarantee. There is no automatic cleanup or multi-process writer support.
+The fixture performs no business operation. Its committed value is test state. Preparation expires after five minutes. Applied operation records remain in the volume; capacity is bounded to 1000 records and 1 MiB. Records have no automatic expiry; the declared 24-hour deduplication window depends on retaining the volume and the same configured token values. Clearing the volume removes this guarantee. There is no automatic cleanup or multi-process writer support.
 
-State writes synchronize a temporary file and rename it before acknowledging a write. Parent-directory synchronization is not implemented; power-loss durability has not been proven. Restart tests cover ordinary process restart. There is no cancellation endpoint or arbitrary format/media support; the exported artifact is a fixed text blob.
+State writes synchronize a temporary file and rename it before acknowledging a write. Parent-directory synchronization is not implemented; power-loss durability has not been proven. Restart tests cover ordinary process restart. There is no cancellation endpoint or arbitrary format/media support; exports are a fixed text blob and a fixed PNG.
 
-Run the fixture with a read-only root and writable state volume. Verify permissions, counters and retained receipts; use a real service for business acceptance.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+The Compose override uses a read-only root and a writable state volume. Verify permissions, counters and retained receipts; use a real service for business acceptance.

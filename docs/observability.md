@@ -59,7 +59,7 @@ space available to the runtime UID. These are aggregate diagnostics, not financi
 settlement APIs. No user/model/module/run IDs become metric labels.
 
 Dependency gauges cover PostgreSQL collection, current discovery trust, artifact
-volume and sandbox supervisor IPC. The sandbox ping starts no child worker. A valid capacity response also proves
+volume, sandbox supervisor IPC and the file processor when enabled. The sandbox ping starts no child worker. A valid capacity response also proves
 supervisor IPC availability, so full worker utilization does not falsely mark it
 down. It does not prove arbitrary JS succeeds.
 Application health/readiness retain their separate contracts. Execution operation
@@ -81,7 +81,5 @@ Example Loki queries:
 [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/)
 and [Alloy structured logs](https://grafana.com/docs/alloy/latest/monitor/monitor-structured-logs/)
 define the integration format. Cloud delivery and notifications still require
-post-deployment acceptance; local validation is not delivery proof.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+post-deployment acceptance; local validation is not delivery proof. Replace the
+example `job` and `instance` labels with those supplied by your log collector.

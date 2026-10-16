@@ -1,49 +1,69 @@
 # HTTP API v1
 
-Базовый путь `/v1`. JSON UTF-8; время RFC 3339 UTC; ID непрозрачные UUID; денежные значения в целых microcredits. Неизвестные поля входных объектов отклоняются. Версия протокола несовместимо меняется новым базовым путём.
+API paths start with `/v1`. JSON requests require `Content-Type: application/json`.
+Unknown object fields are rejected. Timestamps use RFC 3339 UTC. Treat resource IDs
+as opaque values. Credit amounts are integers in microcredits. Incompatible
+protocol changes require a new base path.
 
-Read the topic you need below. Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
+Start with [authentication and routes](api/authentication-routes.md), then
+[create a run and submit input](api/runs-input.md). The server exposes wire schemas
+at `/openapi.json`. See [Contributing](../CONTRIBUTING.md) for the code map.
 
-## Аутентификация
+Persist an idempotency key before sending a command that requires one. Reuse that
+key and the same body after a lost response. Keys contain 1–128 bytes, no leading
+or trailing whitespace, NUL, CR or LF. A command receipt confirms durable
+acceptance; it does not prove an external effect has finished.
 
-Read [Authentication routes](api/authentication-routes.md).
+<a id="аутентификация"></a>
+## Authentication
 
-## Поверхность API
+Read [Authentication](api/authentication-routes.md#authentication).
 
-Read [Authentication routes](api/authentication-routes.md).
+<a id="поверхность-api"></a>
+## Routes
 
-## Создание run
+Read the [route table](api/authentication-routes.md#routes).
 
-Read [Runs input](api/runs-input.md).
+<a id="создание-run"></a>
+## Create a run
 
-## Входы в run
+Read [Run creation](api/runs-input.md#create-a-run).
 
-Read [Runs input](api/runs-input.md).
+<a id="входы-в-run"></a>
+## Run input
 
-## Пассивные события
+Read [Run input](api/runs-input.md#run-input).
 
-Read [Runs input](api/runs-input.md).
+<a id="пассивные-события"></a>
+## Passive events
 
-## История и поиск
+Read [Passive events](api/runs-input.md#passive-events).
 
-Read [History events](api/history-events.md).
+<a id="история-и-поиск"></a>
+## History and search
 
-## Сессии и версии
+Read [History and search](api/history-events.md#history-and-search).
 
-Read [History events](api/history-events.md).
+<a id="сессии-и-версии"></a>
+## Sessions and versions
+
+Read [Sessions and versions](api/history-events.md#sessions-and-versions).
 
 ## SSE
 
-Read [History events](api/history-events.md).
+Read [SSE](api/history-events.md#sse).
 
-## Частичное чтение blobs
+<a id="частичное-чтение-blobs"></a>
+## Partial blob reads
 
-Read [Files recovery](api/files-recovery.md).
+Read [File content](api/files-recovery.md#partial-blob-reads).
 
-## Ошибки
+<a id="ошибки"></a>
+## Errors
 
-Read [Files recovery](api/files-recovery.md).
+Read [Errors and retries](api/files-recovery.md#errors).
 
-## Подготовка восстановленного запуска
+<a id="подготовка-восстановленного-запуска"></a>
+## Prepare a restored run
 
-Read [Files recovery](api/files-recovery.md).
+Read [Recovery preparation](api/files-recovery.md#prepare-a-restored-run).

@@ -1,26 +1,29 @@
 # Active-run compaction and provider recovery
 
-The full chat history and execution checkpoints stay in PostgreSQL. Compaction replaces only the model input window. Tool effects, approvals, permissions and billing remain separate durable records.
+Compaction replaces the model input window. Full chat history, tool effects, approvals, permissions and billing remain separate durable records in PostgreSQL.
 
-OpenAI uses stateless `POST /responses/compact`. The returned window, including its encrypted compaction item, is saved as a completed `compact` step and reused without pruning. Other transports use a paid text summary with recent user text. Compaction runs between model turns, after every outstanding tool call has a saved result. It does not execute output items returned by the compact endpoint.
+## Replacement windows
 
-The per-model trigger stays `244800`; hard input stays `272000`. `204000` remains the retained-history target. The native endpoint selects its output size; this is not a request for exactly 204000 or 45000 tokens. Provider token counting includes instructions and tools when needed near the trigger, and is required for opaque compacted windows. Byte estimates remain conservative for ordinary text. A window that exceeds the hard limit pauses rather than being silently truncated.
+For the OpenAI Responses transport, Loom calls stateless `POST /responses/compact`. It saves the returned window, including the encrypted compaction item, as a completed `compact` step. Embedded image, file and audio content is replaced with a reminder to reopen the artifact or fetch it again. The encrypted item remains intact. Compaction output is context; it never dispatches tools.
 
-The compact endpoint has no `max_output_tokens` parameter. Admission therefore reserves the full possible output window at the model's production tariff. Settlement uses actual input, cached input, cache-write and output usage. A saved successful checkpoint is not paid again after restart. The conservative reservation can require a larger run budget than ordinary inference.
+Other transports use a billed text summary plus recent user text. Compaction runs between model turns, after every outstanding tool call has a saved result. A completed checkpoint is reused after restart without another provider call or charge for that step.
+
+The preset trigger is 244800 tokens and the hard input ceiling is 272000. The 204000 history target does not set the native endpoint's output size. Loom counts the complete request, including instructions and tools, when needed near the trigger. Opaque compacted windows require provider token counting. Ordinary text can use conservative byte bounds.
+
+The run pauses if the input exceeds its hard limit, if an opaque window cannot be counted, or if a counted replacement still reaches the compaction trigger. It does not repeatedly compact an unchanged checkpoint.
+
+## Reservation and settlement
+
+The compact endpoint has no `max_output_tokens` parameter. Loom therefore reserves output cost for the larger of the model context window and the input ceiling, using the run's model tariff. This can require much more credit than ordinary inference. The reservation is a bound, not the expected charge. Settlement uses actual input, cached input, cache-write and output usage.
+
+See the [OpenAI compaction contract](https://developers.openai.com/api/docs/guides/compaction) and [preset tariffs](openai.md).
 
 ## Network errors and restarts
 
-`execution.sponsored_attempt_limit: 2` is the deployment default. A lost inference response releases the user's reserve and records possible provider liability in `platform_provider_attempts`. The successful replacement response uses normal user billing. After one automatic recovery, a second uncertain response pauses the run with `platform_retry_limit`; it releases that reserve too. The limit covers the whole run, including summaries and compaction. Zero disables this policy and retains operator reconciliation.
+`execution.sponsored_attempt_limit` defaults to `2`. For a lost inference response with unknown usage, this policy releases the user's reservation and records possible provider liability in `platform_provider_attempts`. The successful replacement response uses normal user billing. After one automatic recovery, a second uncertain response releases its reservation and pauses the run with `platform_retry_limit`. The limit covers the whole run, including summaries and compaction. Zero disables sponsorship and leaves unknown outcomes for operator reconciliation.
 
-Expired worker recovery requires fresh authorization and a transaction that checks the lease, fence, run state and outstanding effects. Active leases, client pause/cancel, incomplete tools and uncertain service writes cannot use this recovery. A client-requested interruption is not classified as a platform network failure. Completed output is replayed from storage; missing output never dispatches tools.
+Expired-worker recovery requires fresh authorization and a transaction that checks the lease, fence, run state and outstanding effects. It excludes active leases, client pause/cancel requests, incomplete tools and uncertain service writes. A client interruption is not a sponsored network failure. Saved output is replayed; a missing response cannot dispatch tools.
 
-Platform exposure is an estimate, not a claim that OpenAI charged that amount. Automatic settlement against late provider receipts, a global platform spend ceiling and a dependency circuit breaker are not implemented. Operator reconciliation remains available for uncertain outcomes outside the sponsored policy. Known output-free provider rejections use the separate [hybrid retry policy](hybrid-retry.md), with Retry-After, jitter and persisted schedules. It does not turn unknown transport errors into known zero-cost attempts.
+Platform exposure is an estimate of possible cost. Automatic settlement against late provider receipts, a global platform spend ceiling and a dependency circuit breaker are not implemented. Known provider rejections with no output use the separate [hybrid retry policy](hybrid-retry.md), which handles Retry-After, jitter and persisted schedules.
 
-## Evidence and source
-
-Behavioral tests: `integration/active_compaction_test.go`, `integration/provider_recovery_test.go`, `internal/store/platform_attempts_test.go`, `internal/provider/compact_test.go`. They cover native and fallback windows, call/result boundaries, question/resume, restart, lost replies, bounded retries and revoked authorization. They use test providers and isolated PostgreSQL; live paid OpenAI acceptance remains open.
-
-Compared with the current public Codex source: [remote compaction](https://github.com/openai/codex/blob/main/codex-rs/core/src/compact_remote_v2.rs), [local compaction](https://github.com/openai/codex/blob/main/codex-rs/core/src/compact.rs). Codex retains bounded recent context; it does not specify a fixed final 45k window. This implementation uses the public [Responses compaction contract](https://developers.openai.com/api/docs/guides/compaction), rather than Codex-specific transport extensions. [OpenAI retry guidance](https://developers.openai.com/api/docs/guides/rate-limits) requires bounded retries, server delay handling and separate treatment of quota errors and streamed output.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+Source: `internal/runs/compaction.go`, `internal/runs/compaction_files.go`, `internal/runs/provider_recovery.go` and `internal/store/platform_attempts.go`.

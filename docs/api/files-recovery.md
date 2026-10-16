@@ -1,32 +1,113 @@
-# Files recovery
+# Files and recovery
 
-[Guide index](../api.md)
+[API index](../api.md)
 
-## Частичное чтение blobs
+## File upload and lifetime
 
-Оба content endpoint принимают `Range: bytes=offset-end`, открытый конец, suffix и multipart ranges. Ответ — 206 с `Content-Range`; обычное чтение — 200. HEAD возвращает полные headers без body и игнорирует Range/If-Range. `ETag` содержит SHA-256 исходных bytes; для возобновления используйте `If-Range`. При несовпадении `If-Range` сервер отдаёт полный 200, поэтому клиент обязан проверять status перед дописыванием файла. Совпадающий `If-None-Match` даёт 304, проваленный `If-Match` — 412, недоступный/невалидный диапазон — 416. Arbitrary MIME сохраняется; multipart использует `multipart/byteranges`.
+Send raw bytes to `POST /v1/artifacts` with `artifacts.write` and the file's
+`Content-Type`. This route does not accept a JSON descriptor or multipart form.
+Success returns `201` with artifact metadata including `artifact_id`, MIME, size, hash and
+`expires_at`. Use that ID in run input. Read metadata at `GET /v1/artifacts/{id}`
+with `artifacts.read`.
 
-Владение, `artifacts.read`, `expires_at` файла и TTL handle проверяются до conditional/range обработки. Чужой или истёкший handle не даёт 304 или раскрытие размера. Long transfer сохраняет периодическую reauthorization, cancellation и 30-second write deadline. Bytes идут из файла в HTTP напрямую, без JS и без полной загрузки blob в память. Structured API errors остаются JSON; стандартные HTTP range/precondition errors могут иметь text body.
-## Ошибки
+Files are temporary: the default TTL is 24 hours, configured by
+`artifacts.ttl_seconds`. Expired files are unavailable even before physical cleanup.
+Service imports include source IDs and a stable `reference_id`; source module,
+method and fetch method identify how to retrieve the file again.
+
+For service-backed files, `modules.artifacts.fetch({module,method,external_id})`
+requests a descriptor from an authorized service and imports fresh bytes as a new
+temporary artifact. `modules.artifacts.file(ref)` refreshes its internal file ID
+through that contract, so model attachments can continue in the same run after TTL.
+HTTP content and new HTTP handles still require an unexpired physical file.
+There is no arbitrary-URL download API. See [File tools](../file-tools.md#temporary-files-and-external-ids).
+
+<a id="частичное-чтение-blobs"></a>
+## Partial blob reads
+
+Use `GET /v1/artifacts/{id}/content` or
+`GET /v1/artifact-handles/{id}/content` with `artifacts.read`. To create a handle,
+send `POST /v1/runs/{id}/artifacts/handles` with `{artifact_id}`. A handle expires
+within 15 minutes, no later than its file; it is not a bearer credential.
+
+Both content routes support `Range: bytes=offset-end`, open-ended, suffix and
+multipart ranges. Full reads return `200`; single ranges return `206` with
+`Content-Range`; multipart responses use `multipart/byteranges`. `HEAD` returns
+headers without a body and ignores `Range`/`If-Range`.
+
+The quoted `ETag` is the SHA-256 hash of the original bytes. Resume with `If-Range`,
+checking status before appending: a mismatch returns the full `200` body.
+Matching `If-None-Match` returns `304`; failed `If-Match` returns `412`; invalid or
+unsatisfiable ranges can return `416`. These standard HTTP responses may have
+plain-text bodies rather than the JSON API error shape.
+
+Ownership, permissions, file expiry and handle TTL are checked before conditional
+or range processing. A foreign or expired handle cannot reveal size through `304`.
+Transfers stream directly from storage and use cancellation, periodic authorization
+checks and a 30-second write deadline. MIME is preserved.
+
+<a id="ошибки"></a>
+## Errors
 
 ```json
 {"error":{"code":"dependency_unavailable","message":"Authorization service is unavailable","retryable":true,"request_id":"opaque-id"}}
 ```
 
-`401` — нет действительных credentials; `403` — нет права; `404` — ресурс не существует или недоступен; `409` — занятый чат/конфликт состояния или версии; `422` — неверный контракт; `429` — квота с `Retry-After`; `503` — зависимость не позволяет принять запрос; `504` — ограниченное ожидание dependency. Ответы не включают токены, upstream bodies и stack traces.
+| Status | Meaning |
+| --- | --- |
+| 401 | Credentials absent or invalid |
+| 403 | Required permission or organization access missing |
+| 404 | Resource absent or unavailable to the caller |
+| 409 | State/version conflict or busy chat |
+| 413 | Request or artifact exceeds its size limit |
+| 415 | JSON endpoint received an unsupported content type |
+| 422 | Invalid request contract |
+| 429 | Configured quota or active-run limit; a `Retry-After` header is not guaranteed |
+| 500 | Unexpected internal failure |
+| 503 | Dependency unavailable, or recovery mode restricts the route |
 
-Ошибка HTTP после commit может скрыть успешную операцию. Клиент повторяет только с исходным idempotency key, а не создаёт новое поручение.
+Use `error.code` and `retryable` as well as status. Not every 503 is retryable:
+recovery-mode restrictions need operator action. Responses exclude credentials,
+raw upstream bodies and stack traces. An HTTP failure after commit can hide a
+successful command: retry only with the original idempotency key/body.
 
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
-## Подготовка восстановленного запуска
+A missing current caller registration returns `503 caller_binding_unavailable`
+after credential/session checks. Preserve the original run/session and handle
+`waiting_auth` explicitly. See [Caller recovery](../caller-recovery.md).
 
-`POST /v1/admin/runs/{id}/recovery/prepare` требует `execution.recovery_mode: true`, `operations.reconcile` и `Idempotency-Key`. Body: `expected_fence` из admin diagnostics и `evidence` с `kind: operator_attestation`, непустыми `reference` и `reason`. См. [контракт recovery](../recovery-mode.md).
+<a id="подготовка-восстановленного-запуска"></a>
+## Prepare a restored run
 
-Ответ содержит `run_id`, `status`, `reason`, новый `fence`, `unresolved_steps`, `spent_microcredits` и `reserved_microcredits`. Запуск переходит из Running в reconciling; pending/unknown шаги, записи внешних эффектов и финансовые резервы сохраняются. Подготовка не делает inference и не ставит job в очередь. Diagnostics run теперь содержит `fence` для условной команды оператора.
+Stop all execution workers before preparing restored uncertain work. The API must
+run with `execution.recovery_mode: true`; the caller needs `operations.reconcile`
+and access to the run's organization. Send
+`POST /v1/admin/runs/{id}/recovery/prepare` with `Idempotency-Key`:
 
-403 — нет права; 404 — запуск вне организации; 409 `lease_busy`, `recovery_fence_changed`, `run_not_running`, `run_not_uncertain`, `idempotency_conflict` или `recovery_mode_required`; 422 `invalid_recovery_evidence` — неверное основание/expected_fence. Совпадающий повтор с тем же ключом возвращает текущую квитанцию без нового перехода или аудита. После подготовки можно отменить запуск штатной owner-ручкой и отдельно сверить подтверждённый provider receipt.
+```json
+{
+  "expected_fence": 3,
+  "evidence": {
+    "kind": "operator_attestation",
+    "reference": "incident-record-123",
+    "reason": "Workers stopped; restored run requires reconciliation"
+  }
+}
+```
 
-Файлы временные: по умолчанию 24 часа, deployment `artifacts.ttl_seconds`. Метаданные upload/import содержат `expires_at` и, для service imports, `source_service_id`/`source_external_id`. Истёкший файл недоступен до физической очистки. Для повторного получения используйте `modules.artifacts.fetch({module,method,external_id})`: авторизованный сервис возвращает blob descriptor, Loom потоково импортирует его и выдаёт новый временный `artifact_id`. См. [контракт файлов](../file-tools.md#temporary-files-and-external-ids). Service-backed metadata также содержит `source_module`, `source_method`, `source_fetch_method` и стабильный `reference_id`. JS `modules.artifacts.file(ref)` автоматически обновляет внутренний ID по этому контракту; model attachments могут продолжить тот же run после TTL. HTTP content и обычное создание HTTP handle проверяют TTL физического файла. Прямого arbitrary-URL download API нет.
+Use the run's current `fence` from admin diagnostics, not the example value.
+`expected_fence` must be positive; `reference` and `reason` must be nonempty
+(maximum 2048 and 1024 bytes respectively).
 
-Caller restart: missing current caller registration returns HTTP 503, `error.code=caller_binding_unavailable`, `retryable=true` after credential/session verification. Definitive denials remain non-retryable; retain the original run/session and handle waiting_auth explicitly. [Contract and acceptance](../caller-recovery.md).
+Success returns `run_id`, `status`, `reason`, new `fence`, `unresolved_steps`,
+`spent_microcredits` and `reserved_microcredits`. An expired-lease, uncertain
+`running` run becomes `reconciling`. Unknown/pending steps, external-effect records
+and credit reservations remain intact. Preparation does not call inference or queue
+execution. A matching retry returns the current receipt without another transition
+or audit entry.
+
+Conflicts include `lease_busy`, `recovery_fence_changed`, `run_not_running`,
+`run_not_uncertain`, `idempotency_conflict` and `recovery_mode_required` (409).
+Invalid evidence/fence returns `422 invalid_recovery_evidence`. A foreign run is
+unavailable (404); missing rights return 403. After preparation, use the normal
+owner cancellation route and reconcile confirmed provider receipts separately.
+Follow the complete [recovery procedure](../recovery-mode.md) before enabling workers.

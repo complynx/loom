@@ -4,7 +4,7 @@
 
 ## Сущности PostgreSQL
 
-Схема задаётся [SQL-миграциями](../../migrations), HTTP DTO — /openapi.json. JSONB хранит типизированные domain documents и checkpoints; не считайте каждое поле отдельной таблицей.
+Схема задаётся [SQL-миграциями](../../migrations), HTTP DTO — генерируемым `/openapi.json`. JSONB хранит типизированные domain documents и checkpoints; не каждое поле соответствует отдельной таблице.
 
 | Таблицы | Назначение |
 | --- | --- |
@@ -19,7 +19,7 @@
 | user_memory, user_memory_entries | Micro-память и иерархические личные записи. |
 | settings, idempotency_records, audit_events | Версии настроек, квитанции команд и аудит. |
 
-River имеет собственные таблицы и migration history. Registry discovery не хранится как вымышленная service_registry таблица. Число/поля таблиц могут расширяться миграциями; при изменении кода сверяйтесь с SQL.
+River, библиотека очереди заданий PostgreSQL, имеет собственные таблицы и migration history. Discovery registry хранится в памяти процесса; таблицы `service_registry` нет. Поля и ограничения таблиц определяются SQL-миграциями.
 
 Сервисные субъекты и deployment bindings — отдельные identities, не обычные пользовательские аккаунты. DB JSONB используется для контрактных payload/schema, а не вместо всех связей и ограничений.
 ## Сохранённый контекст диалога
@@ -36,14 +36,14 @@ River имеет собственные таблицы и migration history. Reg
 `conversation_revision` задаёт порядок входов внутри run; это не chat history seq и не SSE cursor. Последний input, текущие question и approval передаются модели отдельно от сжатой истории. Summary не может заменить эти записи или перенести согласие на новую операцию. Схемы и границы проверок — в [контракте диалога](../conversational-input.md).
 ## Обязательные инварианты
 
-- Partial UNIQUE на живой дефолтный чат по user_id. Его org фиксируется при создании; обращение из другой org требует явного чата.
+- Partial UNIQUE `chats(owner_id) WHERE is_default`: один default-чат на пользователя, не по одному на организацию. Удаление снимает `is_default`. Его org фиксируется при создании; обращение из другой org требует явного чата.
 - Partial UNIQUE на runs(chat_id), если состояние нетерминальное. Даже paused/waiting run удерживает слот.
-- UNIQUE(chat_id, seq), UNIQUE(run_id, seq), UNIQUE(run_id, ordinal).
-- UNIQUE(actor_id, source_event_id) для внешних UI-событий; hash сравнивается при повторе.
-- UNIQUE(actor_id, subject_id, route_scope, idempotency_key). Identity scope включает org; payload не содержит токены в hash/log.
+- Primary keys `(chat_id, seq)` и `(run_id, seq)` для событий, UNIQUE `(run_id, ordinal)` для steps.
+- UNIQUE `(source_actor, source_event_id)` для внешних UI-событий с непустым ID. `passive_event_receipts` сохраняет этот ключ после удаления истории; request hash сравнивается при повторе.
+- Primary key `idempotency_records(scope, key)`. Приложение строит `scope` из issuer, subject, actor, org и route; это не отдельные колонки. В hash входят поля команды, а не credentials.
 - Operation ID и settlement key уникальны. Одно исполнение не может повторно списаться из-за retry.
 - Смена состояния, durable event и изменение бюджета выполняются одной короткой транзакцией, если относятся к одному шагу.
 - Аренда и fencing token меняются атомарно; результат старого владельца не становится новым агентским шагом. Полученный late result всё равно может уточнить статус исходной operation.
-- Баланс и резерв обновляются атомарно с ledger. CHECK запрещает отрицательный свободный баланс при штатном резервировании; административный долг только отдельной явной политикой, выключенной в v1.
+- Баланс и резерв обновляются атомарно с ledger. CHECK требует `balance >= 0`, `spent >= 0`, `reserved >= 0` и `balance >= reserved`. Отрицательный баланс и административный долг не поддерживаются.
 
 Нельзя держать транзакцию открытой во время сети или inference. Доставку PG jobs выполняет River core. Вставка job и переход run выполняются в одной короткой транзакции через riverpgxv5. Compare-and-set и fencing состояния run принадлежат приложению: повторная доставка job не должна запускать run конкурирующим worker или повторять внешний write. Механизмы wakeup/recovery очереди используем из River, отдельную самописную очередь не вводим.

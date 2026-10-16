@@ -2,17 +2,26 @@
 
 [Guide index](../failures.md)
 
-## Реализованный срез
+<a id="реализованный-срез"></a>
+## Current behavior
 
-Этот документ описывает обработку отказов. Текущие ограничения перечислены в [limitations](../mvp-limitations.md), процедуры — в [operations](../operations.md), сценарии проверки — в [QA](../qa.md). Подтверждённые output-free отказы провайдера проходят [ограниченную hybrid retry policy](../hybrid-retry.md). Неопределённый inference может восстановиться в пределах [platform-sponsored policy](../active-compaction.md), с отдельным учётом возможной оплаты платформы. За этими пределами нужна reconciliation; неизвестный внешний write не повторяется вслепую. Общий circuit breaker и OAuth refresh/token exchange не реализованы. Discovery использует принятые polling и freshness TTL; Docker event stream не требуется. Повторы DB транзакций разрешены только для доказанно отменённых транзакций; они не повторяют сетевые действия.
+Loom persists run intent, operation identity and reservations before dispatch. A client retry must preserve its idempotency key and request body. A lost HTTP response does not prove that a request failed.
 
-River ограничивает число попыток задания. Исчерпавшее попытки задание без живого job или lease переводится sweep в `paused` для явного resume либо в `reconciling`, если результат или оплата неопределённы. Резервы сохраняются; автоматической бесконечной очереди повторов нет.
-## Базовые правила
+Explicit provider rejections without output use [hybrid retry](../hybrid-retry.md). Uncertain inference can use the bounded [platform-sponsored policy](../active-compaction.md), with separate accounting for possible platform costs. Outside that policy, reconcile the uncertain result. Never repeat an unknown external write blindly.
 
-Матрица задаёт наблюдаемые границы отказов, а не доказательство прохождения каждого сценария. Recovery barrier реализован; PITR automation и эксплуатационный restore требуют отдельной проверки. Readiness не доказывает доступность записи на заполненной БД. Политика не обещает exactly-once сетевое исполнение или сохранность после утраты всех носителей.
+River limits job attempts. The queue sweep moves exhausted work without a live job or lease to `paused` for explicit resume, or to `reconciling` when a result or charge is uncertain. Reservations remain protected; the sweep does not create an unlimited retry loop.
 
-1. `not_started`: есть доказательство, что действие не отправлено или backend гарантирует отсутствие текущего/будущего исполнения. Допустим ограниченный retry.
-2. `succeeded/failed/cancelled`: есть окончательный результат backend. Сохраняем его, не повторяем выполненное действие.
-3. `unknown`: действие могло произойти. Сначала status lookup; blind retry запрещён. При подтверждённом idempotency протоколе повторяется тот же operation ID/key, не новая операция.
+A general circuit breaker and OAuth refresh/token exchange are not implemented. Discovery uses polling and freshness TTLs. Database transaction retries are limited to transactions known to have rolled back; they do not repeat network actions. See [limitations](../mvp-limitations.md) for remaining boundaries.
 
-Доступность не важнее корректности: без durable intent, проверки прав или резерва новое действие не отправляется. Отмена поручения не означает откат внешнего действия.
+<a id="базовые-правила"></a>
+## Outcome rules
+
+| Outcome | Required action |
+| --- | --- |
+| `not_started` | Retry only with evidence that dispatch did not occur, or a backend guarantee that execution cannot occur. Keep retries bounded. |
+| `succeeded`, `failed`, `cancelled` | Preserve the final backend result. Do not repeat a completed action. |
+| `unknown` | Query status first. Repeat the same operation ID/key only when the backend's idempotency contract permits it. |
+
+Do not dispatch a new action without durable intent, current authorization and a reservation when required. Cancelling a run does not roll back an external effect.
+
+The [dependency matrix](dependencies.md) is a troubleshooting guide, not evidence that every deployment scenario passed. Readiness does not prove database writes or free storage. The [recovery barrier](../recovery-mode.md) supports restore review; it does not provide automatic PITR or a distributed freeze. Loom does not promise exactly-once network execution or recovery after loss of every copy of data and keys.

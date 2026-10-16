@@ -4,32 +4,54 @@
 
 ## Настройка
 
-Скопируйте `deploy/config.example.yaml` в `deploy/config.yaml`, а `deploy/api.env.example` — в `deploy/api.env`. Задайте issuer, audience, introspection client, организацию администраторов, endpoint/key и имя модели. Проверьте capabilities и тарифы: примерные microcredits не являются ценами провайдера. Начальный баланс равен нулю; начисление выполняется через аудируемый billing API.
+Before starting, prepare Docker with Compose, a reachable Zitadel issuer, an API audience, introspection credentials, and a model-provider credential. Configure Zitadel roles and their explicit role-to-permission mapping. The example maps `harness-user` and `harness-admin`; these roles must exist in your identity setup. See [identity and permissions](../security/identity-permissions.md).
 
-Для обращения к провайдеру явно разрешите `external_disclosure_default: true` до создания run. В MVP все provider endpoints считаются внешними: при запрете сервис не отправляет запросы, историю или сохранённые tool results провайдеру. Отзыв политики блокирует следующие шаги, а не стирает неизвестный оплаченный исход.
+Copy the development templates:
 
-Настройте роли Zitadel и явное соответствие роли → permissions. Для удаления чата требуется `chat.delete`, для сверки inference — `operations.reconcile`. У сервисного actor должны совпадать права из проверенного токена и доверенного manifest. ID сессии сам по себе не даёт доступ.
+```sh
+cp deploy/config.example.yaml deploy/config.yaml
+cp deploy/api.env.example deploy/api.env
+```
 
-Создайте отдельный AES-256 ключ:
+Fill `deploy/api.env` with the issuer, audience, introspection client, administrator organization and provider key. Review `deploy/config.yaml`. Its omitted model catalog seeds the reviewed OpenAI preset; review the models, capabilities and tariffs before use. To choose another model policy, use [OpenAI configuration](../openai.md) and [supported configuration](../../internal/config/SUPPORT.md).
+
+Set `bootstrap_settings.external_disclosure_default: true` before the first startup to permit provider calls. All provider endpoints count as external, including local endpoints. When disclosure is denied, Loom does not forward requests, history or saved tool results to the provider. After the first startup, change this policy through the authorized settings API; changing bootstrap YAML does not update existing database settings.
+
+Create a separate AES-256 session key and make it readable by the container's UID 10001:
 
 ```sh
 openssl rand -base64 32 > deploy/auth.key
 chmod 600 deploy/auth.key
+sudo chown 10001:10001 deploy/auth.key
 ```
 
-Контейнер API читает ключ как UID 10001. Владелец или ACL bind-mounted файла должен разрешать этому UID чтение. Не добавляйте ключ, `.env`, `api.env` или рабочий config в Git. Храните резервную копию ключа отдельно: без него нельзя расшифровать сохранённые сессии.
+The ownership command applies to a Linux host bind mount. On hosts with different bind-mount permission handling, use the equivalent ACL. The default Compose profile mounts this pre-created file read-only; it cannot generate the key at that path. Keep a separate backup. Without the original key, saved sessions cannot be decrypted. Do not commit filled configuration, env files or keys.
 
-Задайте `CLX_DEV_DB_PASSWORD` для локального Compose, затем:
+Set the database password in the shell that starts Compose. Use a URL-safe password because Compose inserts it into the database DSN:
 
 ```sh
+export CLX_DEV_DB_PASSWORD="$(openssl rand -hex 24)"
 docker compose --profile app up --build -d
 ```
 
-Compose запускает миграции приложения и River перед API. PostgreSQL и API опубликованы только на loopback; внешний TLS и маршрутизация на сервере настраиваются отдельно. Docker proxy разрешает только ограниченное чтение discovery и удаляет container env/mounts из ответа. Полный Docker socket доступен только отдельному proxy; монтирование `:ro` само по себе не ограничивает команды Docker API.
+Keep that password in private local storage and reuse it on later starts. Changing it does not change the password of an existing PostgreSQL volume. `deploy/api.env` supplies container variables; it does not supply Compose's `CLX_DEV_DB_PASSWORD` interpolation. Alternatively, put the password in the ignored root `.env` file.
 
-JS supervisor запускается без сети, секретов, Linux capabilities и writable root filesystem. Общий лимит контейнера — 128 MiB и 128 PID; это лимит всех процессов песочницы, а не отдельного вызова. CLI supervisor и Compose задают число worker и cleanup deadline. Изменяйте соответствующие deployment ограничения вместе.
+Compose runs application and River migrations before the API. Check readiness and inspect startup failures:
 
-`/healthz` проверяет процесс. `/readyz` проверяет PostgreSQL, отдельную песочницу и свежесть доверенного discovery. `/openapi.json` описывает реализованные HTTP DTO. Bootstrap settings сохраняются один раз: после первого запуска их меняют через авторизованный settings API с проверкой версии.
+```sh
+curl --fail http://127.0.0.1:8080/readyz
+docker compose --profile app ps -a
+docker compose --profile app logs --tail=100 migrate api sandbox docker-api-proxy
+```
+
+`/healthz` checks the API process. `/readyz` checks PostgreSQL, the separate sandbox, trusted discovery freshness and the file processor when enabled. `/openapi.json` describes the implemented HTTP DTOs. Readiness does not prove issuer authentication or a successful model call.
+
+Before creating a run, obtain a user access token for the configured issuer/audience and mapped permissions. The example starts users with zero credits. An administrator must grant credits through the audited [billing API](../api.md); a run budget is a spending cap, not a balance grant. Continue with [Client](client.md).
+
 ## Границы
 
-Реализованы HTTP one-shot и SSE. WebSocket, автоматический OAuth token exchange/refresh, входящие непрозрачные сервисные секреты не входят в этот срез. Приватные метрики и JSON-логи настроены под [Alloy/Grafana Cloud](../observability.md). Сервисы используют проверенные Zitadel access tokens. Динамическая конфигурация моделей может добавлять модели в пределах provider aliases, заданных deployment config; новый provider требует перезапуска.
+PostgreSQL and the API bind to loopback. A server installation needs its own TLS and routing. The Docker proxy permits limited discovery reads and removes container environment and mount details. Only the proxy receives the Docker socket; a read-only socket mount alone does not restrict Docker API commands.
+
+The sandbox has no network, secrets, Linux capabilities or writable root filesystem. Compose limits the supervisor and all child processes together to 128 MiB and 128 PIDs. Keep supervisor flags, YAML ceilings and container limits aligned.
+
+The base profile supports HTTP requests and SSE. It does not include WebSocket transport, automatic OAuth token exchange/refresh, or inbound opaque service secrets. Enable the [file worker](../file-worker.md) separately for media tools. [Metrics and logs](../observability.md) can use an operator-selected private collector. Runtime model settings can use provider aliases configured at startup; a new provider binding requires a restart.

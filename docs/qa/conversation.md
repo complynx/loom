@@ -2,9 +2,30 @@
 
 Use the [HTTP contract](../api.md) and [reply-mode contract](../conversational-input.md).
 
+## Repeatable fixture checks
+
+Prepare the disposable database in [setup](setup.md), then run from the repository root:
+
+```sh
+go test -v -race -parallel=4 -tags=integration -count=1 ./integration \
+  -run 'Test(DefaultChatAndDurableRunContract|HTTPMutationRequiresApprovalAndExecutesStableOperationOnce|ConversationClarifiesAcrossMessagesThenResolvesExactAction|CriticalActionUsesBinaryOrExactLocalizedText)$'
+go test -v -race -count=1 ./internal/identity
+```
+
+The [conversation fixtures](../../integration/conversation_test.go) and
+[mutation fixture](../../integration/mutation_test.go) show exact request bodies,
+receipts and expected transitions. The identity tests use HTTP authority fixtures;
+they do not prove configuration against a real Zitadel instance. The integration
+authenticator accepts test tokens, so it cannot verify token protocol behavior.
+
+For installation checks below, use the deployed `/openapi.json` for request schemas
+and record the run ID, input/operation IDs and expected result for each scenario.
+Use separate chats for independent cases. Do not continue an uncertain write until
+its service status or receipt establishes the effect.
+
 ## Basic run
 
-1. Obtain a user access token. Read the default chat. Create a run and repeat its idempotency key. Expect the same run; a changed body with that key must conflict.
+1. Obtain a user access token and create an authorization session. Read the default chat. Create a run with its `auth_session_id` and repeat its idempotency key. Expect the same run; a changed body with that key must conflict.
 2. Complete a read-only request. Check history, events, usage and balance/spent/reserved. Restart after completion: no second inference or charge.
 3. Run work in two chats. A second nonterminal run in the same chat must fail.
 4. Append a passive action: history changes, but no inference starts. Submit an active request and check passive-history compression without deleting full history.

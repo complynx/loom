@@ -4,16 +4,73 @@
 
 ## Reading method help
 
-Use `modules.help.list({module:"files",query:"PDF",limit:10})`, then `modules.help.read({module:"files",method:"pdf_text"})`. Lists are short and permission-filtered; cards describe parameters, examples, results, limits and recovery. Follow `next_cursor` as `after_id` for lists, or `cursor` for cards. Paid/model functions use module `$tools` in help and remain outside JS.
+Read the current permission-filtered help before calling an unfamiliar method:
+
+```js
+const choices = await modules.help.list({module: "files", query: "PDF", limit: 10});
+const card = await modules.help.read({module: "files", method: "pdf_text"});
+return {choices, card};
+```
+
+For list continuation, pass `next_cursor` as `after_id`. For card continuation, pass it as `cursor`. Cards describe parameters, examples, results, limits and recovery. Standalone model functions, such as `artifact_attach` and `audio_transcribe`, appear under module `$tools` in help. Call those functions through the model tool interface, outside JS.
+
 ## Methods
 
-- `info`: stored MIME, size and checksum (direct metadata object, without a `data` wrapper). `pdf_info.data.info` is native pdfinfo text; `video_info.data` is native FFprobe JSON.
-- `pdf_info`, `pdf_text`, `pdf_search`, `pdf_render`, `pdf_images`: metadata, text, literal/RE2 search, page/crop PNG rendering and embedded images. Use `page`, `end_page`, `offset`, `max_chars`, `query`, `regex`, `width`, `height`, `x`, `y` as appropriate. Text cursors are byte offsets; offsets must be UTF-8 boundaries. Too-small text limits return an error instead of a nonadvancing cursor. Search is line-scoped and advances only past complete lines; `max_chars` is a soft scan budget. Lines at least 64 KiB are skipped with explicit `skipped_long_lines` and `line_limit_bytes` fields. Search excerpts are bounded; use text reads to inspect surrounding content.
-- `image_info`, `image_resize`, `image_crop`: JPEG/PNG/GIF first-frame metadata, resize and crop. Resize defaults to `max_edge:1280`; crop uses `x,y,width,height`. Stored-raster coordinates apply: EXIF orientation is not applied. For animated GIF use video methods.
-- `video_info`, `video_storyboard`, `video_frame`, `video_audio`: metadata, sampled frames, one timestamped frame and mono 16 kHz WAV extraction. Set `start,end,interval,width,max_frames` for a storyboard; use a smaller interval for a detailed section. Frame reads use `timestamp`. Storyboards have at most 24 frames. Follow `next_cursor` as the next `start`. Audio extraction has at most 300 seconds per chunk; inspect `video_info.data.streams` for `codec_type: "audio"` first.
-- `text_read`, `text_search`: UTF-8/UTF-16 reading and literal/RE2 search. Reads use byte `cursor` and `limit`; search uses `query,regex,cursor,limit` with line cursors.
-- `csv_read`, `json_read`, `xml_read`, `html_read`: CSV row pages, JSON Pointer, and bounded XML/HTML text. JSON summaries may be partial without a continuation cursor. HTML does not execute scripts or fetch resources.
-- `archive_list`, `archive_extract`: ZIP/TAR/GZIP entries and one named `member` extracted into an artifact. Use the returned entry name; GZIP uses the logical member `content`. Traversal, unsafe entries, excessive expansion and duplicate ZIP entries are rejected.
-- `office_docx`, `office_xlsx`, `office_pptx`, `office_odf`, `epub_read`: basic text or cached cell values. XLSX takes `sheet,cursor,limit`. PPTX without `slide` uses a zero-based slide cursor and returns bounded slide previews. Select `slide:N` (one-based) to read its full text with UTF-8 byte `cursor,limit` pages up to 32 KiB. `cursor_unit` identifies the mode. EPUB lists archive paths, then reads a chosen `member`; this is not spine ordering. DOCX/ODF/EPUB text cursors are UTF-8 byte offsets.
+All methods below use `modules.files.METHOD({handle_id, ...options})`. Obtain a handle through `modules.artifacts.open` as described in [References](references.md).
 
-For video understanding, read a storyboard, attach selected frames, then call `audio_transcribe` on the original handle if audio exists. Repeat with a tighter time range when needed. All files stay outside JS.
+Except for `info`, responses contain `data`, `outputs`, `partial` and an optional `next_cursor`. Derived files are in `outputs`; each has `artifact_id`, `handle_id`, `mime`, `size` and `name`. `info` returns `{mime, size, sha256}` directly. Read the returned `partial` flag even when outputs are present: a job can return some files before a later output fails.
+
+### PDF
+
+`pdf_info` returns native pdfinfo text in `data.info`. `pdf_text` reads extracted text; `pdf_search` searches it using a literal `query` or RE2 with `regex:true`. `pdf_render` renders PNG pages. `pdf_images` extracts embedded PNG images.
+
+Pages are one-based. `page` defaults to 1, and `end_page` defaults to `page`; select at most 24 pages per call. A scan of an entire PDF therefore needs explicit page ranges. Scanned pages need rendering and model vision because text extraction does not perform OCR.
+
+`pdf_text` and `pdf_search` use `offset` and `max_chars` (default and maximum 8192). Despite its name, `max_chars` measures bytes. Pass `next_cursor` back as numeric `offset`, keeping the page range unchanged. Text offsets must start at a UTF-8 boundary; a limit too small for the next character returns an error.
+
+```js
+const h = await modules.artifacts.open({artifact_id: "ARTIFACT_ID"});
+const first = await modules.files.pdf_text({handle_id: h.handle_id, page: 1, max_chars: 4096});
+if (!first.next_cursor) return first;
+const next = await modules.files.pdf_text({
+  handle_id: h.handle_id, page: 1, max_chars: 4096,
+  offset: Number(first.next_cursor)
+});
+return {first, next};
+```
+
+PDF search is line-scoped and advances past complete lines; its scan budget is soft. Lines that exceed the 64 KiB search buffer are skipped and reported in `skipped_long_lines` and `line_limit_bytes`. Search excerpts are bounded. A zero-match result is not proof of absence when lines were skipped. Use text reads to inspect surrounding content.
+
+For `pdf_render`, `width` defaults to 1280 and is at most 2048. Without `height`, it sets the rendered page's maximum edge. With `height`, `x,y,width,height` also select a pixel crop after scaling. Height is at most 2048. `pdf_images` uses `offset` as an image index, returns at most 24 images, and returns the next image index in `next_cursor`.
+
+### Images and video
+
+`image_info`, `image_resize` and `image_crop` support JPEG, PNG and the first frame of GIF. Coordinates use the stored raster; EXIF orientation is not applied. Resize uses `max_edge` (default 1280) and preserves aspect ratio; `allow_upscale` defaults to false. Crop takes `x,y,width,height`. Outputs can use `format:"png"` or `format:"jpeg"`; JPEG accepts `quality` from 1 to 100. Input images are limited to 16 million pixels; outputs to 4 million pixels.
+
+`video_info` returns FFprobe JSON in `data`. Inspect `data.streams` for `codec_type:"audio"` before requesting audio. Use video methods for animated GIF frames.
+
+- `video_storyboard` samples frames using `start,end,interval,width,max_frames`. Times are seconds. Defaults are `start:0`, `interval:10`, `width:1280` and `max_frames:12`; the maximum is 24 frames. Pass numeric `next_cursor` as the next `start`, keeping the other options unchanged.
+- `video_frame` reads one frame using `timestamp` in seconds and optional `width`. Video frame width is at most 2048.
+- `video_audio` extracts mono 16 kHz WAV using `start,end`, at most 300 seconds per chunk. Without `end`, it selects up to 300 seconds from `start`. Pass numeric `next_cursor` as the next `start`. A source without audio returns `data.has_audio:false` and no WAV.
+
+For video understanding, read a storyboard, use standalone `artifact_attach` with selected output handles, then use standalone `audio_transcribe` on the original handle if audio exists. Choose explicit `start,end` ranges for longer recordings and follow the returned cursor. See [Transcription limits](transcription-limits.md).
+
+### Text and structured documents
+
+`text_read` reads UTF-8 or BOM-marked UTF-16. Its string `cursor` is a byte offset in the decoded UTF-8 text, excluding the BOM. `limit` bounds returned UTF-8 bytes, up to 32 KiB. Pass `next_cursor` back unchanged as `cursor`.
+
+`text_search` uses `query,regex,cursor,limit`. Its cursor counts lines already consumed; `limit` caps matching lines, up to 100. It searches only the first 32 KiB of a long line. Inspect `truncated_lines` and `searched_prefix_bytes_per_line` before treating an empty search as absence.
+
+- `csv_read` pages rows with `cursor,limit`. The cursor counts rows, including a header row. A page contains at most 100 rows and 32 KiB of cell text. A single row over 100 columns or 32 KiB fails; use `text_read` for a bounded raw view.
+- `json_read` selects a value using JSON `pointer` (empty means the root). A large value returns a partial summary without a continuation cursor. Use a narrower pointer to inspect omitted content.
+- `xml_read` and `html_read` return extracted text using UTF-8 byte `cursor,limit`, up to 32 KiB. HTML does not execute scripts or fetch resources. XML directives and DTDs are rejected.
+
+### Archives and office formats
+
+`archive_list` pages ZIP, TAR and GZIP entries with `cursor,limit`, up to 100 entries per page. `archive_extract` extracts one exact `member` into a derived artifact. Use the returned entry name; a plain GZIP file uses the logical member `content`. Traversal, unsafe entries, excessive expansion and duplicate ZIP names are rejected. See [Bounds and visibility](transcription-limits.md#bounds-and-visibility).
+
+`office_docx`, `office_odf` and `epub_read` return basic text with UTF-8 byte `cursor,limit` pages up to 32 KiB. EPUB without `member` lists archive paths; choose a returned `member` to read text. The list does not follow EPUB spine order.
+
+`office_xlsx` without `sheet` lists worksheet archive paths. Use a returned path such as `xl/worksheets/sheet1.xml` as `sheet`; display names from Excel are not selectors. With a sheet, `cursor` counts stored rows and `limit` caps rows, up to 100 per page. Cell values are cached values or text; formulas are not executed. Oversized rows return a bounds error.
+
+`office_pptx` without `slide` lists bounded slide previews; its cursor counts slides from zero. Select `slide:N` (one-based) for full slide text, then page using UTF-8 byte `cursor,limit`, up to 32 KiB. The returned `cursor_unit` distinguishes these modes. These readers do not render office layouts.
