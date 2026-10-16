@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -84,9 +85,10 @@ func (b *ModuleBridge) Call(
 ) (json.RawMessage, *domain.Approval, error) {
 	ctx = identity.RequireFresh(ctx)
 	var args struct {
-		Module    string          `json:"module"`
-		Method    string          `json:"method"`
-		Arguments json.RawMessage `json:"arguments"`
+		ConfirmationText string          `json:"confirmation_text,omitempty"`
+		Module           string          `json:"module"`
+		Method           string          `json:"method"`
+		Arguments        json.RawMessage `json:"arguments"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(call.Arguments))
 	decoder.DisallowUnknownFields()
@@ -106,6 +108,12 @@ func (b *ModuleBridge) Call(
 	}
 	if descriptor.Method.Effect == builtinReadMethod {
 		return json.RawMessage(`{"error":"use_script_for_reads"}`), nil, nil
+	}
+	if len(args.ConfirmationText) > 2000 || (descriptor.Method.Confirmation.ReplyMode == domain.ReplyModeProtocol &&
+		strings.TrimSpace(args.ConfirmationText) == "") {
+		return json.RawMessage(
+			`{"error":"confirmation_text_required","hint":"Supply a short, explicit positive confirmation in the user's language."}`,
+		), nil, nil
 	}
 	backend := modules.WriteBackend{
 		Registry:  b.registry,
@@ -140,7 +148,19 @@ func (b *ModuleBridge) Call(
 		b.logOperation(ctx, run.ID, operation)
 		return nil, nil, err
 	}
-	return b.resolveOperation(ctx, run, args.Module, args.Method, operation, backend)
+	result, approval, resolveErr := b.resolveOperation(ctx, run, args.Module, args.Method, operation, backend)
+	if approval != nil {
+		approval.ReplyMode = domain.ReplyModeProtocol
+		approval.ConfirmationText = args.ConfirmationText
+		if run.Interaction.ReplyMode == domain.ReplyModeAgent &&
+			descriptor.Method.Confirmation.ReplyMode != domain.ReplyModeProtocol {
+			approval.ReplyMode = domain.ReplyModeAgent
+		}
+		if descriptor.Method.Confirmation.ReplyMode == domain.ReplyModeProtocol && !run.Interaction.Approvals {
+			approval.ReplyMode = domain.ReplyModeExactText
+		}
+	}
+	return result, approval, resolveErr
 }
 
 // ApproveTx commits approval and run wake-up together; it does not dispatch RPCs.
@@ -160,14 +180,19 @@ func (b *ModuleBridge) ApproveTx(ctx context.Context, tx pgx.Tx, run domain.Run,
 	if input.Decision != "approve" && input.Decision != "reject" {
 		return errors.New("invalid approval decision")
 	}
+	var revision int64
+	if input.Context != nil {
+		revision = input.Context.Revision
+	}
 	_, err = b.coordinator.ApproveTx(
 		ctx,
 		tx,
 		operation.ID,
 		operations.Approval{
-			Binding:     operation.Binding,
-			BindingHash: run.Approval.ArgumentHash,
-			Approve:     input.Decision == "approve",
+			ConsentRevision: revision,
+			Binding:         operation.Binding,
+			BindingHash:     run.Approval.ArgumentHash,
+			Approve:         input.Decision == "approve",
 		},
 	)
 	return err

@@ -11,10 +11,12 @@ import (
 	"github.com/complynx/loom/internal/provider"
 )
 
-func standardTools(_ domain.Interaction) []provider.Tool {
+const toolFunctionType = "function"
+
+func standardTools(interaction domain.Interaction) []provider.Tool {
 	tools := []provider.Tool{
 		{
-			Type:        "function",
+			Type:        toolFunctionType,
 			Name:        toolScript,
 			Description: "Execute JavaScript against permitted service modules. Use modules.<module>.<method>(arguments); await calls; return JSON. No filesystem or direct network.",
 			Parameters: json.RawMessage(
@@ -27,7 +29,7 @@ func standardTools(_ domain.Interaction) []provider.Tool {
 	tools = append(
 		tools,
 		provider.Tool{
-			Type:        "function",
+			Type:        toolFunctionType,
 			Name:        toolQuestion,
 			Description: "Ask a necessary question. Provide stable IDs for choices. This suspends the run until the user answers.",
 			Parameters: json.RawMessage(
@@ -36,6 +38,17 @@ func standardTools(_ domain.Interaction) []provider.Tool {
 			Strict: true,
 		},
 	)
+	if interaction.ReplyMode == domain.ReplyModeAgent {
+		tools = append(tools, provider.Tool{
+			Type:        toolFunctionType,
+			Name:        toolInteractionResolve,
+			Description: "Resolve an agent-mode pending action from explicit consent/refusal in the latest accepted user message. Exact proposal only. Never resolve protocol/exact_text actions. Clarifications: ask question instead. Changed parameters: reject then prepare a new action.",
+			Parameters: json.RawMessage(
+				`{"type":"object","properties":{"input_id":{"type":"string"},"approval_id":{"type":"string"},"argument_hash":{"type":"string"},"decision":{"type":"string","enum":["approve","reject"]}},"required":["input_id","approval_id","argument_hash","decision"],"additionalProperties":false}`,
+			),
+			Strict: true,
+		})
+	}
 	return tools
 }
 func decodeArguments(raw json.RawMessage, out any) error {
@@ -53,6 +66,10 @@ func (e *Engine) executeCall(
 	settings domain.Settings,
 ) (json.RawMessage, bool, error) {
 	switch call.Name {
+	case toolInteractionResolve:
+		return e.resolveInteraction(ctx, run, principal, token, call)
+	case toolInteractionDispatch:
+		return e.dispatchInteraction(ctx, run, principal, token)
 	case toolArtifactAttach:
 		var input struct {
 			HandleID string `json:"handle_id"`
@@ -95,6 +112,10 @@ func (e *Engine) executeModuleCall(
 	token string,
 	call provider.Call,
 ) (json.RawMessage, bool, error) {
+	if run.Interaction.ReplyMode == domain.ReplyModeAgent && run.Approval != nil && run.Approval.Decision == "" &&
+		run.Approval.Call != nil && run.Approval.Call.ID != call.ID {
+		return json.RawMessage(`{"error":"resolve_pending_action_first"}`), false, nil
+	}
 	if e.opts.ModuleCall == nil {
 		return json.RawMessage(`{"error":"module_call_unavailable"}`), false, nil
 	}
@@ -103,6 +124,7 @@ func (e *Engine) executeModuleCall(
 		return nil, false, err
 	}
 	if approval != nil {
+		approval.Call = &domain.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 		return nil, true, e.store.AskApproval(ctx, run.ID, e.opts.Owner, run.Fence, *approval)
 	}
 	if !json.Valid(result) {
@@ -180,6 +202,9 @@ func (e *Engine) executeQuestionCall(
 		args.AllowText = false
 	case "none", "":
 		args.AllowText = false
+	}
+	if run.Interaction.ReplyMode == domain.ReplyModeAgent {
+		args.AllowText = true
 	}
 	if len(args.Choices) == 0 && !args.AllowText && run.Interaction.Questions == "choices" {
 		return json.RawMessage(`{"error":"choice_required"}`), false, nil

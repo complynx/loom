@@ -62,7 +62,19 @@ type Chat struct {
 	IsDefault bool      `json:"is_default"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+const (
+	ReplyModeAgent     = "agent"
+	ReplyModeProtocol  = "protocol"
+	ReplyModeExactText = "exact_text"
+	InputSteering      = "steering"
+	InputApproval      = "approval"
+	DecisionApprove    = "approve"
+	DecisionReject     = "reject"
+)
+
 type Interaction struct {
+	ReplyMode string `json:"reply_mode,omitempty" enum:"protocol,agent"`
 	Questions string `json:"questions"`
 	Approvals bool   `json:"approvals"`
 }
@@ -90,6 +102,8 @@ type CreateRun struct {
 	BillingAccountID string      `json:"billing_account_id,omitempty"`
 }
 type Run struct {
+	ConversationRevision int64            `json:"conversation_revision,omitempty"`
+	ConversationInput    *RunInput        `json:"conversation_input,omitempty"`
 	PreviousRunID        string           `json:"previous_run_id,omitempty"`
 	ActiveMilliseconds   int64            `json:"active_milliseconds"`
 	UnresolvedSteps      []UnresolvedStep `json:"unresolved_steps,omitempty"`
@@ -188,26 +202,56 @@ type Question struct {
 	Answer    *RunInput `json:"answer,omitempty"`
 }
 type Approval struct {
-	ID             string          `json:"approval_id"`
-	Text           string          `json:"text"`
-	OperationID    string          `json:"operation_id"`
-	Method         string          `json:"method"`
-	Arguments      json.RawMessage `json:"arguments"`
-	ArgumentHash   string          `json:"argument_hash"`
-	ConfirmationID string          `json:"confirmation_id,omitempty"`
-	Precondition   string          `json:"precondition,omitempty"`
-	Decision       string          `json:"decision,omitempty"`
-	ExpiresAt      time.Time       `json:"expires_at"`
+	ConfirmationText string          `json:"confirmation_text,omitempty"`
+	ReplyMode        string          `json:"reply_mode"`
+	ConsentRevision  int64           `json:"consent_revision,omitempty"`
+	Call             *ToolCall       `json:"call,omitempty"`
+	ResolutionCallID string          `json:"resolution_call_id,omitempty"`
+	DecisionInputID  string          `json:"decision_input_id,omitempty"`
+	ID               string          `json:"approval_id"`
+	Text             string          `json:"text"`
+	OperationID      string          `json:"operation_id"`
+	Method           string          `json:"method"`
+	Arguments        json.RawMessage `json:"arguments"`
+	ArgumentHash     string          `json:"argument_hash"`
+	ConfirmationID   string          `json:"confirmation_id,omitempty"`
+	Precondition     string          `json:"precondition,omitempty"`
+	Decision         string          `json:"decision,omitempty"`
+	ExpiresAt        time.Time       `json:"expires_at"`
 }
 type RunInput struct {
-	ID         string   `json:"id,omitempty"`
-	Kind       string   `json:"kind"`
-	Text       string   `json:"text,omitempty"`
-	QuestionID string   `json:"question_id,omitempty"`
-	ChoiceIDs  []string `json:"choice_ids,omitempty"`
-	ApprovalID string   `json:"approval_id,omitempty"`
-	Decision   string   `json:"decision,omitempty"`
-	Applied    bool     `json:"applied"`
+	Presentation *InputPresentation `json:"presentation,omitempty"`
+	Context      *InputContext      `json:"context,omitempty"`
+	ID           string             `json:"id,omitempty"`
+	Kind         string             `json:"kind"`
+	Text         string             `json:"text,omitempty"`
+	QuestionID   string             `json:"question_id,omitempty"`
+	ChoiceIDs    []string           `json:"choice_ids,omitempty"`
+	ApprovalID   string             `json:"approval_id,omitempty"`
+	Decision     string             `json:"decision,omitempty"`
+	Applied      bool               `json:"applied"`
+}
+
+// InputPresentation carries client observations, not authorization or commands.
+type InputPresentation struct {
+	ReplyTo    string `json:"reply_to,omitempty"`
+	QuestionID string `json:"question_id,omitempty"`
+	ApprovalID string `json:"approval_id,omitempty"`
+}
+
+// InputContext is stamped by Loom while holding the run lock.
+type InputContext struct {
+	Revision    int64  `json:"revision"`
+	SourceActor string `json:"source_actor"`
+	QuestionID  string `json:"question_id,omitempty"`
+	ApprovalID  string `json:"approval_id,omitempty"`
+}
+
+type InteractionResolution struct {
+	InputID      string `json:"input_id"`
+	ApprovalID   string `json:"approval_id"`
+	ArgumentHash string `json:"argument_hash"`
+	Decision     string `json:"decision"`
 }
 
 // LongContextTariff replaces all token rates above the input threshold.

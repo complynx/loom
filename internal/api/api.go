@@ -485,6 +485,10 @@ func (s *server) createRun(w http.ResponseWriter, r *http.Request, p domain.Prin
 }
 
 func (s *server) validateRunRequest(body *domain.CreateRun, p domain.Principal) error {
+	if body.Interaction.ReplyMode != "" && body.Interaction.ReplyMode != domain.ReplyModeProtocol &&
+		body.Interaction.ReplyMode != domain.ReplyModeAgent {
+		return apiError(http.StatusUnprocessableEntity, "unsupported_reply_mode", "Unsupported reply mode")
+	}
 	if body.Delivery.WaitMS < 0 || body.Delivery.WaitMS > s.options.MaxWaitMS {
 		return apiError(
 			http.StatusUnprocessableEntity,
@@ -626,16 +630,22 @@ func (s *server) input(w http.ResponseWriter, r *http.Request, p domain.Principa
 		r.PathValue("id"),
 		k,
 		domain.RunInput{
-			Kind:       body.Kind,
-			Text:       body.Text,
-			QuestionID: body.QuestionID,
-			ChoiceIDs:  body.ChoiceIDs,
-			ApprovalID: body.ApprovalID,
-			Decision:   body.Decision,
+			Kind:         body.Kind,
+			Text:         body.Text,
+			QuestionID:   body.QuestionID,
+			ChoiceIDs:    body.ChoiceIDs,
+			ApprovalID:   body.ApprovalID,
+			Decision:     body.Decision,
+			Presentation: body.Presentation,
 		},
 	)
 	if err == nil {
-		write(w, http.StatusOK, mutationReceipt(v))
+		receipt := runInputReceipt{runMutationReceipt: mutationReceipt(v)}
+		if v.ConversationInput != nil {
+			receipt.InputID = v.ConversationInput.ID
+			receipt.Context = v.ConversationInput.Context
+		}
+		write(w, http.StatusOK, receipt)
 	}
 	return err
 }
@@ -937,12 +947,13 @@ func (s *server) userPreferences(w http.ResponseWriter, r *http.Request, p domai
 }
 
 type inputRequest struct {
-	Kind       string   `json:"kind"`
-	Text       string   `json:"text,omitempty"`
-	QuestionID string   `json:"question_id,omitempty"`
-	ChoiceIDs  []string `json:"choice_ids,omitempty"`
-	ApprovalID string   `json:"approval_id,omitempty"`
-	Decision   string   `json:"decision,omitempty"`
+	Presentation *domain.InputPresentation `json:"presentation,omitempty"`
+	Kind         string                    `json:"kind"`
+	Text         string                    `json:"text,omitempty"`
+	QuestionID   string                    `json:"question_id,omitempty"`
+	ChoiceIDs    []string                  `json:"choice_ids,omitempty"`
+	ApprovalID   string                    `json:"approval_id,omitempty"`
+	Decision     string                    `json:"decision,omitempty"`
 }
 
 func (s *server) reconcileStep(w http.ResponseWriter, r *http.Request, p domain.Principal) error {
@@ -990,4 +1001,12 @@ type runMutationReceipt struct {
 
 func mutationReceipt(run domain.Run) runMutationReceipt {
 	return runMutationReceipt{ID: run.ID, State: run.State, Reason: run.Reason, Version: run.Version}
+}
+
+// runInputReceipt acknowledges durable acceptance, never consent.
+type runInputReceipt struct {
+	runMutationReceipt
+
+	InputID string               `json:"input_id,omitempty"`
+	Context *domain.InputContext `json:"context,omitempty"`
 }

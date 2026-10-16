@@ -65,7 +65,8 @@
       "required": ["mode"],
       "properties": {
         "mode": {"enum": ["none", "service_id", "exact_parameters"]},
-        "prepare_path": {"$ref": "#/$defs/path"}
+        "prepare_path": {"$ref": "#/$defs/path"},
+        "reply_mode": {"enum": ["protocol"]}
       },
       "allOf": [
         {"if": {"properties": {"mode": {"const": "none"}}}, "then": {"not": {"required": ["prepare_path"]}}, "else": {"required": ["prepare_path"]}}

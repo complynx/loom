@@ -32,6 +32,19 @@
 
 Сервисные субъекты и deployment bindings — отдельные identities, не обычные пользовательские аккаунты. DB JSONB используется для контрактных payload/schema, а не вместо всех связей и ограничений.
 
+## Сохранённый контекст диалога
+
+Разговорный механизм использует существующие таблицы и JSONB, без отдельной таблицы для каждой формы:
+
+- `runs.doc`: `interaction.reply_mode`, `conversation_revision`, последний `conversation_input`, текущие `question` и `approval`. Approval сохраняет подготовленный call, способ ответа, параметры/hash, срок, решение и ссылки `decision_input_id`/`resolution_call_id`.
+- `run_inputs`: точный вход и его применение. Для разговорного steering `doc.context` содержит серверный `revision`, `source_actor` и известные при приёме IDs вопроса/действия; `doc.presentation` отдельно хранит необязательные сведения клиента. Клиент не назначает `id`, `context` или `applied`.
+- `idempotency_records`: hash исходного запроса и ID принятого input. Повтор возвращает исходный input, даже если run уже получил новые сообщения. Legacy-записи могут ссылаться только на run и не дают input receipt.
+- `write_operations.doc`: подготовка, binding и `consent_revision`; перед dispatch они проверяются под run lock. Отдельного model-text parser или второго классификатора нет.
+- `steps`: сохранённые model/input/tool checkpoints. Внутренний шаг `interaction` сохраняет результат исполнения прямого бинарного/строгого ответа, не создавая фиктивный вызов модели.
+- `chat_events` и `run_events`: принятые входы, вопросы/предложения и связи решений. `interaction.resolved` записывается agent resolver и exact-text fallback и не обещает бизнес-успех; native input сохраняется в chat history.
+
+`conversation_revision` задаёт порядок входов внутри run; это не chat history seq и не SSE cursor. Последний input, текущие question и approval передаются модели отдельно от сжатой истории. Summary не может заменить эти записи или перенести согласие на новую операцию. Схемы и границы проверок — в [контракте диалога](conversational-input.md).
+
 ## Обязательные инварианты
 
 - Partial UNIQUE на живой дефолтный чат по user_id. Его org фиксируется при создании; обращение из другой org требует явного чата.

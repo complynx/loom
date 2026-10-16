@@ -47,6 +47,8 @@ type Preparation struct {
 type Operation struct {
 	Request
 
+	ConsentRevision int64 `json:"consent_revision,omitempty"`
+
 	ID           string          `json:"operation_id"`
 	State        string          `json:"state"`
 	CancelReason string          `json:"cancel_reason,omitempty"`
@@ -78,7 +80,8 @@ type Authorize func(context.Context, Operation) error
 
 // Approval binds approval to the rendered operation, including preconditions.
 type Approval struct {
-	Binding     Binding
-	BindingHash string
-	Approve     bool
+	ConsentRevision int64
+	Binding         Binding
+	BindingHash     string
+	Approve         bool
 }

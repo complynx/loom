@@ -68,15 +68,17 @@ type Principal struct {
 	Token                                                        string
 }
 type Tool struct {
-	ServiceID        string          `json:"ServiceID"`
-	Module           string          `json:"Module"`
-	Method           string          `json:"Method"`
-	Description      string          `json:"Description"`
-	Effect           string          `json:"Effect"`
-	ConfirmationMode string          `json:"ConfirmationMode"`
-	InputSchema      json.RawMessage `json:"InputSchema"`
+	ServiceID             string          `json:"ServiceID"`
+	Module                string          `json:"Module"`
+	Method                string          `json:"Method"`
+	Description           string          `json:"Description"`
+	Effect                string          `json:"Effect"`
+	ConfirmationReplyMode string          `json:"ConfirmationReplyMode,omitempty"`
+	ConfirmationMode      string          `json:"ConfirmationMode"`
+	InputSchema           json.RawMessage `json:"InputSchema"`
 }
 type Confirmation struct {
+	ReplyMode   string `json:"reply_mode,omitempty"`
 	Mode        string `json:"mode"`
 	PreparePath string `json:"prepare_path,omitempty"`
 }
@@ -379,6 +381,13 @@ func validateMethods(methods []Method) error {
 }
 
 func validateMethod(method Method) error {
+	if method.Confirmation.ReplyMode == "protocol" &&
+		(method.Confirmation.Mode == "none" || method.Effect == effectRead) {
+		return errors.New("protocol confirmation requires a confirmed write")
+	}
+	if method.Confirmation.ReplyMode != "" && method.Confirmation.ReplyMode != "protocol" {
+		return errors.New("confirmation reply_mode must be protocol or omitted")
+	}
 	if method.TimeoutMS < 1 || method.TimeoutMS > 300000 || method.MaxResultBytes < 1 ||
 		method.MaxResultBytes > 10<<20 {
 		return errors.New("invalid method limits")
@@ -896,13 +905,14 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 					tools = append(
 						tools,
 						Tool{
-							ServiceID:        s.manifest.ServiceID,
-							Module:           module.ID,
-							Method:           method.ID,
-							Description:      method.Description,
-							InputSchema:      method.InputSchema,
-							Effect:           method.Effect,
-							ConfirmationMode: method.Confirmation.Mode,
+							ServiceID:             s.manifest.ServiceID,
+							Module:                module.ID,
+							Method:                method.ID,
+							Description:           method.Description,
+							InputSchema:           method.InputSchema,
+							Effect:                method.Effect,
+							ConfirmationMode:      method.Confirmation.Mode,
+							ConfirmationReplyMode: method.Confirmation.ReplyMode,
 						},
 					)
 				}

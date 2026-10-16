@@ -118,6 +118,51 @@ func approval(op operations.Operation) operations.Approval {
 	return operations.Approval{Binding: op.Binding, BindingHash: op.BindingHash, Approve: true}
 }
 
+func TestConsentDispatchGateRejectsAcceptedCorrections(t *testing.T) {
+	t.Parallel()
+	for _, variant := range []string{"current consent", "new revision", "unapplied steering"} {
+		t.Run(variant, func(t *testing.T) {
+			t.Parallel()
+			c, request := fixture(t)
+			ctx := t.Context()
+			_, err := c.Pool.Exec(ctx, `UPDATE runs SET doc='{"conversation_revision":3}' WHERE id=$1`, request.RunID)
+			require.NoError(t, err)
+			b := &backend{}
+			op, err := c.Prepare(ctx, request, b)
+			require.NoError(t, err)
+			decision := approval(op)
+			decision.ConsentRevision = 3
+			_, err = c.Approve(ctx, op.ID, decision)
+			require.NoError(t, err)
+			if variant == "new revision" {
+				_, err = c.Pool.Exec(
+					ctx,
+					`UPDATE runs SET doc='{"conversation_revision":4}' WHERE id=$1`,
+					request.RunID,
+				)
+				require.NoError(t, err)
+			}
+			if variant == "unapplied steering" {
+				_, err = c.Pool.Exec(
+					ctx,
+					`INSERT INTO run_inputs(id,run_id,doc) VALUES($1,$2,'{"kind":"steering","text":"Stop"}')`,
+					uuid.NewString(),
+					request.RunID,
+				)
+				require.NoError(t, err)
+			}
+			_, err = c.Dispatch(ctx, op.ID, operations.Lease{Owner: "worker", Fence: 7}, allow, b)
+			if variant == "current consent" {
+				require.NoError(t, err)
+				require.EqualValues(t, 1, b.writes.Load())
+			} else {
+				require.ErrorIs(t, err, operations.ErrApprovalRequired)
+				require.Zero(t, b.writes.Load())
+			}
+		})
+	}
+}
+
 func TestJSONBRoundTripPreservesWriteIntent(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"none", "service_id", "exact_parameters"} {
