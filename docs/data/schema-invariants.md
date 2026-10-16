@@ -2,7 +2,7 @@
 
 [Guide index](../data.md)
 
-## Сущности PostgreSQL
+## PostgreSQL entities
 
 Схема задаётся [SQL-миграциями](../../migrations), HTTP DTO — генерируемым `/openapi.json`. JSONB хранит типизированные domain documents и checkpoints; не каждое поле соответствует отдельной таблице.
 
@@ -22,7 +22,7 @@
 River, библиотека очереди заданий PostgreSQL, имеет собственные таблицы и migration history. Discovery registry хранится в памяти процесса; таблицы `service_registry` нет. Поля и ограничения таблиц определяются SQL-миграциями.
 
 Сервисные субъекты и deployment bindings — отдельные identities, не обычные пользовательские аккаунты. DB JSONB используется для контрактных payload/schema, а не вместо всех связей и ограничений.
-## Сохранённый контекст диалога
+## Persisted conversation context
 
 Разговорный механизм использует существующие таблицы и JSONB, без отдельной таблицы для каждой формы:
 
@@ -34,7 +34,7 @@ River, библиотека очереди заданий PostgreSQL, имеет
 - `chat_events` и `run_events`: принятые входы, вопросы/предложения и связи решений. `interaction.resolved` записывается agent resolver и exact-text fallback и не обещает бизнес-успех; native input сохраняется в chat history.
 
 `conversation_revision` задаёт порядок входов внутри run; это не chat history seq и не SSE cursor. Последний input, текущие question и approval передаются модели отдельно от сжатой истории. Summary не может заменить эти записи или перенести согласие на новую операцию. Схемы и границы проверок — в [контракте диалога](../conversational-input.md).
-## Обязательные инварианты
+## Required invariants
 
 - Partial UNIQUE `chats(owner_id) WHERE is_default`: один default-чат на пользователя, не по одному на организацию. Удаление снимает `is_default`. Его org фиксируется при создании; обращение из другой org требует явного чата.
 - Partial UNIQUE на runs(chat_id), если состояние нетерминальное. Даже paused/waiting run удерживает слот.

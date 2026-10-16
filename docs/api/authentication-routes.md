@@ -2,7 +2,6 @@
 
 [API index](../api.md)
 
-<a id="аутентификация"></a>
 ## Authentication
 
 Configure the issuer, API audience, introspection credentials and role-to-permission
@@ -35,7 +34,6 @@ Use TLS at the external boundary. Normal logs exclude credentials; explicit debu
 payload logging can retain claims and JWTs with masked signatures. See
 [logging policy](../observability.md).
 
-<a id="поверхность-api"></a>
 ## Routes
 
 Paths below are relative to `/v1`. Listed permissions are route gates; ownership,

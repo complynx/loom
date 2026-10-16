@@ -25,8 +25,6 @@ The status endpoint receives `{"protocol_version":1,"operation_id":"opaque-id"}`
 
 Every write/delete method must declare `idempotency: true`, `status_path` and `deduplication_window_seconds` of at least 86400 (24 hours). The service must retain deduplication and status records for its declared window. This is a contract requirement, not a promise of automatic replay for 24 hours. Keep uncertain operations available for reconciliation. `cancel_path` is accepted by the schema but the current write broker does not call it. Cancelling a run does not roll back a remote effect.
 
-<a id="подтверждения"></a>
-
 ## Confirmation
 
 The manifest supports three `confirmation.mode` values:
@@ -38,8 +36,6 @@ The manifest supports three `confirmation.mode` values:
 For either confirmed mode, prepare returns `status: "prepared"`, the matching `operation_id`, a future `expires_at` and a concise `description`. For `service_id`, `arguments` can be omitted to keep the original arguments; `confirmation_id` is required. For `exact_parameters`, `arguments` and non-null `preconditions` are required. Descriptions are limited to 4000 bytes. Preparation must not apply the business operation, although it can persist preparation records. Never put credentials in its description.
 
 The coordinator stores approval against the prepared operation. Model text alone does not approve execution. A material change to price, time, recipient or other arguments requires a new preparation and approval. JSON number representations are preserved; RFC 8785/JCS compatibility is not claimed.
-
-<a id="способ-ответа-пользователя"></a>
 
 ### User reply mode
 

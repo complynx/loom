@@ -2,7 +2,6 @@
 
 [Guide index](../failures.md)
 
-<a id="реализованный-срез"></a>
 ## Current behavior
 
 Loom persists run intent, operation identity and reservations before dispatch. A client retry must preserve its idempotency key and request body. A lost HTTP response does not prove that a request failed.
@@ -13,7 +12,6 @@ River limits job attempts. The queue sweep moves exhausted work without a live j
 
 A general circuit breaker and OAuth refresh/token exchange are not implemented. Discovery uses polling and freshness TTLs. Database transaction retries are limited to transactions known to have rolled back; they do not repeat network actions. See [limitations](../mvp-limitations.md) for remaining boundaries.
 
-<a id="базовые-правила"></a>
 ## Outcome rules
 
 | Outcome | Required action |

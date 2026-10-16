@@ -2,10 +2,9 @@
 
 [Guide index](../security.md)
 
-## Целевой refreshable flow — не реализован
+## Planned refresh flow (not implemented)
 
 Остальной текст раздела задаёт будущий протокол, а не наличие refresh leases или refresh tokens в текущем коде. Сейчас encrypted session хранит access credentials; при expiry/denial требуется `/v1/auth/sessions/{id}/reauthorize` с той же identity. `refreshable_exchange_enabled: true` отклоняется конфигурацией. Положительная introspection кешируется на 120 секунд по умолчанию (0 отключает, максимум 300), не дольше exp. Чувствительные действия требуют свежей проверки. См. [cache contract](../identity-cache.md), включая общую админскую очистку.
-
 
 Предпочтительный путь — confidential harness OAuth client и собственная ограниченная authorization session. Bootstrap принимает действительный subject token. Token Exchange запрашивает существующие допустимые scopes/audiences и, если доступно, offline_access; не расширяет исходные полномочия. Service credentials доказываются отдельно. Actor token не добавляется автоматически: его использование может требовать impersonation permission и должно пройти отдельную настройку.
 

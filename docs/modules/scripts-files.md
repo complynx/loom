@@ -24,8 +24,6 @@ Builtin names are reserved: `history`, `artifacts`, `memory`, `files`, `diagnost
 
 One JS runtime is owned by one Go goroutine. Go performs RPC work concurrently and returns results through the event loop. Workers have OS memory, CPU and PID limits plus a deadline. Pause/cancel blocks new broker RPCs, cancels host contexts and interrupts JS after bounded cleanup. A `finally` block is not a completion guarantee. A restarted worker has a fresh heap; durable operation records preserve external action outcomes.
 
-<a id="артефакты"></a>
-
 ## Artifacts
 
 Service responses can include up to 16 artifact descriptors. Each descriptor contains `download_path` (an absolute path on the registered origin), `mime_type`, `size_bytes` and `sha256`. The harness downloads with the delegated bearer token, checks current authority, verifies size/hash/MIME and imports the bytes into its artifact store. The script receives temporary artifact IDs and metadata, not downloaded bytes. Arbitrary external URLs are not fetched.

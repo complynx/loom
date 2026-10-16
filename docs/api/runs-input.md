@@ -2,7 +2,6 @@
 
 [API index](../api.md)
 
-<a id="создание-run"></a>
 ## Create a run
 
 Send `POST /v1/runs` with `runs.create`, `chat.read`, JSON and a persisted
@@ -54,7 +53,6 @@ prefix for up to 15 minutes. Attached files on either run disable this prefix re
 If reuse is unavailable or incompatible, normal context is built. Reuse does not
 copy tool effects or guarantee a provider cache discount.
 
-<a id="входы-в-run"></a>
 ## Run input
 
 Send `POST /v1/runs/{id}/input` with `runs.control` and `Idempotency-Key`:
@@ -126,7 +124,6 @@ can coexist during clarification.
 `run_id`, `status`, optional `reason` and `version`. Steering does not roll back
 completed effects; cancellation cannot guarantee rollback.
 
-<a id="пассивные-события"></a>
 ## Passive events
 
 `POST /v1/chats/{id}/events` requires `chat.events.append`. The `default` alias is

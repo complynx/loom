@@ -4,7 +4,6 @@
 
 [Guide index](../failures.md)
 
-<a id="остановка"></a>
 ## Shutdown
 
 On SIGINT/SIGTERM, Loom closes admission/readiness, blocks new dispatch and requests durable pauses. It cancels active contexts, checkpoints known results and uncertain operations, and stops HTTP/SSE and workers within the configured shutdown budget. A `run.resumable` event is valid only when its matching state was persisted.
@@ -13,7 +12,6 @@ The example configuration sets `execution.shutdown_deadline_ms` to 5000; validat
 
 Database failure, SIGKILL or blocked kernel I/O can prevent a final commit or event delivery. Recovery then relies on intent persisted before dispatch. Check the final shutdown log and rehearse database/host shutdown separately.
 
-<a id="recovery-после-crash"></a>
 ## Crash recovery
 
 A new coordinator takes an expired lease, advances the fence and reads the last durable step. Interrupted model work can have uncertain usage. Sent writes require reconciliation; saved results must not execute again.
@@ -22,7 +20,6 @@ A paused run stays paused. Queued/running work can recover automatically while a
 
 A script with dispatched writes is not automatically replayed as a whole. After operation reconciliation, the agent receives the interrupted source and known outcomes to form a continuation. Read-only replay still requires the applicable contract and budget. There is no general write-script replay protocol that makes new operation IDs safe.
 
-<a id="backups-и-disaster-recovery"></a>
 ## Backups and disaster recovery
 
 Define RPO/RTO in the deployment's backup plan. Loom does not configure PostgreSQL WAL archiving, off-host retention or automated PITR. Back up PostgreSQL, session-key versions, source references and deletion/revocation records consistently. Database ciphertext cannot be decrypted without its referenced key versions. Long-term backups exclude temporary file bytes; durable originals belong to source services. Any short-lived snapshot of temporary bytes must preserve their original expiry.
@@ -31,7 +28,6 @@ Stop every writer before restore. Start the restored API with [recovery mode](..
 
 Use a separate environment for a restore rehearsal. Record the snapshot and keys used, verify that recovery mode blocks dispatch, check that expired temporary files remain unavailable, and test deliberate operation only after the review is complete. Retrieve required source files again through their external IDs and normal authorization.
 
-<a id="критерии-qa-изменений"></a>
 ## Verification
 
 Select the affected [QA scenarios](../qa.md), including:

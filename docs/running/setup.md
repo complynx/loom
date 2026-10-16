@@ -2,7 +2,7 @@
 
 [Guide index](../running.md)
 
-## Настройка
+## Setup
 
 Before starting, prepare Docker with Compose, a reachable Zitadel issuer, an API audience, introspection credentials, and a model-provider credential. Configure Zitadel roles and their explicit role-to-permission mapping. The example maps `harness-user` and `harness-admin`; these roles must exist in your identity setup. See [identity and permissions](../security/identity-permissions.md).
 
@@ -48,7 +48,7 @@ docker compose --profile app logs --tail=100 migrate api sandbox docker-api-prox
 
 Before creating a run, obtain a user access token for the configured issuer/audience and mapped permissions. The example starts users with zero credits. An administrator must grant credits through the audited [billing API](../api.md); a run budget is a spending cap, not a balance grant. Continue with [Client](client.md).
 
-## Границы
+## Boundaries
 
 PostgreSQL and the API bind to loopback. A server installation needs its own TLS and routing. The Docker proxy permits limited discovery reads and removes container environment and mount details. Only the proxy receives the Docker socket; a read-only socket mount alone does not restrict Docker API commands.
 

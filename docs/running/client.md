@@ -2,7 +2,7 @@
 
 [Guide index](../running.md)
 
-## Клиент
+## Client
 
 Complete [Setup](setup.md) first. These shell examples use a user access token in `USER_TOKEN`. The user needs mapped run permissions, a funded billing account and an enabled disclosure policy. Do not paste access tokens into committed files or reports.
 
@@ -32,6 +32,6 @@ Reuse the same idempotency key only when retrying the same immutable request. Us
 SSE поддерживает `Last-Event-ID`. В режиме `agent` весь обычный текст, ответы и подсказки-кнопки отправляют как steering в `/input` существующего run с отдельным idempotency key. `approvals=true` дополнительно разрешает отдельные бинарные callbacks для критических действий. [Режимы, примеры и точное текстовое подтверждение](../conversational-input.md). `pause`, `resume` и `cancel` — отдельные POST ручки. Для новой задачи используется новый run; один nonterminal run занимает чат, включая состояния ожидания и паузы.
 
 Сервис начинает делегацию с собственного Bearer и `X-Subject-Token` пользователя. Затем может использовать `X-Auth-Session-ID` со свежим собственным Bearer. Сессия связана с user, actor, issuer, audience и организацией. Просроченная или отозванная авторизация блокирует дальнейшее исполнение; reauthorize заменяет сессию авторизацией той же стороны.
-## Дополнительные возможности
+## Additional features
 
 [Личная память](../user-memory.md) доступна каждому авторизованному пользователю без отдельных ролей. Micro-профиль добавляется в каждый inference; три уровня остальной памяти читаются по необходимости. [API](../api.md) описывает bounded history search/read, previous-run cache hints и temporary artifact handles. `search.semantic_enabled: false` полностью скрывает vector tool и отключает indexing route; включённый режим требует pgvector и готовых векторов, без embeddings-сервиса. Автоматические миграции и ключи описаны в [startup](../startup.md).

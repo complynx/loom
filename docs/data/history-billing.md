@@ -2,7 +2,7 @@
 
 [Guide index](../data.md)
 
-## История и контекст
+## History and context
 
 Последовательность чата объединяет сообщения, UI-события и отображаемые факты о run. Большие tool results и raw provider details хранятся отдельно и добавляются в контекст по необходимости. Оригиналы сохраняются согласно retention; выжимка не заменяет их.
 
@@ -15,7 +15,7 @@ Summary обновляется, когда свежая история не по
 Активный run применяет новые события между шагами. Snapshot сборки контекста имеет верхнюю seq; более поздние события остаются для следующей границы. UI-событие показывает прошлое: перед изменением backend состояние читается заново.
 
 История доступна через literal (default), PostgreSQL fulltext с конфигурацией `simple` и RE2 regex над ограниченным авторизованным диапазоном. Bounded snippets и paged read сохраняют доступ к полным событиям; ответ явно указывает truncation, skipped sequences и продолжение. Опциональный vector API принимает внешние embeddings и выполняет exact cosine ranking через pgvector. `search.semantic_enabled: false` скрывает инструмент и отключает indexing route. Embeddings-сервис и автоматическая индексация не реализованы.
-## Кредиты
+## Credits
 
 Единица — integer microcredit, без floating point. Run сохраняет snapshot тарифа; provider usage и внутреннее списание сохраняются отдельно. Для model шага тариф включает обычный input, cached input, cache-write input и output, с optional long-context band. Cache reads/writes — непересекающиеся части общего input, не дополнительные токены. Сумма input и сумма output отдельно округляются вверх до целого microcredit. Effort сам по себе не заменяет учёт фактических токенов. Формулу задаёт [tariff.go](../../internal/domain/tariff.go).
 

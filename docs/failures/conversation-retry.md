@@ -2,7 +2,6 @@
 
 [Guide index](../failures.md)
 
-<a id="сообщения-и-подтверждения-при-сбоях"></a>
 ## Lost receipts and interrupted actions
 
 | Situation | Client action and runtime boundary |

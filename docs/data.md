@@ -1,31 +1,31 @@
-# Данные, контекст и бюджет
+# Data, context and budget
 
 Этот раздел описывает сохранённое состояние Loom. [Schema invariants](data/schema-invariants.md) связывает таблицы с правилами целостности; [History and billing](data/history-billing.md) объясняет контекст модели и стоимость; [Retention](data/retention.md) задаёт сроки хранения и фактические границы удаления.
 
-## Сущности PostgreSQL
+## PostgreSQL entities
 
 Read [Schema invariants](data/schema-invariants.md).
 
-## Сохранённый контекст диалога
+## Persisted conversation context
 
 Read [Schema invariants](data/schema-invariants.md).
 
-## Обязательные инварианты
+## Required invariants
 
 Read [Schema invariants](data/schema-invariants.md).
 
-## История и контекст
+## History and context
 
 Read [History billing](data/history-billing.md).
 
-## Кредиты
+## Credits
 
 Read [History billing](data/history-billing.md).
 
-## Retention и удаление
+## Retention and deletion
 
 Read [Retention](data/retention.md).
 
-## Реализованные дополнительные слои
+## Additional data layers
 
 Read [Retention](data/retention.md).

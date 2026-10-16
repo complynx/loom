@@ -4,7 +4,6 @@
 
 [Guide index](../failures.md)
 
-<a id="матрица-зависимостей"></a>
 ## Symptoms and recovery
 
 Start with the request, run and operation IDs in [diagnostics](../diagnostics.md). Read the persisted state before sending another command. The table describes recovery boundaries; it is not a deployment acceptance report.

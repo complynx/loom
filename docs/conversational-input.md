@@ -214,7 +214,7 @@ as tool data, for example `interaction_conflict`, `input_conflict`,
 `approval_expired`. These do not approve or dispatch a replacement operation.
 
 See [API](api.md), [trust boundaries](security.md), [storage](data.md) and
-[failure behavior](failures.md#сообщения-и-подтверждения-при-сбоях).
+[failure behavior](failures.md#inputs-and-retries).
 
 ## QA requirements
 

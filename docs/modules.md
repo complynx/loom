@@ -1,10 +1,8 @@
-<a id="docker-discovery-и-модули-v1"></a>
+
 
 # Module integration guide
 
 Use this guide to expose a service to Loom through Docker discovery and the v1 module protocol. Commands run from the repository root unless stated otherwise. Start with [Discovery](modules/discovery.md), then check [the manifest example](../examples/manifest.json) and [schema](../schemas/manifest.schema.json). See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
-
-<a id="регистрация-одной-строкой"></a>
 
 ## Register a service
 
@@ -13,8 +11,6 @@ Use this guide to expose a service to Loom through Docker discovery and the v1 m
 ## Caller registration
 
 [Caller registration](modules/discovery.md#caller-registration) defines service permissions and supported incoming authentication. Caller authority is separate from user delegation.
-
-<a id="статические-и-динамические-модули"></a>
 
 ## Static and dynamic modules
 
@@ -32,8 +28,6 @@ Use this guide to expose a service to Loom through Docker discovery and the v1 m
 
 [Calls and confirmation](modules/calls-confirmation.md#rpc) defines request/response shapes, durable operation IDs, status lookup and current recovery limits.
 
-<a id="подтверждения"></a>
-
 ## Confirmation
 
 [Confirmation](modules/calls-confirmation.md#confirmation) explains preparation, approval binding and user reply modes.
@@ -41,8 +35,6 @@ Use this guide to expose a service to Loom through Docker discovery and the v1 m
 ## JS API
 
 [Scripts and files](modules/scripts-files.md#js-api) explains remote read calls, builtin modules and the separate durable action tool.
-
-<a id="артефакты"></a>
 
 ## Artifacts
 

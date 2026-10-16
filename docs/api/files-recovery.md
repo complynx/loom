@@ -22,7 +22,6 @@ through that contract, so model attachments can continue in the same run after T
 HTTP content and new HTTP handles still require an unexpired physical file.
 There is no arbitrary-URL download API. See [File tools](../file-tools.md#temporary-files-and-external-ids).
 
-<a id="частичное-чтение-blobs"></a>
 ## Partial blob reads
 
 Use `GET /v1/artifacts/{id}/content` or
@@ -46,7 +45,6 @@ or range processing. A foreign or expired handle cannot reveal size through `304
 Transfers stream directly from storage and use cancellation, periodic authorization
 checks and a 30-second write deadline. MIME is preserved.
 
-<a id="ошибки"></a>
 ## Errors
 
 ```json
@@ -75,7 +73,6 @@ A missing current caller registration returns `503 caller_binding_unavailable`
 after credential/session checks. Preserve the original run/session and handle
 `waiting_auth` explicitly. See [Caller recovery](../caller-recovery.md).
 
-<a id="подготовка-восстановленного-запуска"></a>
 ## Prepare a restored run
 
 Stop all execution workers before preparing restored uncertain work. The API must

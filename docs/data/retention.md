@@ -2,8 +2,6 @@
 
 [Guide index](../data.md)
 
-<a id="retention-и-удаление"></a>
-
 ## Retention and deletion
 
 History retention accepts a duration in days or `forever`. The policy is copied to each new chat as `retention_days`; changing settings does not rewrite existing chats. Lifecycle cleanup removes expired chat events and summaries only when the chat has no nonterminal run.
@@ -19,8 +17,6 @@ Deleting a chat marks it deleted, blocks access and new runs, cancels and fences
 Chat deletion is not complete erasure of every copy of message content. Run documents, steps and recovery records remain, and can contain accepted input or provider data. Unknown external operations and uncertain credit reservations remain available for reconciliation. Personal memory has its own [clear API](../user-memory.md). Copies in provider storage, exported logs and backups also follow their respective policies.
 
 After restoring an old backup, reconcile deletions, revocations and external effects before execution. An automatic post-restore barrier or replay of deletion tombstones is not implemented. Use [recovery mode](../recovery-mode.md) for the restore procedure. An operator must define backup retention separately; user deletion does not immediately remove historical backups.
-
-<a id="реализованные-дополнительные-слои"></a>
 
 ## Context reuse and personal memory
 

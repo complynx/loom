@@ -2,8 +2,6 @@
 
 [Guide index](../modules.md)
 
-<a id="регистрация-одной-строкой"></a>
-
 ## Register a service
 
 Add this label to the service container, replacing the hostname and path with your service's values:
@@ -30,8 +28,6 @@ Each poll fetches the full manifest with GET; conditional ETag requests are not 
 `caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read` and `artifacts.write`. These are caller permissions, not user delegation. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
 
 The schema also accepts `auth.type: "secret"` with `secret_ref`. Incoming opaque-secret authentication is not implemented; do not use that branch for an active integration. Never place secret values in a manifest.
-
-<a id="статические-и-динамические-модули"></a>
 
 ## Static and dynamic modules
 

@@ -2,7 +2,7 @@
 
 This page explains where configuration lives and when it takes effect. Use [Startup](startup.md) for migrations and keys, [Local setup](running.md) to start development, and [Operations](operations.md) to maintain an installation.
 
-## YAML и env
+## YAML and environment
 
 YAML configures connections, issuer/audience trust, provider credentials, Docker discovery, encryption keys, file processing and hard resource ceilings. See the [supported fields](../internal/config/SUPPORT.md) and [deployment template](../deploy/config.example.yaml).
 
@@ -24,7 +24,7 @@ Startup serializes migrators and checks the schema and session keys before worke
 
 Files are temporary. An external service remains the authoritative source for a long-lived file. Back up the database and session keys; do not treat temporary artifacts as permanent storage. Restore through the [recovery barrier](recovery-mode.md).
 
-## Контракты сопровождения
+## Operating contracts
 
 - Settings and permissions are checked again at effect boundaries. Consent does not replace authorization.
 - Reconcile an unknown write with the service using the original operation ID. A new run does not recover that operation.

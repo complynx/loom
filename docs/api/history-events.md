@@ -2,7 +2,6 @@
 
 [API index](../api.md)
 
-<a id="история-и-поиск"></a>
 ## History and search
 
 History routes require `chat.read` and access to the chat. For simple pagination,
@@ -45,7 +44,6 @@ cosine ranking with authorization filters; it provides neither an embedding prov
 nor an ANN index. When disabled, the indexing route and semantic tool are absent,
 and semantic search is denied.
 
-<a id="сессии-и-версии"></a>
 ## Sessions and versions
 
 `POST /v1/auth/sessions` accepts `{}` under verified user credentials or a service
