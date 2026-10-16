@@ -20,7 +20,7 @@ Keys match `[a-z0-9][a-z0-9_-]{0,79}`. Each entry allows a 200-character title, 
 
 Personal memory is included in the consolidated `00001_loom.sql` baseline. Apply it through the normal migrator to a new database; do not run the pre-release baseline over legacy QA schemas. Personal memory is available to every authenticated user without additional roles or permission mapping. Administrators also access only their own memory.
 
-All endpoints require a current access token. Responses use `Cache-Control: no-store`. The service checks authentication on every request. No API accepts a user ID or organization ID in its body.
+All endpoints use the normal authenticated API route. This accepts a user access token or an authorized service acting for that user through the supported delegation/session flow. Responses use `Cache-Control: no-store`. Authentication runs on every request and can use the [positive claims cache](identity-cache.md); an HTTP memory request does not itself force online introspection. No memory API accepts a user ID or organization ID in its body.
 
 | Method and path | Body or query | Result |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ The script sandbox exposes `modules.memory` for every authenticated run user:
 - `delete({key, version})` deletes an entry.
 - `clear({revision})` clears all personal memory.
 
-Each callback checks fresh authorization and the run lease before it acts. Mutation retries are conflict-safe, but do not replay the original success response: a repeated write may return a version conflict. Read the current state before deciding whether to repeat it.
+Each callback rechecks authorization and the run lease before it acts. This can use the positive claims cache; it does not force online introspection. Mutation retries are conflict-safe, but do not replay the original success response: a repeated write may return a version conflict. Read the current state before deciding whether to repeat it.
 
 ## Model use and safety
 
@@ -62,6 +62,3 @@ Users and authorized agents curate memory explicitly. There is no automatic fact
 Memory is retained until explicitly changed or deleted. Chat deletion and history retention do not clear personal memory. Full clear removes the stored text and entries, but cannot erase copies already present in previous provider inputs, logs, backups, or retained run context. Avoid putting credentials or access tokens in memory.
 
 The implementation stores memory in PostgreSQL and introduces no additional dependency or provider call.
-
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk

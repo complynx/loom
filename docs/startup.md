@@ -22,6 +22,9 @@ Create a persistent data mount for keys and temporary artifacts. The unprivilege
 runtime creates missing key parent directories. On a fresh database without any
 stored auth sessions it atomically creates a private 32-byte session encryption
 key at `identity.encryption_key_file`. Existing keys are validated and preserved.
+A key file can contain 32 raw bytes or their standard base64 encoding. The
+development Compose profile instead requires a pre-created read-only key file;
+follow [local setup](running/setup.md).
 An invalid key, or a missing key with stored sessions, stops startup. Restore the
 original key; do not delete sessions to bypass this check.
 
@@ -68,9 +71,11 @@ files in Git. Changing a credential requires restarting the process.
 
 CI publishes `complynx/loom:latest` and `complynx/loom:file-worker-latest` before
 sending its deployment event. Commit tags remain available for operator rollback.
-The receiving deployment uses its shared Compose rollout. Container startup owns
-configuration validation, migrations and session-key checks. A Compose init service
-owns data directory preparation. Configure an API healthcheck with
+Your deployment system pulls and starts the selected images. Container startup owns
+configuration validation, migrations and session-key checks. For a deployment with
+an init service, that service owns data directory preparation. The development
+Compose profile uses a pre-created key file and its image-prepared artifact
+directory. Configure an API healthcheck with
 `["CMD", "/usr/local/bin/loom", "healthcheck"]`; it requests the local `/readyz`
 endpoint with a three-second timeout and fails on non-200 responses. Use
 `--address 127.0.0.1:PORT` when the API listens on another port. Allow five minutes

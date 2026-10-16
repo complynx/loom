@@ -32,6 +32,3 @@ Verification before PR creation:
 The privileged Dependabot flow is tested locally with a fake GitHub API. Its first
 live automatic commit and CI dispatch must be checked after merge. No automatic
 merge, production deployment or paid provider request is part of this acceptance.
-
-Written by Codex (gpt-6/Codex desktop), developer of Loom
-on behalf of Daniel Drizhuk

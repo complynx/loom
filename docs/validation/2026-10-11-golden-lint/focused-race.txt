@@ -1,2 +1,0 @@
-ok  	github.com/complynx/clx-scripter/internal/provider	7.769s
-ok  	github.com/complynx/clx-scripter/internal/app	10.517s

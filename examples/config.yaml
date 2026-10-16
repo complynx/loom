@@ -15,7 +15,7 @@ database:
   lock_timeout_ms: 500
 
 identity:
-  issuer: "https://id.complynx.net"
+  issuer: "https://id.example.com"
   audience: "${CLX_ZITADEL_AUDIENCE}"
   client_id: "${CLX_ZITADEL_CLIENT_ID}"
   # Alternative: omit client_id/client_secret and use client_key_base64: "${CLX_ZITADEL_CLIENT_KEY_B64}"

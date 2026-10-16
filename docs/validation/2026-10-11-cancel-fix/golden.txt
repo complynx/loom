@@ -1,5 +1,0 @@
-0 issues.
-level=warning msg="[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \"package comment should be of the form \\\".+\\\"\", Source: \"// ?(nolint|TODO)\", Linters: \"revive\"]"
-level=warning msg="[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \"comment on exported \\\\S+ \\\\S+ should be of the form \\\".+\\\"\", Source: \"// ?(nolint|TODO)\", Linters: \"revive, staticcheck\"]"
-level=warning msg="[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \"TODO\", Linters: \"godot\"]"
-level=warning msg="[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \"should have a package comment\", Linters: \"revive\"]"

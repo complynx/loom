@@ -1,5 +1,0 @@
-param()
-$ErrorActionPreference='Stop'
-docker compose -f (Join-Path $PSScriptRoot 'compose.yaml') down --volumes --remove-orphans
-if($LASTEXITCODE-ne0){throw 'Owned stand cleanup failed.'}
-Write-Output 'Owned stand containers, network and volumes removed. Local config and any inserted token remain in the ignored directory.'

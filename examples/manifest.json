@@ -1,23 +1,23 @@
 {
   "protocol_version": 1,
-  "service_id": "zns-chatbot",
+  "service_id": "booking-service",
   "revision": "example-v1",
   "description": "Example integration; endpoints and service identity are placeholders.",
   "caller": {
     "permissions": ["runs.create", "runs.control", "chat.read", "chat.events.append"],
-    "auth": {"type": "zitadel", "issuer": "https://id.complynx.net", "subject": "replace-with-service-subject", "audience": "replace-with-harness-audience"}
+    "auth": {"type": "zitadel", "issuer": "https://id.example.com", "subject": "replace-with-service-subject", "audience": "replace-with-harness-audience"}
   },
   "modules": [
     {
       "id": "massage",
       "description": "Massage slots and bookings",
-      "permissions": ["zns.massage.access"],
+      "permissions": ["booking.massage.access"],
       "discovery": "static",
       "methods": [
         {
           "id": "list_slots",
           "description": "List currently available slots for a specialist",
-          "permissions": ["zns.massage.read"],
+          "permissions": ["booking.massage.read"],
           "path": "/internal/agent/massage/list-slots",
           "effect": "read",
           "timeout_ms": 3000,
@@ -32,7 +32,7 @@
         {
           "id": "book_slot",
           "description": "Book a prepared and confirmed slot",
-          "permissions": ["zns.massage.book"],
+          "permissions": ["booking.massage.book"],
           "path": "/internal/agent/massage/book-slot",
           "effect": "write",
           "timeout_ms": 3000,
@@ -52,7 +52,7 @@
     {
       "id": "orders",
       "description": "User-specific order methods returned by authorized discovery",
-      "permissions": ["zns.orders.access"],
+      "permissions": ["booking.orders.access"],
       "discovery": "dynamic",
       "discovery_path": "/internal/agent/orders/discover",
       "cache_ttl_seconds": 60

@@ -1,1 +1,0 @@
-PASS protocol-only public client S256 PKCE, fixture CA TLS validation, browser binding cookie, fresh diagnostics authorization, single-use replay denial. No browser login PASS claimed.

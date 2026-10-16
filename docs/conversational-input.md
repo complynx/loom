@@ -1,11 +1,17 @@
 # Conversational input and action confirmation
 
-Loom accepts one stream of user messages. Clients do not classify text as answers,
-approvals, corrections, cancellations, or changes of topic. Clicking a suggested
-caption and typing it have the same meaning. Closing a form does not discard a
-pending ordinary action.
+In `reply_mode=agent`, Loom accepts one stream of user messages. Clients send
+ordinary text as steering; the model interprets answers, consent, corrections,
+cancellations and changes of topic. Clicking an ordinary suggestion and typing
+its caption have the same meaning. Dedicated critical-action callbacks are the
+exception described below. Closing a form does not discard a pending action.
 
 ## Run negotiation
+
+Create the run with `POST /v1/runs`, Bearer authorization, `runs.create`,
+`chat.read`, `Content-Type: application/json` and a persisted `Idempotency-Key`.
+This example shows its input and interaction fields; see
+[Run creation](api/runs-input.md#create-a-run) for the complete request contract.
 
 ```json
 {
@@ -53,6 +59,9 @@ Send `POST /v1/runs/{id}/input` with an `Idempotency-Key`:
 ```json
 {"kind":"steering","text":"Yes, but only for one person"}
 ```
+
+The request requires `runs.control` and JSON content type. Keep the original body
+and key until its receipt is known; do not classify a transport timeout as rejection.
 
 The URL still addresses the existing `run_id`. Do not create another run for each
 message: a pending run owns its chat and a new run would receive `409 chat_busy`.
@@ -205,11 +214,11 @@ as tool data, for example `interaction_conflict`, `input_conflict`,
 `approval_expired`. These do not approve or dispatch a replacement operation.
 
 See [API](api.md), [trust boundaries](security.md), [storage](data.md) and
-[failure behavior](failures.md#сообщения-и-подтверждения-при-сбоях).
+[failure behavior](failures.md#inputs-and-retries).
 
-## Verification boundary
+## QA requirements
 
-Deterministic HTTP/PostgreSQL tests cover transport, resolution and effect gates.
-Scripted providers do not prove language interpretation. Real-model Russian/English
-QA and Zinusya delivery/keyboard behavior remain separate acceptance. Deterministic
-tests make no paid provider calls. [Local evidence and remaining gates](validation/2026-10-16-conversational-input/README.md).
+Use [QA](qa.md) to check persistence, client ordering and dispatch gates separately
+from model interpretation. Scripted providers cannot prove language interpretation;
+check consent, refusal, amendments and late replies in each supported user language
+with a real model. Recheck client handling when switching from protocol to agent mode.

@@ -1,3 +1,0 @@
-PASS: server_configs Alloy Compose validation (placeholder token only).
-PASS: harness Compose merged with observability overlay (--profile app).
-No containers were deployed by these checks.

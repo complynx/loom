@@ -1,5 +1,0 @@
-{
-  "Phase": "postgres_stopped",
-  "Status": 503,
-  "Body": "{\"error\":{\"code\":\"dependency_unavailable\",\"message\":\"Service is not ready\",\"request_id\":\"a94e8eba1e0b18350895f508\",\"retryable\":true}}\n"
-}

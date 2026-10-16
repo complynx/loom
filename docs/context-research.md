@@ -1,22 +1,27 @@
-# Context policy research
+# Context policy and research
 
-Checked 2026-10-11. Upstream defaults are implementation choices, not universal model recommendations.
+Loom separates the model's advertised context window from its own input ceiling and compaction policy. This keeps admission, reservations and recovery predictable when provider capabilities change.
 
-| Harness | Trigger / reserve | Retained context |
-| --- | --- | --- |
-| Codex CLI 0.157.1 | Default limit is 90% of raw window; effective window is separately 95% for the local catalog | Native compacted state; no fixed 75% post-compaction target |
-| OpenClaw embedded runtime | Default 20000-token reserve, capped at a quarter of model window | Recent-tail setting defaults to 20000 tokens plus persisted summary |
-| Claude Code | Automatic context management near the limit; this documentation does not specify a universal numeric threshold | Old tool outputs cleared first, then conversation summarized |
+The preset uses a 272000-token hard input ceiling, a 244800-token compaction trigger and a 204000-token history target. These values are defined in `internal/config/openai.go`. The trigger is 90% of the input ceiling. The target is a Loom headroom heuristic; it is not a provider recommendation or a required final window size.
 
-Local Codex executable reports 0.157.1. Its local model cache reports client_version 0.162.0, fetched 2026-10-11 10:51:25 UTC. Luna, Sol and Astra each report raw context 272000, maximum overridable window 872000 and effective percentage 95. Global config selects Sol/medium and has no explicit window or compaction override. Therefore the catalog-derived default compact limit is 244800 and the effective available window is 258400. Per-thread overrides and future catalog changes can alter these values.
+## What each limit controls
 
-The formula is confirmed in the [pinned Codex source](https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/protocol/src/openai_models.rs#L484-L506). The [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) exposes model_context_window and model_auto_compact_token_limit. A resolved limit is not a claim that every run compacts at exactly that token count; trigger timing, current turn and scope matter.
+- The model context window bounds combined model input and reserved output.
+- `input_token_limit` and the process `context_input_token_budget` bound input. The lower value applies.
+- `compaction_threshold_tokens` triggers compaction before the hard input ceiling.
+- `compaction_target_tokens` bounds the recent suffix retained by history summarization. It does not set native compaction output size.
+- `output_token_limit` limits ordinary model output separately.
 
-[OpenClaw's compaction reference](https://docs.openclaw.ai/reference/session-management-compaction/compaction) separates the hard model window from approximate session counters. It keeps tool calls paired with their results. Its [context policy](https://docs.openclaw.ai/concepts/compaction) accounts for instructions, tool schemas, pending input and output reserve and rejects ineffective replacement histories. Its [pre-compaction housekeeping](https://docs.openclaw.ai/reference/session-management-compaction/housekeeping) defaults to a 4000-token soft margin before compaction for optional durable-memory flushing. This is distinct from summarization and transcript pruning.
+Byte bounds are conservative for plain text. They can cause history summarization before the nominal token trigger. Instructions, tool schemas and current input also occupy context; chat text alone is not a sufficient measure. Opaque native compaction items require provider token counting.
 
-[Claude Code](https://code.claude.com/docs/en/how-claude-code-works) clears older tool results before summarizing and protects persistent instructions separately. It stops repeated ineffective compaction instead of looping indefinitely.
+## Upstream reference
 
-Suggested policy for this harness: retain the requested 272000 hard input ceiling; use the agreed configurable early trigger of 244800, a bounded recent tail and explicit room for tools/output. The current 204000 target is our heuristic, not Codex or OpenAI guidance. The user approved fixing 272000 as the hard ceiling and 244800 as the trigger. Improve active-run compaction and token-aware tail selection before claiming the same behavior as native Codex. Benchmark retained task facts, unresolved requests, IDs, tool pairing, latency and billed usage, rather than optimizing a percentage alone.
+The [OpenAI compaction guide](https://developers.openai.com/api/docs/guides/compaction) describes a replacement input window with an opaque compaction item. Loom stores that window as a checkpoint and supplies it to later requests. The endpoint chooses the replacement size.
 
-Written by Codex (gpt-6/Codex desktop)
-on behalf of Daniel Drizhuk
+Other harnesses can use different trigger timing, output reserves and retained-history rules. A matching percentage does not imply matching behavior. Local model caches and CLI settings are not a portable source for Loom's defaults.
+
+## Evaluating a policy change
+
+Keep complete tool call/result pairs and preserve durable execution records. Summaries are untrusted context and cannot grant permissions or approval. Pause when a replacement cannot fit or native compaction does not reduce the counted window below the trigger.
+
+Compare retained task facts, unresolved requests, identifiers, source references, tool pairing, latency and billed usage. A smaller context percentage alone does not establish better compaction. See [active-run compaction](active-compaction.md) for recovery behavior and [OpenAI catalog and context](openai.md) for the current preset.

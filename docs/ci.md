@@ -1,9 +1,9 @@
-# CI publication and server deployment trigger
+# CI and image publication
 
-Deployment receiver and collector configuration are maintained outside this repository. The receiver must accept `updated-loom`.
+Installation-specific deployment workflows and collector configuration belong to the operator.
 
 The existing CI runs tests, dependency verification, lint and vulnerability checks
-on pushes and pull requests. Once these pass, a push to `main` builds and publishes
+on pushes, pull requests and manual workflow dispatch. Once these pass, a push to `main` builds and publishes
 `linux/amd64` images to Docker Hub. Merging a pull request into `main` produces the
 same push event. Other branches and pull requests build locally without publication
 or deployment dispatch.
@@ -16,35 +16,23 @@ Published tags:
 
 Publishing jobs share a concurrency group and do not cancel a running publication.
 Before publishing, the job checks the current remote `main` head; an older run is
-skipped if a newer commit already exists. This also prevents rerunning an old CI
-run from replacing `latest`. Buildx uses the GitHub Actions cache.
+skipped if a newer commit already exists at that check. A newer commit can arrive
+while a build is running; the check does not cancel an in-progress publication.
+Buildx uses the GitHub Actions cache.
 
-## Required GitHub secrets
+## Maintainer publication workflow
 
-Set these in `complynx/loom`:
+The [upstream workflow](../.github/workflows/ci.yml) is maintainer infrastructure, not a required installation step. It uses `DOCKER_HUB_ACCESS_TOKEN` for image publication and `SERVER_REPO_TOKEN` for a repository-dispatch hook after both images are published. Both secrets are checked before publication; credentials are not Docker build arguments. The workflow's GitHub token has `contents: read`. The registry and dispatch secrets have separate permissions configured by the maintainer.
 
-- `DOCKER_HUB_ACCESS_TOKEN`: token for the `complynx` Docker Hub account with write
-  access to `complynx/loom`.
-- `SERVER_REPO_TOKEN`: token allowed to create repository dispatches in
-  `complynx/server_configs`. A fine-grained token needs Contents read/write for
-  that target repository; the built-in source repository token cannot dispatch
-  across repositories. See the [dispatch action documentation](https://github.com/peter-evans/repository-dispatch#token).
+To publish from a fork, select your own registry account/tags and either replace the hook target and credentials or remove the hook and its secret check. Editing documentation alone does not reconfigure the workflow. To install published images, no GitHub token or deployment repository is required.
 
-Both secrets are checked before login or publication. Credentials are passed as
-secrets, never Docker build arguments. The publication workflow's built-in token
-has only `contents: read` permissions. The separate Dependabot metadata workflow
-has the scoped write permissions described below.
+## Deployment integration
 
-## Server contract
+Any deployment system can pull the published API and file-worker images. Keep their source revisions aligned, preserve the database/session keys and follow [startup](startup.md) for migrations and readiness. Choose latest or commit tags according to the installation's release policy; record the resolved image IDs for rollback.
 
-After the image push succeeds, CI sends `updated-loom` to
-`complynx/server_configs`, following the existing `zns-chatbot` pattern. The payload
-contains the source SHA, latest image tags and informational published digests. The receiver selects latest from its own operator-managed Compose profile. Both images are published before dispatch. See [startup](startup.md) for serialized rollout and schema requirements. The receiver workflow and production configuration are maintained outside this repository. The trigger does not provision infrastructure or prove readiness.
+For a repository-dispatch integration, the upstream hook event is updated-loom. Its JSON payload contains sha, image, digest, file_worker_image and file_worker_digest. A receiving workflow must validate the trigger and select the desired images in its own deployment profile. The hook does not provision a host or prove readiness. Verify the receiver result and application health separately.
 
-A successful sender job proves that GitHub accepted the event. Deployment success
-must be checked in the receiving server workflow and application readiness. If
-publication succeeds and dispatch fails, the image remains published and this job
-fails; rerunning it for the current `main` repeats the dispatch after publication.
+The images publish in sequence. If the file-worker build fails after the API image publishes, the API tags can already have changed and no hook is sent. If both images publish but the hook fails, both remain published and the job fails. Check both digests before rollout. Re-running publication for the current main may send the event again; receivers should tolerate duplicates. Older main runs are skipped as described above.
 
 ## Pinned actions
 
@@ -60,9 +48,7 @@ configuration checks for updates weekly.
 | docker/build-push-action | v7.4.0 | Apache-2.0 |
 | peter-evans/repository-dispatch | v4.0.1 | MIT |
 
-Release tags were resolved through each official GitHub repository. The bundled
-Go updates and their license audit are recorded in
-[the dependency report](dependency-audit/2026-10-15-bundle/README.md).
+Version comments identify reviewed releases; the workflow SHA is authoritative. Review new dependencies with the manual procedure below.
 
 ## Dependency updates
 
@@ -78,6 +64,3 @@ Agents/operators review licenses periodically and before selecting new direct
 dependencies. License review is not a CI gate. Keep the approved license policy
 and retain required notices and corresponding-source material in distributed images.
 See [the review procedure](dependency-audit/README.md).
-
-Written by Codex (gpt-6/Codex desktop), developer of Loom
-on behalf of Daniel Drizhuk

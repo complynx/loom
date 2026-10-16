@@ -1,2 +1,0 @@
-{"overview":{"generated_at":"2026-10-11T14:31:59.706684231Z","runs":{},"reserved_microcredits":0,"unknown_inference_steps":0,"unresolved_writes":0,"platform_attempts":0,"platform_exposure_microcredits":0,"oldest_queued_seconds":0,"oldest_reservation_seconds":0,"expired_leases":0},"runtime":{"sampled_at":"2026-10-11T14:31:58.494914599Z","uptime_seconds":1.26911968,"dependencies":{"artifact_volume":true,"database":true,"discovery":true,"sandbox":true}}}
-
