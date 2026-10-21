@@ -35,6 +35,14 @@ func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.
 }
 
 func newBookingServiceMode(t *testing.T, lostReply bool, replyMode string) (*bookingService, *modules.Registry) {
+	return newBookingServiceConfirmation(t, lostReply, replyMode, "service_id")
+}
+
+func newBookingServiceConfirmation(
+	t *testing.T,
+	lostReply bool,
+	replyMode, confirmationMode string,
+) (*bookingService, *modules.Registry) {
 	t.Helper()
 	raw, err := os.ReadFile("../examples/manifest.json")
 	require.NoError(t, err)
@@ -44,6 +52,10 @@ func newBookingServiceMode(t *testing.T, lostReply bool, replyMode string) (*boo
 	manifest.Modules[0].Methods = manifest.Modules[0].Methods[1:]
 	manifest.Modules[0].Methods[0].TimeoutMS = 100
 	manifest.Modules[0].Methods[0].Confirmation.ReplyMode = replyMode
+	manifest.Modules[0].Methods[0].Confirmation.Mode = confirmationMode
+	if confirmationMode == "none" {
+		manifest.Modules[0].Methods[0].Confirmation.PreparePath = ""
+	}
 	service := &bookingService{}
 	service.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/manifest" {
@@ -74,7 +86,7 @@ func newBookingServiceMode(t *testing.T, lostReply bool, replyMode string) (*boo
 				Encode(map[string]any{"status": "prepared", "operation_id": envelope.OperationID, "confirmation_id": "prepared-slot-confirmation", "arguments": envelope.Arguments, "expires_at": time.Now().Add(time.Minute), "description": description})
 		case "/internal/agent/massage/book-slot":
 			if envelope.OperationID != envelope.IdempotencyKey ||
-				envelope.Confirmation["confirmation_id"] != "prepared-slot-confirmation" {
+				!bookingConfirmationValid(confirmationMode, envelope.Confirmation) {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				return
 			}
@@ -115,6 +127,10 @@ func newBookingServiceMode(t *testing.T, lostReply bool, replyMode string) (*boo
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(context.Background()))
 	return service, registry
+}
+
+func bookingConfirmationValid(mode string, confirmation map[string]any) bool {
+	return mode == "none" || confirmation["confirmation_id"] == "prepared-slot-confirmation"
 }
 func mutationWorker(t *testing.T, f *fixture, registry *modules.Registry) (*modelFixture, *runs.Engine) {
 	t.Helper()

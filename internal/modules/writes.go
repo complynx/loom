@@ -167,7 +167,15 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 		ExpiresAt:     response.ExpiresAt,
 	}, nil
 }
-func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (operations.Result, error) {
+
+//nolint:nonamedreturns // The defer marks only failures before the execute RPC.
+func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (result operations.Result, err error) {
+	dispatched := false
+	defer func() {
+		if err != nil && !dispatched {
+			err = &operations.NotDispatchedError{Cause: err}
+		}
+	}()
 	s, m, principal, err := b.resolve(ctx, op)
 	if err != nil {
 		return operations.Result{}, err
@@ -218,6 +226,7 @@ func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (ope
 			return operations.Result{}, err
 		}
 	}
+	dispatched = true
 	raw, err := invoke(
 		ctx,
 		s,

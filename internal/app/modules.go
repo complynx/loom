@@ -98,13 +98,13 @@ func (b *ModuleBridge) Call(
 	}
 	fresh, credential, err := b.authorize(ctx, run)
 	if err != nil {
-		return nil, nil, err
+		return b.moduleCallFailure(ctx, run, call, err)
 	}
 	mp := modulePrincipal(fresh, credential, run.SettingsSnapshot.Version)
 	mp.UserID = run.OwnerID
 	descriptor, err := b.registry.Describe(ctx, mp, args.Module, args.Method)
 	if err != nil {
-		return nil, nil, err
+		return b.moduleCallFailure(ctx, run, call, err)
 	}
 	if descriptor.Method.Effect == builtinReadMethod {
 		return json.RawMessage(`{"error":"use_script_for_reads"}`), nil, nil
@@ -146,9 +146,9 @@ func (b *ModuleBridge) Call(
 
 	if err != nil {
 		b.logOperation(ctx, run.ID, operation)
-		return nil, nil, err
+		return b.moduleCallFailure(ctx, run, call, err)
 	}
-	result, approval, resolveErr := b.resolveOperation(ctx, run, args.Module, args.Method, operation, backend)
+	result, approval, resolveErr := b.resolveOperation(ctx, run, call, operation, backend)
 	if approval != nil {
 		approval.ReplyMode = domain.ReplyModeProtocol
 		approval.ConfirmationText = args.ConfirmationText
@@ -249,7 +249,7 @@ func (b *ModuleBridge) Discard(
 		},
 		Guard: func(c context.Context) error { return b.guard(c, run) },
 	}
-	if op.State == "dispatching" || op.State == "pending" || op.State == outcomeUnknown {
+	if op.State == operationDispatching || op.State == operationPending || op.State == outcomeUnknown {
 		op, err = b.coordinator.Reconcile(ctx, op.ID, backend)
 		if err != nil {
 			return nil, nil, &runs.Suspension{State: domain.Reconciling, Reason: operationUnknown}
@@ -272,25 +272,28 @@ func (b *ModuleBridge) Discard(
 func (b *ModuleBridge) resolveOperation(
 	ctx context.Context,
 	run domain.Run,
-	module, method string,
+	call provider.Call,
 	operation operations.Operation,
 	backend modules.WriteBackend,
 ) (json.RawMessage, *domain.Approval, error) {
 	defer func() { b.logOperation(ctx, run.ID, operation) }()
 	var err error
-	if operation.State == "prepared" {
+	if operation.State == operationPrepared {
 		text := operation.Preparation.Description
 		if text == "" {
-			text = fmt.Sprintf("Confirm %s.%s", module, method)
+			text = fmt.Sprintf("Confirm %s.%s", operation.Module, operation.Method)
 		}
 		approval := &domain.Approval{
 			ID:           operation.ID,
 			OperationID:  operation.ID,
-			Method:       module + "." + method,
+			Method:       operation.Module + "." + operation.Method,
 			Arguments:    operation.Preparation.Arguments,
 			ArgumentHash: operation.BindingHash,
 			Text:         text,
 			ExpiresAt:    operation.Preparation.ExpiresAt,
+		}
+		if run.Approval != nil && run.Approval.OperationID == operation.ID && run.Approval.Decision == "" {
+			approval.ID = run.Approval.ID
 		}
 		return nil, approval, nil
 	}
@@ -306,10 +309,11 @@ func (b *ModuleBridge) resolveOperation(
 			if operation.State == outcomeUnknown {
 				return nil, nil, &runs.Suspension{State: domain.Reconciling, Reason: operationUnknown}
 			}
-			return nil, nil, err
+			return b.moduleCallFailure(ctx, run, call, err)
 		}
 	}
-	if operation.State == outcomeUnknown || operation.State == "pending" || operation.State == "dispatching" {
+	if operation.State == outcomeUnknown || operation.State == operationPending ||
+		operation.State == operationDispatching {
 		operation, err = b.coordinator.Reconcile(ctx, operation.ID, backend)
 		if err != nil {
 			return nil, nil, &runs.Suspension{State: domain.Reconciling, Reason: operationUnknown}
@@ -322,8 +326,7 @@ func (b *ModuleBridge) resolveOperation(
 		}
 		return operation.Result, nil, nil
 	case "rejected", "failed":
-		raw, _ := json.Marshal(map[string]string{"status": operation.State})
-		return raw, nil, nil
+		return terminalOperationFailure(operation), nil, nil
 	default:
 		return nil, nil, &runs.Suspension{State: domain.Reconciling, Reason: operationUnknown}
 	}
