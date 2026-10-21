@@ -36,11 +36,12 @@ A worker failure must not trigger an automatic paid transcription retry.
 
 ## PDF rendering and media packages
 
-The worker contains Poppler 25.12.0-r1 and FFmpeg 8.1.2-r0. The pinned Alpine image
-and [runtime package lock](../examples/file-worker.packages) specify its package
-set. The API image is separate and contains no media CLI.
+The worker installs Poppler, FFmpeg and fallback fonts from the repositories of
+the pinned stable Alpine image. The [requested package list](../examples/file-worker.packages)
+contains package names without version pins. Dependabot updates the Alpine image
+tag and digest. The API image is separate and contains no media CLI.
 
-Roboto 3.005-r0 and Roboto Mono 3.000-r0 (Apache-2.0) provide fallback fonts for
+Roboto and Roboto Mono (Apache-2.0) provide fallback fonts for
 unembedded PDF text. Fontconfig substitutes installed fonts; the result can have
 different metrics from the original. This set does not provide complete CJK,
 emoji or specialist-font coverage. Embed required fonts when exact appearance
@@ -84,7 +85,16 @@ Before a release, check that the bundle contains the complete source, license
 texts, patches and build instructions required for the distributed runtime.
 The automated bundle is release input, not legal certification.
 
-Changes to `examples/file-worker.packages` require worker behavior tests, a fresh
-source export and a license review. If a pinned APK disappears from the mirror,
-use an archived verified package/source snapshot or make a reviewed upgrade.
-Do not silently remove version pins.
+The build records the complete installed package set with exact versions in
+`/licenses/runtime/packages.lock`, plus package metadata and the matching source
+bundle. This lock is build output, not an installation constraint. An uncached
+build can select newer packages from the same Alpine branch; use `--no-cache` to
+refresh cached installation layers. Retain image digests for exact rollback.
+
+CI runs media behavior tests in the `file-runtime-tests` target, which inherits
+the worker's `file-runtime` layer. Static Go test binaries are added without
+installing a compiler or changing the runtime package set. The ordinary Linux
+test job separately runs the race detector.
+
+Changes to the requested package list or installed package set require worker
+behavior tests, a fresh source export and a license review before distribution.
