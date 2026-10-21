@@ -25,16 +25,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
           cache: true
       - run: go mod verify
       - run: go test -race -parallel=4 -tags=integration ./...
-      - name: Test pinned media CLIs in Linux worker environment
-        run: >-
-          docker run --rm --network host -v "$PWD:/src" -w /src
-          -e CLX_TEST_DATABASE_DSN
-          golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
-          sh -c 'apk add --no-cache gcc musl-dev ffmpeg=8.1.2-r0 poppler-utils=25.12.0-r1 font-roboto=3.005-r0 font-roboto-mono=3.000-r0 >/dev/null && CGO_ENABLED=1 go test -race -parallel=4 -tags=integration ./internal/fileproc ./internal/app ./integration'
+      - name: Test media CLIs in the built worker runtime
+        run: |
+          docker build --platform linux/amd64 --target file-runtime-tests -t loom:file-runtime-tests .
+          docker run --rm --platform linux/amd64 --network host -e CLX_TEST_DATABASE_DSN loom:file-runtime-tests
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/loom
       - run: sh scripts/install-tools.sh
       - run: bin/golangci-lint config verify
@@ -52,6 +50,19 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_DB: clx_test
+          POSTGRES_USER: clx
+          POSTGRES_PASSWORD: isolated-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clx -d clx_test"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      CLX_TEST_DATABASE_DSN: postgres://clx:isolated-ci-only@localhost:5432/clx_test?sslmode=disable
     concurrency:
       group: dockerhub-loom-main
       cancel-in-progress: false
@@ -80,6 +91,7 @@ jobs:
           test -n "$DOCKER_HUB_ACCESS_TOKEN" || { echo "::error::Missing DOCKER_HUB_ACCESS_TOKEN"; exit 1; }
           test -n "$SERVER_REPO_TOKEN" || { echo "::error::Missing SERVER_REPO_TOKEN"; exit 1; }
       - name: Set up Docker Buildx
+        id: buildx
         if: steps.current.outputs.publish == 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to Docker Hub
@@ -88,11 +100,26 @@ jobs:
         with:
           username: complynx
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Build publication media test runtime
+        if: steps.current.outputs.publish == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          target: file-runtime-tests
+          platforms: linux/amd64
+          load: true
+          tags: loom:file-runtime-tests-publish
+          cache-from: type=gha,scope=file-worker
+      - name: Test publication media runtime before pushing images
+        if: steps.current.outputs.publish == 'true'
+        run: docker run --rm --platform linux/amd64 --network host -e CLX_TEST_DATABASE_DSN loom:file-runtime-tests-publish
       - name: Build and push Docker image
         id: image
         if: steps.current.outputs.publish == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           platforms: linux/amd64
           push: true
@@ -109,6 +136,7 @@ jobs:
         if: steps.current.outputs.publish == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           target: file-worker
           platforms: linux/amd64

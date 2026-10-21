@@ -58,6 +58,17 @@ normal CI verifies module checksums, runs behavioral/race tests, lint, vulnerabi
 scanning and both container builds. Green checks are required before a human merge.
 No automatic merge is enabled.
 
+Alpine base images remain pinned by tag and digest under Dependabot. APK packages
+resolve without version pins from that Alpine branch. The media test target
+inherits the built worker runtime instead of installing a second package set in
+a Go image. Installed versions and matching sources are recorded in the worker;
+see [file-worker distribution](file-worker.md).
+
+The publication job repeats the media gate against its own resolved runtime
+before either image is pushed. It builds the test target and worker with the
+same Buildx builder and reuses the tested `file-runtime` layer. This prevents a
+different runner's package resolution or cache from bypassing the media tests.
+
 ## Manual license review
 
 Agents/operators review licenses periodically and before selecting new direct

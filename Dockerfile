@@ -1,4 +1,4 @@
-FROM golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS build
 WORKDIR /src
 ENV GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 COPY go.mod go.sum ./
@@ -8,16 +8,27 @@ RUN go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/loom ./cmd/loom
 RUN mkdir -p /out/run/clx-sandbox /out/data/artifacts && chmod 0770 /out/run/clx-sandbox /out/data/artifacts
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS file-runtime
 ENV XDG_CACHE_HOME=/tmp/loom-font-cache
-COPY examples/file-worker.packages /licenses/runtime/packages.lock
-RUN tr -d '\r' </licenses/runtime/packages.lock >/tmp/packages.lock \
-    && apk add --no-cache $(cat /tmp/packages.lock) \
+COPY examples/file-worker.packages /licenses/runtime/packages.requested
+RUN tr -d '\r' </licenses/runtime/packages.requested >/tmp/packages.requested \
+    && apk add --no-cache $(cat /tmp/packages.requested) \
     && mkdir -p /run/loom-files /licenses/runtime \
     && chmod 0770 /run/loom-files && chown 10001:10001 /run/loom-files \
     && apk info --all >/licenses/runtime/packages.txt \
     && apk query --installed --format json --fields name,version,origin,commit,license '*' >/licenses/runtime/packages.json \
+    && apk list --installed --manifest | awk '{print $1 "=" $2}' | sort >/licenses/runtime/packages.lock \
     && ffmpeg -L >/licenses/runtime/ffmpeg-license.txt 2>&1 \
     && ffmpeg -buildconf >/licenses/runtime/ffmpeg-buildconf.txt 2>&1 \
-    && rm /tmp/packages.lock
+    && rm /tmp/packages.requested
+
+# Static test binaries run with the same media packages as the worker.
+FROM build AS file-runtime-test-build
+RUN mkdir -p /out/tests \
+    && go test -c -tags=integration -o /out/tests/ ./internal/fileproc ./internal/app ./integration
+FROM file-runtime AS file-runtime-tests
+COPY --from=file-runtime-test-build /out/tests/ /tests/
+COPY examples/manifest.json /tests/examples/manifest.json
+RUN mkdir -p /tests/internal/fileproc /tests/internal/app /tests/integration
+CMD ["sh", "-ec", ": \"${CLX_TEST_DATABASE_DSN:?Set a disposable PostgreSQL DSN}\"; for cli in ffmpeg ffprobe pdfinfo pdftoppm pdftotext; do command -v \"$cli\"; done; for package in internal/fileproc internal/app integration; do (cd /tests/$package && /tests/$(basename $package).test -test.v -test.parallel=4 -test.timeout=10m); done"]
 
 # Verified sources gate worker builds; the export target exposes the same bundle.
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS file-worker-source-build

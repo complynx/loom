@@ -67,7 +67,21 @@ network created above so Docker DNS can resolve the database container. The
 wrapper runs race tests and enables the integration tag only when the DSN is set.
 It uses shared named module/build cache volumes.
 
-The [CI workflow](../../.github/workflows/ci.yml) also tests pinned Poppler/FFmpeg in Linux. Ordinary tests without these CLIs do not accept the worker boundary. Consult [integration fixtures](../../integration/README.md) for the fake authority/provider limits.
+The [CI workflow](../../.github/workflows/ci.yml) runs media tests in the built
+worker runtime, using static test binaries and the same media packages and fonts
+as `file-runtime`. To run that gate against the disposable database above:
+
+```sh
+docker build --platform linux/amd64 --target file-runtime-tests -t loom:file-runtime-tests .
+docker run --rm --platform linux/amd64 --network loom-qa-network \
+  -e CLX_TEST_DATABASE_DSN='postgres://loom_qa:disposable-qa-only@loom-qa-postgres:5432/loom_qa?sslmode=disable' \
+  loom:file-runtime-tests
+```
+
+This gate requires the DSN and media CLIs. It runs without the race detector;
+the ordinary Linux test job runs race tests separately. Ordinary tests without
+these CLIs do not accept the worker boundary. Consult
+[integration fixtures](../../integration/README.md) for the fake authority/provider limits.
 
 Inspect verbose test output for skips when verifying a specific boundary. A zero
 exit status with missing PostgreSQL or media tools does not prove that boundary.

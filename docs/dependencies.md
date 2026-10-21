@@ -21,7 +21,10 @@ Build versions and pins are in [go.mod](../go.mod), [Dockerfile](../Dockerfile),
 [tool installer](../scripts/install-tools.sh) and [CI](../.github/workflows/ci.yml).
 The tool installer uses full commits. Base images use digests and CI actions use
 commit SHAs. Operator-facing image tags are described in [CI delivery](ci.md).
-Native media packages have a separate [package list](../examples/file-worker.packages).
+Native media packages have a separate [package list](../examples/file-worker.packages)
+without version pins. They resolve from the pinned Alpine image's repositories;
+the image records exact installed versions and matching sources. See
+[file-worker distribution](file-worker.md) for cache and rollback behavior.
 
 ## License policy
 
