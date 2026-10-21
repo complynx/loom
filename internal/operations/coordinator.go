@@ -281,7 +281,7 @@ func (c *Coordinator) Dispatch(
 		return op, ErrBinding
 	}
 	if err = authorize(ctx, op); err != nil {
-		return op, err
+		return c.invalidateAfterFailure(ctx, op, err)
 	}
 	tx, err := c.Pool.Begin(ctx)
 	if err != nil {
@@ -350,14 +350,11 @@ func (c *Coordinator) executeIntent(
 	// Auth may have changed while waiting for the database lock. Check again
 	// after the intent commit, immediately before the remote side effect.
 	if err := authorize(ctx, op); err != nil {
-		op.State = stateFailed
-		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
-			return op, persistErr
-		}
-		return op, err
+		return c.invalidateUnsentFailure(ctx, op, err)
 	}
 	if !op.Preparation.ExpiresAt.After(time.Now()) {
 		op.State = stateFailed
+		op.FailureCode = "operation_expired"
 		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
 			return op, persistErr
 		}
@@ -370,6 +367,7 @@ func (c *Coordinator) executeIntent(
 		Scan(&canDispatch)
 	if err != nil || !canDispatch {
 		op.State = stateFailed
+		op.FailureCode = "execution_blocked"
 		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
 			return op, persistErr
 		}
@@ -379,11 +377,26 @@ func (c *Coordinator) executeIntent(
 		return op, ErrLease
 	}
 	result, callErr := backend.Execute(ctx, op)
+	return c.saveExecutionResult(ctx, op, result, callErr)
+}
+
+func (c *Coordinator) saveExecutionResult(
+	ctx context.Context,
+	op Operation,
+	result Result,
+	callErr error,
+) (Operation, error) {
+	if _, unsent := errors.AsType[*NotDispatchedError](callErr); unsent {
+		return c.invalidateUnsentFailure(ctx, op, callErr)
+	}
 	if callErr != nil {
 		op.State = stateUnknown
 	} else {
 		op.State = outcome(result.State)
 		op.Result = result.Output
+		if op.State == stateFailed {
+			op.FailureCode = "backend_rejected"
+		}
 	}
 	persistErr := c.saveDetached(ctx, op, "dispatching")
 	if persistErr != nil {

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/operations"
 )
 
 func (s *Store) ClaimRun(ctx context.Context, rid, owner string, duration time.Duration) (domain.Run, error) {
@@ -615,6 +616,13 @@ func (s *Store) transition(
 	}
 	if state == domain.Completed {
 		if err := validateCompletion(ctx, tx, r); err != nil {
+			return err
+		}
+	}
+	if state == domain.WaitingAuth {
+		var err error
+		r.Approval, err = operations.InvalidateConsentTx(ctx, tx, rid)
+		if err != nil {
 			return err
 		}
 	}

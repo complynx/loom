@@ -202,6 +202,7 @@ type Question struct {
 	Answer    *RunInput `json:"answer,omitempty"`
 }
 type Approval struct {
+	FailureCode      string          `json:"failure_code,omitempty"`
 	ConfirmationText string          `json:"confirmation_text,omitempty"`
 	ReplyMode        string          `json:"reply_mode"`
 	ConsentRevision  int64           `json:"consent_revision,omitempty"`

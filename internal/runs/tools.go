@@ -124,7 +124,9 @@ func (e *Engine) executeModuleCall(
 		return nil, false, err
 	}
 	if approval != nil {
-		approval.Call = &domain.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
+		if approval.Call == nil {
+			approval.Call = &domain.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
+		}
 		return nil, true, e.askApproval(ctx, run, *approval)
 	}
 	if !json.Valid(result) {

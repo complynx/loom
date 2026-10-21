@@ -51,6 +51,7 @@ type Operation struct {
 
 	ID           string          `json:"operation_id"`
 	State        string          `json:"state"`
+	FailureCode  string          `json:"failure_code,omitempty"`
 	CancelReason string          `json:"cancel_reason,omitempty"`
 	ArgumentHash string          `json:"argument_hash"`
 	BindingHash  string          `json:"binding_hash"`
@@ -77,6 +78,12 @@ type Lease struct {
 	Fence int64
 }
 type Authorize func(context.Context, Operation) error
+
+// NotDispatchedError proves that backend execution stopped before its RPC.
+type NotDispatchedError struct{ Cause error }
+
+func (e *NotDispatchedError) Error() string { return "operation was not dispatched" }
+func (e *NotDispatchedError) Unwrap() error { return e.Cause }
 
 // Approval binds approval to the rendered operation, including preconditions.
 type Approval struct {
