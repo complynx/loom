@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/dop251/goja v0.0.0-20261010130053-73dc7edc278f
-	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.29.0
