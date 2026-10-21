@@ -21,8 +21,11 @@ func (s *Store) SweepQueueExhaustion(ctx context.Context, batch int) (int, error
 		recovered = 0
 		rows, err := tx.Query(ctx, `SELECT id::text FROM runs r
    WHERE state IN ('queued','running') AND (lease_until IS NULL OR lease_until<=clock_timestamp())
-   AND EXISTS(SELECT 1 FROM river_job j WHERE j.kind='clx_execute_run' AND j.args->>'run_id'=r.id::text AND j.state IN ('discarded','cancelled'))
-   AND NOT EXISTS(SELECT 1 FROM river_job j WHERE j.kind='clx_execute_run' AND j.args->>'run_id'=r.id::text AND j.state IN ('available','retryable','scheduled','running','pending'))
+   AND EXISTS(SELECT 1 FROM river_job j WHERE j.kind='clx_execute_run' AND j.args->>'run_id'=r.id::text AND j.state IN ('discarded','cancelled')
+     AND NOT EXISTS(SELECT 1 FROM river_job newer WHERE newer.kind=j.kind AND newer.args->>'run_id'=r.id::text AND newer.id>j.id))
+   AND NOT EXISTS(SELECT 1 FROM river_job j WHERE j.kind='clx_execute_run' AND j.args->>'run_id'=r.id::text
+     AND (j.state IN ('available','retryable','scheduled','pending')
+       OR (j.state='running' AND COALESCE((j.args->>'delivery_fence')::bigint,-1)>=r.fence)))
    ORDER BY updated_at,id LIMIT $1 FOR UPDATE OF r SKIP LOCKED`, batch)
 		if err != nil {
 			return err
@@ -48,7 +51,9 @@ func (s *Store) SweepQueueExhaustion(ctx context.Context, batch int) (int, error
 func recoverExhaustedRun(ctx context.Context, tx pgx.Tx, id string) (bool, error) {
 	var err error
 	var live, uncertain bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM river_job WHERE kind='clx_execute_run' AND args->>'run_id'=$1 AND state IN ('available','retryable','scheduled','running','pending'))`, id).
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM river_job j JOIN runs r ON r.id::text=j.args->>'run_id'
+ WHERE r.id=$1 AND j.kind='clx_execute_run' AND (j.state IN ('available','retryable','scheduled','pending')
+ OR (j.state='running' AND COALESCE((j.args->>'delivery_fence')::bigint,-1)>=r.fence)))`, id).
 		Scan(&live); err != nil {
 		return false, err
 	}

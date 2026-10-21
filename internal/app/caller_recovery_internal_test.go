@@ -39,6 +39,7 @@ type callerRecoveryFixture struct {
 	principal       domain.Principal
 	session         domain.AuthSession
 	run             domain.Run
+	endpoint        modules.Endpoint
 }
 
 func (f *callerRecoveryFixture) serveIdentity(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +107,11 @@ func newCallerRecoveryFixture(t *testing.T) *callerRecoveryFixture {
 	t.Cleanup(server.Close)
 	address, err := url.Parse(server.URL)
 	require.NoError(t, err)
+	f.endpoint = modules.Endpoint{
+		ContainerID: "shuttle",
+		URI:         "http://registered:" + address.Port() + "/manifest",
+		Address:     "127.0.0.1",
+	}
 	source := modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
 		if !f.present.Load() {
 			return nil, nil
