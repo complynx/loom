@@ -115,7 +115,7 @@ func (t runtimeTools) tools(
 				) + ". Approval is collected separately when required.",
 				Strict: false,
 				Parameters: json.RawMessage(
-					`{"type":"object","properties":{"module":{"type":"string"},"method":{"type":"string"},"arguments":{"type":"object"},"confirmation_text":{"type":"string","description":"Positive confirmation caption in the user's language. State the concrete action. Required for critical actions; empty otherwise allowed."}},"required":["module","method","arguments","confirmation_text"],"additionalProperties":false}`,
+					`{"type":"object","properties":{"module":{"type":"string"},"method":{"type":"string"},"arguments":{"type":"object"},"resume_operation_id":{"type":"string","maxLength":256,"description":"Optional original backend preparation ID. Requires SupportsOperationAdoption. Inspect only; never creates another preparation. Use arguments:{} to load original terms, or exact original arguments. Fresh consent is required."},"confirmation_text":{"type":"string","description":"Positive confirmation caption in the user's language. State the concrete action. Required for critical actions; empty otherwise allowed."}},"required":["module","method","arguments","confirmation_text"],"additionalProperties":false}`,
 				),
 			},
 		)

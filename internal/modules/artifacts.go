@@ -46,7 +46,7 @@ func (r *Registry) importArtifacts(
 	guard func(context.Context) error,
 	principal func(context.Context) (Principal, error),
 ) ([]json.RawMessage, error) {
-	if len(raw) == 0 || string(raw) == "null" {
+	if len(raw) == 0 || string(raw) == jsonNull {
 		return nil, nil
 	}
 	var descriptors []ArtifactDescriptor

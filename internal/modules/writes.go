@@ -17,8 +17,9 @@ import (
 const maxPreparationDescriptionBytes = 4000
 
 type Descriptor struct {
-	ServiceID, ContractHash string
-	Method                  Method
+	SupportsOperationAdoption bool
+	ServiceID, ContractHash   string
+	Method                    Method
 }
 
 // Describe resolves the current permission-filtered contract for a structured write tool.
@@ -27,7 +28,12 @@ func (r *Registry) Describe(ctx context.Context, p Principal, module, method str
 	if err != nil {
 		return Descriptor{}, err
 	}
-	return Descriptor{ServiceID: s.manifest.ServiceID, ContractHash: contractHash(s, module, m), Method: m}, nil
+	return Descriptor{
+		ServiceID:                 s.manifest.ServiceID,
+		ContractHash:              contractHash(s, module, m),
+		Method:                    m,
+		SupportsOperationAdoption: s.inspectPath != "",
+	}, nil
 }
 
 // WriteBackend is used only by operations.Coordinator, never a JavaScript proxy.
@@ -68,6 +74,9 @@ func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (reg
 		m.Confirmation.Mode != op.Mode {
 		return registered{}, Method{}, Principal{}, operations.ErrBinding
 	}
+	if op.BackendOperationID != "" {
+		return s, m, p, nil
+	}
 	input, err := compileSchema(m.InputSchema)
 	if err != nil {
 		return registered{}, Method{}, Principal{}, err
@@ -98,7 +107,7 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 	envelope, _ := json.Marshal(
 		map[string]any{
 			fieldProtocolVersion: 1,
-			fieldOperationID:     op.ID,
+			fieldOperationID:     op.BackendID(),
 			fieldRunID:           op.RunID,
 			fieldArguments:       op.Arguments,
 		},
@@ -127,7 +136,7 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 	if err = json.Unmarshal(raw, &response); err != nil {
 		return operations.Preparation{}, err
 	}
-	if response.Status != "prepared" || response.OperationID != op.ID || !response.ExpiresAt.After(time.Now()) ||
+	if response.Status != statePrepared || response.OperationID != op.ID || !response.ExpiresAt.After(time.Now()) ||
 		len(response.Description) > maxPreparationDescriptionBytes {
 		return operations.Preparation{}, operations.ErrBinding
 	}
@@ -152,11 +161,11 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 	if err = schema.Validate(preparedDoc); err != nil {
 		return operations.Preparation{}, err
 	}
-	if op.Mode == "service_id" && response.Token == "" {
+	if op.Mode == confirmationServiceID && response.Token == "" {
 		return operations.Preparation{}, operations.ErrBinding
 	}
 	if op.Mode == "exact_parameters" &&
-		(len(response.Arguments) == 0 || len(response.Preconditions) == 0 || string(response.Preconditions) == "null") {
+		(len(response.Arguments) == 0 || len(response.Preconditions) == 0 || string(response.Preconditions) == jsonNull) {
 		return operations.Preparation{}, operations.ErrBinding
 	}
 	return operations.Preparation{
@@ -214,10 +223,10 @@ func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (res
 	envelope, _ := json.Marshal(
 		map[string]any{
 			fieldProtocolVersion: 1,
-			fieldOperationID:     op.ID,
+			fieldOperationID:     op.BackendID(),
 			fieldRunID:           op.RunID,
 			fieldArguments:       arguments,
-			"idempotency_key":    op.ID,
+			"idempotency_key":    op.BackendID(),
 			"confirmation":       confirmation,
 		},
 	)
@@ -246,7 +255,7 @@ func (b WriteBackend) Status(ctx context.Context, op operations.Operation) (oper
 	if err != nil {
 		return operations.Result{}, err
 	}
-	payload, _ := json.Marshal(map[string]any{fieldProtocolVersion: 1, fieldOperationID: op.ID})
+	payload, _ := json.Marshal(map[string]any{fieldProtocolVersion: 1, fieldOperationID: op.BackendID()})
 	raw, err := invoke(
 		ctx,
 		s,
@@ -298,8 +307,8 @@ func decodeWriteResult(
 			return operations.Result{State: stateUnknown}, err
 		}
 		return operations.Result{State: stateSucceeded, Output: response.Result}, nil
-	case "accepted", "pending":
-		return operations.Result{State: "pending"}, nil
+	case "accepted", statePending:
+		return operations.Result{State: statePending}, nil
 	case "rejected":
 		if !statusLookup {
 			return operations.Result{State: stateFailed}, nil
@@ -317,10 +326,10 @@ func decodeWriteResult(
 func contractHash(service registered, module string, method Method) string {
 	raw, _ := json.Marshal(
 		map[string]any{
-			"service_id":    service.manifest.ServiceID,
-			"module":        module,
-			"manifest_hash": service.hash,
-			"method":        method,
+			confirmationServiceID: service.manifest.ServiceID,
+			"module":              module,
+			"manifest_hash":       service.hash,
+			"method":              method,
 		},
 	)
 	var document any
@@ -341,7 +350,7 @@ func (b WriteBackend) finishWriteResult(
 	raw json.RawMessage,
 	status bool,
 ) (operations.Result, error) {
-	result, err := decodeWriteResult(raw, op.ID, m.OutputSchema, status)
+	result, err := decodeWriteResult(raw, op.BackendID(), m.OutputSchema, status)
 	if err != nil || result.State != stateSucceeded {
 		return result, err
 	}

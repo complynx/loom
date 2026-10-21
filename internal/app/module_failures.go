@@ -42,6 +42,8 @@ func (b *ModuleBridge) moduleCallFailure(
 	}
 	code := "dependency_unavailable"
 	switch {
+	case errors.Is(failure, operations.ErrAdoptionUnsupported):
+		code = "operation_adoption_unsupported"
 	case errors.Is(failure, identity.ErrUnauthorized), errors.Is(failure, modules.ErrForbidden):
 		code = "authority_changed"
 	case errors.Is(failure, operations.ErrBinding):
@@ -60,6 +62,9 @@ func (b *ModuleBridge) moduleCallFailure(
 	if found {
 		response["operation_id"] = op.ID
 		response["state"] = op.State
+		if op.BackendOperationID != "" {
+			response["backend_operation_id"] = op.BackendOperationID
+		}
 	}
 	raw, err := json.Marshal(response)
 	if err != nil {
@@ -79,7 +84,8 @@ func (b *ModuleBridge) moduleCallFailure(
 			text = fmt.Sprintf("Confirm %s.%s", op.Module, op.Method)
 		}
 		return raw, &domain.Approval{
-			ID: op.ID, OperationID: op.ID, Method: op.Module + "." + op.Method,
+			BackendOperationID: op.BackendOperationID,
+			ID:                 op.ID, OperationID: op.ID, Method: op.Module + "." + op.Method,
 			Arguments: op.Preparation.Arguments, ArgumentHash: op.BindingHash, Text: text,
 			ExpiresAt: op.Preparation.ExpiresAt, ReplyMode: fresh.Interaction.ReplyMode,
 			FailureCode: code, Call: &domain.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments},

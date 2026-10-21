@@ -4,6 +4,10 @@
 
 [Guide index](../modules.md)
 
+For an existing native preparation, use [operation adoption](operation-adoption.md).
+It requires a permission-checked inspector and preserves the original backend
+identity and terms. Repeating prepare is not an adoption mechanism.
+
 ## RPC
 
 Module endpoints use POST and an absolute path on the registered service origin. The broker supplies `Authorization: Bearer <delegated token>`; a subject in the request body cannot replace credentials. Read and prepare requests contain:

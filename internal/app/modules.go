@@ -85,15 +85,17 @@ func (b *ModuleBridge) Call(
 ) (json.RawMessage, *domain.Approval, error) {
 	ctx = identity.RequireFresh(ctx)
 	var args struct {
-		ConfirmationText string          `json:"confirmation_text,omitempty"`
-		Module           string          `json:"module"`
-		Method           string          `json:"method"`
-		Arguments        json.RawMessage `json:"arguments"`
+		ResumeOperationID string          `json:"resume_operation_id,omitempty"`
+		ConfirmationText  string          `json:"confirmation_text,omitempty"`
+		Module            string          `json:"module"`
+		Method            string          `json:"method"`
+		Arguments         json.RawMessage `json:"arguments"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(call.Arguments))
 	decoder.DisallowUnknownFields()
 	validArguments := decoder.Decode(&args) == nil
-	if !validArguments || args.Module == "" || args.Method == "" || !json.Valid(args.Arguments) {
+	if !validArguments || args.Module == "" || args.Method == "" || !json.Valid(args.Arguments) ||
+		len(args.ResumeOperationID) > 256 {
 		return json.RawMessage(`{"error":"invalid_module_call"}`), nil, nil
 	}
 	fresh, credential, err := b.authorize(ctx, run)
@@ -108,6 +110,9 @@ func (b *ModuleBridge) Call(
 	}
 	if descriptor.Method.Effect == builtinReadMethod {
 		return json.RawMessage(`{"error":"use_script_for_reads"}`), nil, nil
+	}
+	if args.ResumeOperationID != "" && !descriptor.SupportsOperationAdoption {
+		return json.RawMessage(`{"error":"operation_adoption_unsupported"}`), nil, nil
 	}
 	if len(args.ConfirmationText) > 2000 || (descriptor.Method.Confirmation.ReplyMode == domain.ReplyModeProtocol &&
 		strings.TrimSpace(args.ConfirmationText) == "") {
@@ -127,12 +132,13 @@ func (b *ModuleBridge) Call(
 		Guard: func(c context.Context) error { return b.guard(c, run) },
 	}
 	request := operations.Request{
-		RunID:     run.ID,
-		CallID:    call.ID,
-		Module:    args.Module,
-		Method:    args.Method,
-		Arguments: args.Arguments,
-		Mode:      descriptor.Method.Confirmation.Mode,
+		BackendOperationID: args.ResumeOperationID,
+		RunID:              run.ID,
+		CallID:             call.ID,
+		Module:             args.Module,
+		Method:             args.Method,
+		Arguments:          args.Arguments,
+		Mode:               descriptor.Method.Confirmation.Mode,
 		Binding: operations.Binding{
 			UserID:       run.OwnerID,
 			Issuer:       p.Issuer,
@@ -284,13 +290,14 @@ func (b *ModuleBridge) resolveOperation(
 			text = fmt.Sprintf("Confirm %s.%s", operation.Module, operation.Method)
 		}
 		approval := &domain.Approval{
-			ID:           operation.ID,
-			OperationID:  operation.ID,
-			Method:       operation.Module + "." + operation.Method,
-			Arguments:    operation.Preparation.Arguments,
-			ArgumentHash: operation.BindingHash,
-			Text:         text,
-			ExpiresAt:    operation.Preparation.ExpiresAt,
+			BackendOperationID: operation.BackendOperationID,
+			ID:                 operation.ID,
+			OperationID:        operation.ID,
+			Method:             operation.Module + "." + operation.Method,
+			Arguments:          operation.Preparation.Arguments,
+			ArgumentHash:       operation.BindingHash,
+			Text:               text,
+			ExpiresAt:          operation.Preparation.ExpiresAt,
 		}
 		if run.Approval != nil && run.Approval.OperationID == operation.ID && run.Approval.Decision == "" {
 			approval.ID = run.Approval.ID
