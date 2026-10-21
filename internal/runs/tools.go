@@ -125,7 +125,7 @@ func (e *Engine) executeModuleCall(
 	}
 	if approval != nil {
 		approval.Call = &domain.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
-		return nil, true, e.store.AskApproval(ctx, run.ID, e.opts.Owner, run.Fence, *approval)
+		return nil, true, e.askApproval(ctx, run, *approval)
 	}
 	if !json.Valid(result) {
 		return nil, false, errors.New("invalid module result")
@@ -220,7 +220,7 @@ func (e *Engine) executeQuestionCall(
 		AllowText: args.AllowText,
 		ExpiresAt: time.Now().Add(time.Duration(timeout) * time.Second),
 	}
-	return nil, true, e.store.AskQuestion(ctx, run.ID, e.opts.Owner, run.Fence, question)
+	return nil, true, e.askQuestion(ctx, run, question)
 }
 
 const (

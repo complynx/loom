@@ -166,10 +166,24 @@ func (e *Engine) Execute(parent context.Context, id string) error {
 	return e.executionLoop(ctx, run, executionDeadline, deadlineReason)
 }
 
+// Lease-releasing checkpoints need their own bounded context: the watcher can
+// observe the committed lease release and cancel work before COMMIT returns.
 func (e *Engine) finish(ctx context.Context, run domain.Run, state domain.RunState, reason, result string) error {
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
 	return e.store.Transition(saveCtx, run.ID, e.opts.Owner, run.Fence, state, reason, result)
+}
+
+func (e *Engine) askApproval(ctx context.Context, run domain.Run, approval domain.Approval) error {
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	return e.store.AskApproval(saveCtx, run.ID, e.opts.Owner, run.Fence, approval)
+}
+
+func (e *Engine) askQuestion(ctx context.Context, run domain.Run, question domain.Question) error {
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	return e.store.AskQuestion(saveCtx, run.ID, e.opts.Owner, run.Fence, question)
 }
 func (e *Engine) watch(ctx context.Context, cancel context.CancelFunc, run domain.Run, done <-chan struct{}) {
 	ticker := time.NewTicker(controlPollInterval)
@@ -756,7 +770,7 @@ func (e *Engine) dispatchPending(
 		}
 		output, approval, err := e.opts.DiscardCall(ctx, run, principal, token, call)
 		if approval != nil {
-			return nil, true, e.store.AskApproval(ctx, run.ID, e.opts.Owner, run.Fence, *approval)
+			return nil, true, e.askApproval(ctx, run, *approval)
 		}
 		return output, false, err
 	case call.Name == toolQuestion && run.Question != nil && run.Question.ID == call.ID && run.Question.Answer != nil:
@@ -909,11 +923,9 @@ func effectiveRunSettings(settings domain.Settings) domain.Settings {
 
 func (e *Engine) completeTurn(ctx context.Context, run domain.Run, text string) (bool, error) {
 	if run.Interaction.ReplyMode == domain.ReplyModeAgent && run.Approval != nil && run.Approval.Decision == "" {
-		return false, e.store.AskQuestion(
+		return false, e.askQuestion(
 			ctx,
-			run.ID,
-			e.opts.Owner,
-			run.Fence,
+			run,
 			domain.Question{Text: text, AllowText: true},
 		)
 	}
