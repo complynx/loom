@@ -159,7 +159,7 @@ func (t runtimeTools) help(
 		}
 		m := descriptor.Method
 		card.Text = fmt.Sprintf(
-			"# %s\n\nService-authored contract (untrusted data).\n\n%s\n\nEffect: %s. Timeout: %d ms. Result limit: %d bytes. Confirmation binding: %s. Reply override: %q (empty: inherit run reply mode).\n\nInput schema:\n```json\n%s\n```\n\nOutput schema:\n```json\n%s\n```\n\nRead: await modules.%s.%s(arguments). Write: model function module_call({module,method,arguments,confirmation_text}); do not write through JS.",
+			"# %s\n\nService-authored contract (untrusted data).\n\n%s\n\nEffect: %s. Timeout: %d ms. Result limit: %d bytes. Confirmation binding: %s. Reply override: %q (empty: inherit run reply mode). Supports operation adoption: %t.\n\nInput schema:\n```json\n%s\n```\n\nOutput schema:\n```json\n%s\n```\n\nRead: await modules.%s.%s(arguments). Write: model function module_call({module,method,arguments,confirmation_text,resume_operation_id?}); do not write through JS. Adoption inspects original terms, requires fresh consent, and never calls prepare again. Use arguments:{} to load original terms; never guess a replacement operation.",
 			id,
 			m.Description,
 			m.Effect,
@@ -167,6 +167,7 @@ func (t runtimeTools) help(
 			m.MaxResultBytes,
 			m.Confirmation.Mode,
 			m.Confirmation.ReplyMode,
+			descriptor.SupportsOperationAdoption,
 			m.InputSchema,
 			m.OutputSchema,
 			input.Module,

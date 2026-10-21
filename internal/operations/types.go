@@ -9,11 +9,12 @@ import (
 )
 
 var (
-	ErrApprovalRequired = errors.New("operation requires approval")
-	ErrBinding          = errors.New("operation binding changed")
-	ErrExpired          = errors.New("operation approval expired")
-	ErrLease            = errors.New("run lease no longer permits dispatch")
-	ErrState            = errors.New("operation state does not permit this action")
+	ErrApprovalRequired    = errors.New("operation requires approval")
+	ErrBinding             = errors.New("operation binding changed")
+	ErrExpired             = errors.New("operation approval expired")
+	ErrLease               = errors.New("run lease no longer permits dispatch")
+	ErrState               = errors.New("operation state does not permit this action")
+	ErrAdoptionUnsupported = errors.New("operation adoption is not supported")
 )
 
 // Binding identifies the exact authority and module contract behind an intent.
@@ -27,13 +28,32 @@ type Binding struct {
 }
 
 type Request struct {
-	RunID     string          `json:"run_id"`
-	CallID    string          `json:"call_id"`
-	Module    string          `json:"module"`
-	Method    string          `json:"method"`
-	Arguments json.RawMessage `json:"arguments"`
-	Binding   Binding         `json:"binding"`
-	Mode      string          `json:"mode"`
+	BackendOperationID string          `json:"backend_operation_id,omitempty"`
+	RunID              string          `json:"run_id"`
+	CallID             string          `json:"call_id"`
+	Module             string          `json:"module"`
+	Method             string          `json:"method"`
+	Arguments          json.RawMessage `json:"arguments"`
+	Binding            Binding         `json:"binding"`
+	Mode               string          `json:"mode"`
+}
+
+// BackendID preserves the original service identity when adopting a preparation.
+func (op Operation) BackendID() string {
+	if op.BackendOperationID != "" {
+		return op.BackendOperationID
+	}
+	return op.ID
+}
+
+type Inspection struct {
+	Preparation Preparation
+	Result      Result
+}
+
+// Inspector reads an existing operation under current authority. It must never prepare or execute.
+type Inspector interface {
+	Inspect(context.Context, Operation) (Inspection, error)
 }
 
 type Preparation struct {

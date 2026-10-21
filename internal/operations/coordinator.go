@@ -23,6 +23,7 @@ const (
 	stateApproved      = "approved"
 	stateRejected      = "rejected"
 	stateUnknown       = "unknown"
+	statePending       = "pending"
 	defaultApprovalTTL = 5 * time.Minute
 )
 
@@ -93,6 +94,11 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 	if req.Mode != "none" && req.Mode != "service_id" && req.Mode != "exact_parameters" {
 		return Operation{}, ErrBinding
 	}
+	if req.BackendOperationID != "" {
+		if _, supported := backend.(Inspector); !supported {
+			return Operation{}, ErrAdoptionUnsupported
+		}
+	}
 	args, err := canonical(req.Arguments)
 	if err != nil {
 		return Operation{}, err
@@ -125,21 +131,39 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 	if tag.RowsAffected() == 0 {
 		return c.priorPreparation(ctx, req)
 	}
-	prep, err := backend.Prepare(ctx, op)
+	inspection, err := inspectOrPrepare(ctx, op, backend)
 	if err != nil {
 		op.State = stateFailed
+		if op.BackendOperationID != "" && !errors.Is(err, ErrBinding) && !errors.Is(err, ErrExpired) &&
+			!errors.Is(err, ErrAdoptionUnsupported) {
+			op.State = stateUnknown
+		}
 		_ = c.saveDetached(ctx, op, statePreparing)
 		return op, err
 	}
-	prep, err = c.normalizePreparation(op, prep)
+	return c.savePreparation(ctx, op, inspection)
+}
+
+func (c *Coordinator) savePreparation(ctx context.Context, op Operation, inspection Inspection) (Operation, error) {
+	prep := inspection.Preparation
+	var err error
+	switch inspection.Result.State {
+	case statePrepared, "succeeded", statePending, stateUnknown, stateFailed:
+	default:
+		return Operation{}, ErrState
+	}
+	if inspection.Result.State == statePrepared {
+		prep, err = c.normalizePreparation(op, prep)
+	}
 	if err != nil {
 		op.State = stateFailed
 		_ = c.saveDetached(ctx, op, statePreparing)
 		return op, err
 	}
 	op.Preparation = prep
-	op.State = statePrepared
-	if req.Mode == "none" {
+	op.State = inspection.Result.State
+	op.Result = inspection.Result.Output
+	if op.Mode == "none" && op.BackendOperationID == "" {
 		op.State = stateApproved
 	}
 	op.BindingHash, err = seal(op)
@@ -150,6 +174,18 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 		return Operation{}, err
 	}
 	return op, nil
+}
+
+func inspectOrPrepare(ctx context.Context, op Operation, backend Backend) (Inspection, error) {
+	if op.BackendOperationID != "" {
+		inspector, supported := backend.(Inspector)
+		if !supported {
+			return Inspection{}, ErrAdoptionUnsupported
+		}
+		return inspector.Inspect(ctx, op)
+	}
+	prep, err := backend.Prepare(ctx, op)
+	return Inspection{Preparation: prep, Result: Result{State: statePrepared}}, err
 }
 
 func (c *Coordinator) Get(ctx context.Context, id string) (Operation, error) {
@@ -407,7 +443,7 @@ func (c *Coordinator) saveExecutionResult(
 
 func outcome(state string) string {
 	switch state {
-	case "succeeded", stateFailed, "pending":
+	case "succeeded", stateFailed, statePending:
 		return state
 	default:
 		return stateUnknown
@@ -421,7 +457,7 @@ func (c *Coordinator) Reconcile(ctx context.Context, id string, backend Backend)
 	if err != nil {
 		return op, err
 	}
-	if op.State != stateUnknown && op.State != "pending" && op.State != "dispatching" {
+	if op.State != stateUnknown && op.State != statePending && op.State != "dispatching" {
 		return op, nil
 	}
 	prior := op.State
@@ -540,7 +576,7 @@ func (c *Coordinator) normalizePreparation(op Operation, prep Preparation) (Prep
 		ttl = defaultApprovalTTL
 	}
 	maxExpiry := time.Now().UTC().Add(ttl)
-	if prep.ExpiresAt.IsZero() || prep.ExpiresAt.After(maxExpiry) {
+	if op.BackendOperationID == "" && (prep.ExpiresAt.IsZero() || prep.ExpiresAt.After(maxExpiry)) {
 		prep.ExpiresAt = maxExpiry
 	}
 	if !prep.ExpiresAt.After(time.Now()) {

@@ -68,14 +68,15 @@ type Principal struct {
 	Token                                                        string
 }
 type Tool struct {
-	ServiceID             string          `json:"ServiceID"`
-	Module                string          `json:"Module"`
-	Method                string          `json:"Method"`
-	Description           string          `json:"Description"`
-	Effect                string          `json:"Effect"`
-	ConfirmationReplyMode string          `json:"ConfirmationReplyMode,omitempty"`
-	ConfirmationMode      string          `json:"ConfirmationMode"`
-	InputSchema           json.RawMessage `json:"InputSchema"`
+	SupportsOperationAdoption bool            `json:"SupportsOperationAdoption,omitempty"`
+	ServiceID                 string          `json:"ServiceID"`
+	Module                    string          `json:"Module"`
+	Method                    string          `json:"Method"`
+	Description               string          `json:"Description"`
+	Effect                    string          `json:"Effect"`
+	ConfirmationReplyMode     string          `json:"ConfirmationReplyMode,omitempty"`
+	ConfirmationMode          string          `json:"ConfirmationMode"`
+	InputSchema               json.RawMessage `json:"InputSchema"`
 }
 type Confirmation struct {
 	ReplyMode   string `json:"reply_mode,omitempty"`
@@ -148,11 +149,12 @@ type Options struct {
 	ManifestLimit                       int64
 }
 type registered struct {
-	endpoint Endpoint
-	manifest Manifest
-	hash     string
-	fresh    time.Time
-	client   *http.Client
+	inspectPath string
+	endpoint    Endpoint
+	manifest    Manifest
+	hash        string
+	fresh       time.Time
+	client      *http.Client
 }
 type dynamicEntry struct {
 	methods []Method
@@ -905,14 +907,15 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 					tools = append(
 						tools,
 						Tool{
-							ServiceID:             s.manifest.ServiceID,
-							Module:                module.ID,
-							Method:                method.ID,
-							Description:           method.Description,
-							InputSchema:           method.InputSchema,
-							Effect:                method.Effect,
-							ConfirmationMode:      method.Confirmation.Mode,
-							ConfirmationReplyMode: method.Confirmation.ReplyMode,
+							ServiceID:                 s.manifest.ServiceID,
+							Module:                    module.ID,
+							Method:                    method.ID,
+							Description:               method.Description,
+							InputSchema:               method.InputSchema,
+							Effect:                    method.Effect,
+							ConfirmationMode:          method.Confirmation.Mode,
+							ConfirmationReplyMode:     method.Confirmation.ReplyMode,
+							SupportsOperationAdoption: s.inspectPath != "",
 						},
 					)
 				}
@@ -1027,7 +1030,7 @@ func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
 			failures = append(failures, e)
 			continue
 		}
-		manifest, e := r.decodeManifest(raw)
+		manifest, inspectPath, e := r.decodeEndpointManifest(response.Header, raw)
 		if e != nil {
 			failures = append(failures, e)
 			continue
@@ -1041,11 +1044,12 @@ func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
 		}
 		observed[manifest.ServiceID] = hash
 		next[manifest.ServiceID] = registered{
-			endpoint: ep,
-			manifest: manifest,
-			hash:     hash,
-			fresh:    time.Now(),
-			client:   client,
+			inspectPath: inspectPath,
+			endpoint:    ep,
+			manifest:    manifest,
+			hash:        hash,
+			fresh:       time.Now(),
+			client:      client,
 		}
 	}
 	return failures

@@ -202,23 +202,24 @@ type Question struct {
 	Answer    *RunInput `json:"answer,omitempty"`
 }
 type Approval struct {
-	FailureCode      string          `json:"failure_code,omitempty"`
-	ConfirmationText string          `json:"confirmation_text,omitempty"`
-	ReplyMode        string          `json:"reply_mode"`
-	ConsentRevision  int64           `json:"consent_revision,omitempty"`
-	Call             *ToolCall       `json:"call,omitempty"`
-	ResolutionCallID string          `json:"resolution_call_id,omitempty"`
-	DecisionInputID  string          `json:"decision_input_id,omitempty"`
-	ID               string          `json:"approval_id"`
-	Text             string          `json:"text"`
-	OperationID      string          `json:"operation_id"`
-	Method           string          `json:"method"`
-	Arguments        json.RawMessage `json:"arguments"`
-	ArgumentHash     string          `json:"argument_hash"`
-	ConfirmationID   string          `json:"confirmation_id,omitempty"`
-	Precondition     string          `json:"precondition,omitempty"`
-	Decision         string          `json:"decision,omitempty"`
-	ExpiresAt        time.Time       `json:"expires_at"`
+	BackendOperationID string          `json:"backend_operation_id,omitempty"`
+	FailureCode        string          `json:"failure_code,omitempty"`
+	ConfirmationText   string          `json:"confirmation_text,omitempty"`
+	ReplyMode          string          `json:"reply_mode"`
+	ConsentRevision    int64           `json:"consent_revision,omitempty"`
+	Call               *ToolCall       `json:"call,omitempty"`
+	ResolutionCallID   string          `json:"resolution_call_id,omitempty"`
+	DecisionInputID    string          `json:"decision_input_id,omitempty"`
+	ID                 string          `json:"approval_id"`
+	Text               string          `json:"text"`
+	OperationID        string          `json:"operation_id"`
+	Method             string          `json:"method"`
+	Arguments          json.RawMessage `json:"arguments"`
+	ArgumentHash       string          `json:"argument_hash"`
+	ConfirmationID     string          `json:"confirmation_id,omitempty"`
+	Precondition       string          `json:"precondition,omitempty"`
+	Decision           string          `json:"decision,omitempty"`
+	ExpiresAt          time.Time       `json:"expires_at"`
 }
 type RunInput struct {
 	Presentation *InputPresentation `json:"presentation,omitempty"`
