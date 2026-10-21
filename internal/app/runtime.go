@@ -39,7 +39,8 @@ import (
 const zitadelCallerType = "zitadel"
 
 type executeRun struct {
-	RunID string `json:"run_id"`
+	RunID         string `json:"run_id"`
+	DeliveryFence int64  `json:"delivery_fence"`
 }
 
 func (executeRun) Kind() string { return "clx_execute_run" }
@@ -863,8 +864,7 @@ func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) 
 		if r.queue == nil {
 			return errors.New("queue unavailable")
 		}
-		_, e := r.queue.InsertTx(c, tx, executeRun{RunID: id}, &river.InsertOpts{MaxAttempts: queueMaxAttempts})
-		return e
+		return insertRunJob(c, tx, r.queue, id)
 	})
 	r.repository.SetSemanticSearchEnabled(cfg.Search.SemanticEnabled)
 	r.repository.SetPolicyCeilings(cfg.Execution.ActiveRunsPerUserCeiling, cfg.Execution.ActiveRunsTotalCeiling)
