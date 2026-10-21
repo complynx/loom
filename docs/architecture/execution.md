@@ -42,6 +42,13 @@
 Скрипт может выполнять независимые RPC параллельно в пределах `parallel_rpc_limit`. Внешние JS-методы доступны только для чтения; внешние write/delete используют структурированный `module_call`. Runtime не предоставляет общий lock на предметный ресурс: backend должен проверять preconditions и дедупликацию. `Promise.all` не отменяет уже выполненный RPC при ошибке соседнего promise; для встроенной личной памяти действуют version checks.
 ## Clocks and deadlines
 
+Lease-releasing checkpoints, including questions and approval requests, have a
+separate one-second persistence deadline. Work cancellation does not interrupt
+that checkpoint: the control watcher can observe the committed lease release
+before the database acknowledges COMMIT. Store checks still enforce the owner,
+fence, lease expiry and durable pause/cancel requests. Model and tool execution
+continue to use the cancellable work context.
+
 - Общая длительность run, включая ожидания, ограничивает срок поручения.
 - Активное время ограничивает вычисления, не включает ожидание пользователя.
 - Deadline скрипта включает ожидание всех его RPC.
