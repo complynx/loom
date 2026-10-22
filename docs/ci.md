@@ -35,6 +35,19 @@ skipped if a newer commit already exists at that check. A newer commit can arriv
 while a build is running; the check does not cancel an in-progress publication.
 Buildx uses the GitHub Actions cache.
 
+The integration job exports the `file-runtime-tests` build cache under the
+`media-tests` scope. Publication imports that cache on its own runner, loads the
+test image and runs the media tests again before it pushes images. The cache
+avoids recompiling unchanged test binaries; it does not replace test execution.
+API and worker caches keep separate scopes (`buildkit` and `file-worker`).
+
+Both container targets use [docker-bake.hcl](../docker-bake.hcl). Bake builds and
+publishes them in parallel, sharing common build stages within one builder. PR
+checks use the same targets with `--load` and do not push images. To build both
+images locally, run `docker buildx bake --file docker-bake.hcl --load`. The default
+image name is `loom` and revision is `local`; set `IMAGE` and `REVISION` to change
+the tags. CI publication sets them to the registry image name and full commit SHA.
+
 ## Maintainer publication workflow
 
 The [upstream workflow](../.github/workflows/ci.yml) is maintainer infrastructure, not a required installation step. It uses `DOCKER_HUB_ACCESS_TOKEN` for image publication and `SERVER_REPO_TOKEN` for a repository-dispatch hook after both images are published. Both secrets are checked before publication; credentials are not Docker build arguments. The workflow's GitHub token has `contents: read`. The registry and dispatch secrets have separate permissions configured by the maintainer.
@@ -47,7 +60,13 @@ Any deployment system can pull the published API and file-worker images. Keep th
 
 For a repository-dispatch integration, the upstream hook event is updated-loom. Its JSON payload contains sha, image, digest, file_worker_image and file_worker_digest. A receiving workflow must validate the trigger and select the desired images in its own deployment profile. The hook does not provision a host or prove readiness. Verify the receiver result and application health separately.
 
-The images publish in sequence. If the file-worker build fails after the API image publishes, the API tags can already have changed and no hook is sent. If both images publish but the hook fails, both remain published and the job fails. Check both digests before rollout. Re-running publication for the current main may send the event again; receivers should tolerate duplicates. Older main runs are skipped as described above.
+Parallel publication is not atomic: one image can publish before the other build
+fails. A build failure prevents the deployment hook. The hook runs only after
+both targets succeed and both image digests are present in the Bake metadata.
+If both images publish but the hook fails, both remain published and the job
+fails. Check both digests before rollout. Re-running publication for the current
+main may send the event again; receivers should tolerate duplicates. Older main
+runs are skipped as described above.
 
 ## Pinned actions
 
@@ -61,6 +80,7 @@ configuration checks for updates weekly.
 | docker/setup-buildx-action | v4.4.1 | Apache-2.0 |
 | docker/login-action | v4.6.0 | Apache-2.0 |
 | docker/build-push-action | v7.4.0 | Apache-2.0 |
+| docker/bake-action | v7.5.0 | Apache-2.0 |
 | peter-evans/repository-dispatch | v4.0.1 | MIT |
 
 Version comments identify reviewed releases; the workflow SHA is authoritative. Review new dependencies with the manual procedure below.
