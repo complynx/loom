@@ -13,7 +13,7 @@ import (
 	"github.com/complynx/loom/internal/domain"
 )
 
-func TestPreviousRunKeepsExactPrefixAcrossWorkers(t *testing.T) {
+func TestPreviousRunReusesNeutralHistoryAcrossWorkers(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	model, engine := fakeModel(t, f, func(int) any { return finalResponse("old answer") })
@@ -31,9 +31,10 @@ func TestPreviousRunKeepsExactPrefixAcrossWorkers(t *testing.T) {
 	require.NoError(t, json.Unmarshal(model.requests[0], &oldRequest))
 	require.NoError(t, json.Unmarshal(next.requests[0], &newRequest))
 	require.Greater(t, len(newRequest.Input), len(oldRequest.Input))
-	for i := range oldRequest.Input {
-		require.JSONEq(t, string(oldRequest.Input[i]), string(newRequest.Input[i]))
-	}
+	require.Equal(t, 1, strings.Count(string(model.requests[0]), "Remember Amsterdam"))
+	require.Equal(t, 1, strings.Count(string(next.requests[0]), "Remember Amsterdam"))
+	require.Equal(t, 1, strings.Count(string(next.requests[0]), "Current explicit request"))
+	require.NotContains(t, string(newRequest.Input[0]), "Current explicit request")
 	require.Contains(t, string(next.requests[0]), "old answer")
 	require.Contains(t, string(next.requests[0]), "Find plans near there")
 	require.Equal(t, domain.Completed, f.run(t, second.ID).State)
@@ -44,6 +45,42 @@ func TestPreviousRunKeepsExactPrefixAcrossWorkers(t *testing.T) {
 	input.ChatID = decode[domain.Chat](t, otherRaw).ID
 	code, raw = f.request(t, "alice", "POST", "/v1/runs", "different-chat", input)
 	require.Equal(t, 404, code, string(raw))
+}
+
+func TestIdenticalRequestsRemainSeparateAcrossFreshAndCachedWorkers(t *testing.T) {
+	t.Parallel()
+	for _, cacheMode := range []string{"fresh", "cached", "legacy-cache"} {
+		t.Run(cacheMode, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			_, engine := fakeModel(t, f, func(int) any { return finalResponse("earlier reply") })
+			first := f.createRun(t, runRequest("", "", "Повтори выбор"), "first")
+			require.NoError(t, engine.Execute(t.Context(), first.ID))
+			input := runRequest("", first.ChatID, "Повтори выбор")
+			if cacheMode != "fresh" {
+				input.PreviousRunID = first.ID
+			}
+			if cacheMode == "legacy-cache" {
+				_, err := f.pool.Exec(t.Context(), "UPDATE run_contexts SET items=$2 WHERE run_id=$1", first.ID,
+					json.RawMessage(`[{"type":"message","role":"user","content":"STALE duplicate prefix"}]`))
+				require.NoError(t, err)
+			}
+			second := f.createRun(t, input, "second")
+			if cacheMode == "cached" {
+				cached, err := f.repository.ExecutionCachedContext(t.Context(), second.ID)
+				require.NoError(t, err)
+				require.NotEmpty(t, cached.Items, "must exercise cache reuse")
+			}
+			next, worker := fakeModel(t, f, func(int) any { return finalResponse("later reply") })
+			require.NoError(t, worker.Execute(t.Context(), second.ID))
+			require.Equal(t, domain.Completed, f.run(t, second.ID).State)
+			raw := string(next.requests[0])
+			require.Equal(t, 2, strings.Count(raw, input.Input.Text))
+			require.Equal(t, 1, strings.Count(raw, "Current explicit request"))
+			require.Contains(t, raw, second.ID)
+			require.NotContains(t, raw, "STALE duplicate prefix")
+		})
+	}
 }
 
 func TestCacheMissAfterRetentionUsesFreshHistory(t *testing.T) {

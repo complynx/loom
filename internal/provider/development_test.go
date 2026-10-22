@@ -143,7 +143,8 @@ func TestDevelopmentCodexFixture(t *testing.T) {
 	message, _ := json.Marshal(
 		map[string]any{"type": "item.completed", "item": map[string]string{"type": "agent_message", "text": envelope}},
 	)
-	stream := "{\"type\":\"thread.started\",\"thread_id\":\"thread1\"}\n" + string(
+	notice := "{\"type\":\"item.completed\",\"item\":{\"type\":\"error\",\"message\":\"Unrecognized optional setting; PRIVATE_DIAGNOSTIC\"}}\n"
+	stream := "{\"type\":\"thread.started\",\"thread_id\":\"thread1\"}\n" + notice + string(
 		message,
 	) + "\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"cached_input_tokens\":3,\"output_tokens\":7}}\n"
 	if fileErr := os.WriteFile(filepath.Join(home, "fixture"), []byte(stream), 0600); fileErr != nil {
@@ -188,6 +189,35 @@ func TestDevelopmentCodexFixture(t *testing.T) {
 	in.Input = []Item{json.RawMessage(`{"type":"input_image","image_url":"https://example.com/image"}`)}
 	if _, checkErr := client.Respond(context.Background(), in); checkErr == nil {
 		t.Fatal("image input accepted")
+	}
+}
+
+func TestCodexNoticesDoNotHideFailedOrUnsafeExecution(t *testing.T) {
+	t.Parallel()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	client, err := NewCodex(executable, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice := "{\"type\":\"item.completed\",\"item\":{\"type\":\"error\",\"message\":\"PRIVATE_DIAGNOSTIC\"}}\n"
+	for _, failed := range []string{
+		notice + "{\"type\":\"turn.failed\",\"error\":{\"message\":\"PRIVATE_DIAGNOSTIC\"}}\n",
+		notice + "{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
+		notice,
+	} {
+		if fileErr := os.WriteFile(filepath.Join(home, "fixture"), []byte(failed), 0600); fileErr != nil {
+			t.Fatal(fileErr)
+		}
+		_, responseErr := client.Respond(t.Context(), developmentTestRequest())
+		var failure *Failure
+		if !errors.As(responseErr, &failure) || !failure.UnknownUsage ||
+			strings.Contains(responseErr.Error(), "PRIVATE_DIAGNOSTIC") {
+			t.Fatalf("notice hid failed or unsafe execution: %v", responseErr)
+		}
 	}
 }
 
