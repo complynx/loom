@@ -54,6 +54,10 @@ func TestHelpDiscoverReadAndPageWithCurrentRights(t *testing.T) {
 	require.Contains(t, result.Source.Text, "Input schema:")
 	require.Contains(t, result.Source.Text, "Output schema:")
 	require.NotContains(t, result.Source.Text, "read-token")
+	require.Contains(t, result.Source.Text, "Timeout:")
+	require.Contains(t, result.Source.Text, "Result limit:")
+	require.Contains(t, result.Source.Text, "Confirmation binding:")
+	require.Contains(t, result.Source.Text, "Supports operation adoption:")
 	paid, paidErr := f.tools.builtin(
 		t.Context(),
 		f.run,
@@ -83,6 +87,13 @@ func TestHelpDiscoverReadAndPageWithCurrentRights(t *testing.T) {
 		builtinReadMethod,
 		json.RawMessage(`{"module":"history","method":"semantic"}`),
 	)
+	require.Error(t, err)
+	delete(f.p.Permissions, "qa.read")
+	_, err = f.tools.builtin(t.Context(), f.run, helpModule, builtinReadMethod,
+		json.RawMessage(`{"module":"fixture","method":"fetch_file"}`))
+	require.Error(t, err, "selected remote help must reauthorize after revocation")
+	_, err = f.tools.builtin(t.Context(), f.run, helpModule, builtinReadMethod,
+		json.RawMessage(`{"module":"foreign","method":"read"}`))
 	require.Error(t, err)
 }
 

@@ -14,6 +14,14 @@ The preset uses a 272000-token hard input ceiling, a 244800-token compaction tri
 
 Byte bounds are conservative for plain text. They can cause history summarization before the nominal token trigger. Instructions, tool schemas and current input also occupy context; chat text alone is not a sufficient measure. Opaque native compaction items require provider token counting.
 
+## Current request and cached history
+
+The originating `message.user` event is labeled as the current explicit request in its original history position, using its run ID and event sequence. Its text is rendered once. Equal text in a different event remains a separate message. Language and attachment handling do not change. History summarization stops before this event; if the remaining context cannot fit, Loom pauses instead of silently summarizing the current request away.
+
+Reusable history prefixes contain neutral event messages, without the current-run label. Each new worker labels its own originating event after loading fresh history or a compatible prefix. Prefix storage uses a versioned envelope; legacy array caches are ignored and rebuilt from durable history. Stored history, run inputs and execution steps do not change. Replace workers together: older binaries cannot read the new cache envelope. Before rolling back to a binary that expects array caches, stop workers and clear the disposable `run_contexts` table. Do not remove history or execution records.
+
+For context-size acceptance, capture the complete provider request and provider-reported usage on an owned synthetic stand. Compare initial and total workflow input tokens, cache usage and extra discovery turns. Byte reduction and deterministic fixtures do not establish live model cost or tool-selection quality. Codex provider usage includes CLI prompt overhead and is not raw Responses billing.
+
 ## Upstream reference
 
 The [OpenAI compaction guide](https://developers.openai.com/api/docs/guides/compaction) describes a replacement input window with an opaque compaction item. Loom stores that window as a checkpoint and supplies it to later requests. The endpoint chooses the replacement size.

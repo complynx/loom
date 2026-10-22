@@ -12,6 +12,10 @@ Dynamic discovery must provide descriptions as complete as static manifests. Upd
 
 ## Reading help
 
+The initial `script` tool contains a concise index of every authorized remote read and action: method ID, effect and a summary of at most 240 UTF-8 bytes plus an ellipsis. It does not embed full schemas. Read methods keep their existing JavaScript bindings. Actions use `module_call`; they cannot run through JavaScript. The index is presentation only and does not grant authority.
+
+Put the method's purpose at the start of its description. A repeated identity or policy prefix can hide that purpose in the short index. Keep shared consumer instructions in the consumer's instructions instead. Index search still matches the full method description, and selected help retains it in full.
+
 Use the index first:
 
 ```javascript
@@ -29,6 +33,8 @@ return await modules.help.read({module: "fixture", method: "read", max_bytes: 81
 `max_bytes` is 256..32768 (default 8192). Results contain Markdown `text`, `partial` and optional `next_cursor`; pass the cursor as `cursor` to continue. Use returned cursors rather than constructing byte offsets. Each call rechecks permissions. Remote discovery failure adds a warning to the index while builtin help remains available.
 
 Remote cards are generated from the service description, input/output schemas, effect, timeout, result bound, confirmation mode and reply override. Examples and recovery advice appear only if the service supplies them in its description. Builtin cards live in `internal/app/help_cards.json`; update the matching card when a builtin changes. Model functions use the help module name `$tools` and must be called as model functions. The synchronous JS file helper is documented as `artifacts.file`.
+
+Read the complete selected card before calling an unfamiliar method. Follow all pages. Cards also report operation adoption support; adoption still inspects the original preparation and requires fresh consent. Discovery and selected help reauthorize independently. Execution keeps its existing current-authorization, schema, exact-confirmation and immutable-recovery checks. Unknown modules remain discoverable through the same index and search, without an intent-specific allowlist.
 
 ## Agent-facing prose
 

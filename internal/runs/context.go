@@ -47,7 +47,7 @@ func (e *Engine) contextItems(
 		if historyErr != nil {
 			return nil, false, historyErr
 		}
-		items, buildErr := history.Build(events, settings.HistoryRecentLimit, budget.trigger)
+		items, buildErr := buildCurrentHistory(events, settings.HistoryRecentLimit, budget.trigger, run)
 		return items, false, buildErr
 	}
 	summary, steps, err := e.restoreSummary(ctx, run, store)
@@ -71,16 +71,16 @@ func (e *Engine) contextItems(
 		}
 		filtered = append(filtered, event)
 	}
-	if items, ready := recentContext(run, summary, filtered, settings.HistoryRecentLimit, budget); ready {
+	if items, ready := recentContext(summary, filtered, settings.HistoryRecentLimit, budget); ready {
 		if err = e.saveHistoryPrefix(ctx, run, events, items); err != nil {
 			return nil, false, err
 		}
-		return items, false, nil
+		return currentRequestContext(items, filtered, run), false, nil
 	}
 	if len(steps) >= settings.MaxSteps {
 		return nil, false, history.ErrContextUnavailable
 	}
-	prefix, err := summaryPrefix(filtered, settings.HistoryRecentLimit, budget)
+	prefix, err := summaryPrefix(filtered, settings.HistoryRecentLimit, budget, run.ID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -268,7 +268,6 @@ func (e *Engine) restoreSummary(
 }
 
 func recentContext(
-	run domain.Run,
 	summary domain.ContextSummary,
 	filtered []domain.ChatEvent,
 	recentLimit int,
@@ -292,14 +291,49 @@ func recentContext(
 					},
 					items...)
 			}
-			items = append(items, provider.Message("user", "Current explicit request: "+run.Input.Text))
 			return items, true
 		}
 	}
 	return nil, false
 }
 
-func summaryPrefix(events []domain.ChatEvent, recentLimit int, budget contextBudget) ([]domain.ChatEvent, error) {
+// currentRequestContext labels the originating event in place. The cached prefix stays neutral.
+// Match event identity, never text: two equal messages can be separate requests.
+func currentRequestContext(items []provider.Item, events []domain.ChatEvent, run domain.Run) []provider.Item {
+	out := append([]provider.Item{}, items...)
+	offset := len(items) - len(events) // An optional conversation summary precedes the event items.
+	for i, event := range events {
+		if event.RunID == run.ID && event.Type == "message.user" {
+			out[offset+i] = provider.Message(
+				"user",
+				fmt.Sprintf(
+					"Current explicit request: %s\nRequest provenance: run %s, event %d.",
+					event.Text,
+					run.ID,
+					event.Seq,
+				),
+			)
+			return out
+		}
+	}
+	// An older summary can already cover the originating event. Keep the explicit request available.
+	return append(out, provider.Message("user", "Current explicit request: "+run.Input.Text))
+}
+
+func buildCurrentHistory(events []domain.ChatEvent, maxEvents, maxBytes int, run domain.Run) ([]provider.Item, error) {
+	items, err := history.Build(events, maxEvents, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	return currentRequestContext(items, events, run), nil
+}
+
+func summaryPrefix(
+	events []domain.ChatEvent,
+	recentLimit int,
+	budget contextBudget,
+	currentRunID string,
+) ([]domain.ChatEvent, error) {
 	// Keep a recent suffix. A large suffix is compacted further only if its complete events fit.
 	prefixCount := len(events) - recentLimit
 	if prefixCount < 1 {
@@ -322,6 +356,10 @@ func summaryPrefix(events []domain.ChatEvent, recentLimit int, budget contextBud
 	var prefix []domain.ChatEvent
 	size := 0
 	for _, event := range events[:prefixCount] {
+		// Never compact away the current request or move it after later history events.
+		if event.RunID == currentRunID && event.Type == "message.user" {
+			break
+		}
 		raw, _ := json.Marshal(event)
 		if size+len(raw) > budget.trigger/historyBudgetDivisor {
 			break
@@ -420,9 +458,9 @@ func (e *Engine) cachedContext(
 		return nil, err
 	}
 	items := append(append([]provider.Item{}, saved.Items...), delta...)
-	items = append(items, provider.Message("user", "Current explicit request: "+run.Input.Text))
+	current := currentRequestContext(items, filtered, run)
 	size := 0
-	for _, item := range items {
+	for _, item := range current {
 		size += len(item)
 	}
 	if size > budget.trigger/historyBudgetDivisor {
@@ -435,7 +473,7 @@ func (e *Engine) cachedContext(
 	if err = cache.SaveRunContext(ctx, run.ID, e.opts.Owner, run.Fence, through, items); err != nil {
 		return nil, err
 	}
-	return items, nil
+	return current, nil
 }
 
 func (e *Engine) saveHistoryPrefix(

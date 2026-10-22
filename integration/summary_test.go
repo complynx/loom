@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +118,8 @@ func TestPaidHistorySummaryPreservesConstraintsAcrossQuestionResume(t *testing.T
 		require.Contains(t, string(request), "only after 18:00")
 		require.Contains(t, string(request), "Current explicit request: Find an appointment on my preferred schedule")
 		require.Contains(t, string(request), "Untrusted conversation summary")
+		require.Equal(t, 1, strings.Count(string(request), run.Input.Text))
+		require.Contains(t, string(request), "Request provenance: run "+run.ID)
 	}
 	require.Contains(t, string(model.requests[2]), "monday")
 }

@@ -9,7 +9,17 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/provider"
 )
+
+// Version 2 stores neutral history, without a duplicate current-request message.
+// Old arrays are disposable cache hints and must not reintroduce duplicate text.
+const contextFormatVersion = 2
+
+type storedContext struct {
+	Version int             `json:"version"`
+	Items   []provider.Item `json:"items"`
+}
 
 // ExecutionCachedContext is a hint. Authorization and current model policy remain separate.
 func (s *Store) ExecutionCachedContext(ctx context.Context, rid string) (domain.CachedContext, error) {
@@ -42,9 +52,12 @@ func (s *Store) ExecutionCachedContext(ctx context.Context, rid string) (domain.
 	if err != nil {
 		return out, err
 	}
-	if err = json.Unmarshal(raw, &out.Items); err != nil {
-		return domain.CachedContext{}, err
+	var saved storedContext
+	valid := json.Unmarshal(raw, &saved) == nil
+	if !valid || saved.Version != contextFormatVersion {
+		return domain.CachedContext{}, nil
 	}
+	out.Items = saved.Items
 	return out, nil
 }
 
@@ -66,7 +79,7 @@ func (s *Store) SaveRunContext(
 		if len(r.Input.ArtifactIDs) > 0 {
 			return nil
 		}
-		raw, err := json.Marshal(items)
+		raw, err := json.Marshal(storedContext{Version: contextFormatVersion, Items: items})
 		if err != nil {
 			return err
 		}

@@ -173,6 +173,15 @@ func (p *codex) Respond(ctx context.Context, in Request) (Response, error) {
 
 const codexScanBuffer = 4096
 
+const codexItemCompleted = "item.completed"
+
+// Completed error items are CLI notices, not tool execution or model output.
+// Terminal success and actual usage remain mandatory in readCodexStream.
+func allowedCodexItem(eventType, itemType string) bool {
+	return itemType == "agent_message" || itemType == "reasoning" ||
+		(eventType == codexItemCompleted && itemType == "error")
+}
+
 func (p *codex) command(child context.Context, in Request, work, schema string, b []byte) *exec.Cmd {
 	args := []string{
 		"exec",
@@ -196,7 +205,7 @@ func (p *codex) command(child context.Context, in Request, work, schema string, 
 		"-c",
 		"mcp_servers={}",
 	}
-	for _, feature := range []string{"unified_exec", "apps", "plugins", "hooks", "memories", "multi_agent", "multi_agent_v2", "browser_use", "browser_use_external", "computer_use", "in_app_browser", "image_generation", "view_image", "workspace_dependencies", "skill_search", "skill_mcp_dependency_install", "sleep_tool", "goals", "code_mode_host", "fast_mode", "ultrafast_mode"} {
+	for _, feature := range []string{"unified_exec", "apps", "plugins", "hooks", "memories", "multi_agent", "multi_agent_v2", "browser_use", "browser_use_external", "computer_use", "in_app_browser", "image_generation", "view_image", "workspace_dependencies", "skill_search", "skill_mcp_dependency_install", "sleep_tool", "goals", "code_mode_host", "fast_mode"} {
 		args = append(args, "-c", "features."+feature+"=false")
 	}
 	args = append(
@@ -268,11 +277,11 @@ func readCodexStream(
 		case "thread.started":
 			threadID = event.ThreadID
 		case "turn.started":
-		case "item.started", "item.updated", "item.completed":
-			if event.Item.Type != "agent_message" && event.Item.Type != "reasoning" {
+		case "item.started", "item.updated", codexItemCompleted:
+			if !allowedCodexItem(event.Type, event.Item.Type) {
 				return fail("codex_unexpected_tool")
 			}
-			if event.Type == "item.completed" && event.Item.Type == "agent_message" {
+			if event.Type == codexItemCompleted && event.Item.Type == "agent_message" {
 				text = event.Item.Text
 			}
 		case "turn.completed":
