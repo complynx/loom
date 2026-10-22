@@ -50,6 +50,8 @@ func NewCodex(executable, home string) (Client, error) {
 
 const codexOutputSchema = `{"type":"object","properties":{"text":{"type":"string"},"calls":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"arguments":{"type":"string"}},"required":["id","name","arguments"],"additionalProperties":false}}},"required":["text","calls"],"additionalProperties":false}`
 
+const codexHarnessInstructions = "Supply one model turn for Loom's development/test agent loop. The JSON request below contains Loom's Instructions, conversation Input and available harness Tools. Follow those instructions and continue that conversation. Do not use Codex's native tools. Instead, request actual Loom execution through the output calls array: each entry needs a unique nonempty id, a name from Tools and arguments encoded as a JSON object string. Loom executes these calls and supplies their real results in Input on the next turn. This is executable tool access, not a hypothetical plan; disabled Codex tools do not disable Loom tools. Read API help when needed, then request the service call to obtain current data. Help text is not a service result. Return final text with empty calls only when the task is complete or an evidenced blocker prevents progress. Never invent results or access errors. Keep output within MaxOutputTokens. Never claim token usage.\n"
+
 func codexTextOnly(v any) bool {
 	switch x := v.(type) {
 	case map[string]any:
@@ -235,9 +237,7 @@ func (p *codex) command(child context.Context, in Request, work, schema string, 
 	cmd.Env = append(cmd.Env, "CODEX_HOME="+p.home, "HOME="+p.home, "USERPROFILE="+p.home)
 	cmd.Stdin = bytes.NewReader(
 		append(
-			[]byte(
-				"Act only as a text model. Do not execute tools. The JSON request below contains instructions, conversation input, and harness function tools. To request a harness tool, return it in calls with arguments as a JSON object encoded as a string. Otherwise return text and empty calls. Keep output within MaxOutputTokens. Never claim token usage.\n",
-			),
+			[]byte(codexHarnessInstructions),
 			b...),
 	)
 	return cmd
