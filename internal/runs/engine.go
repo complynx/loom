@@ -14,6 +14,7 @@ import (
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/history"
 	"github.com/complynx/loom/internal/provider"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 type Store interface {
@@ -36,6 +37,7 @@ type Store interface {
 
 // Options configures execution boundaries. Authorize also runs before model-only turns.
 type Options struct {
+	TraceStep               func(context.Context, domain.Run) (context.Context, func(error), error)
 	PaidTool                PaidTool
 	PaidToolReplay          func(context.Context, domain.Run, domain.PaidToolIntent) error
 	RetryAttemptLimit       int
@@ -309,8 +311,25 @@ func (e *Engine) executeAuthorizedTurn(
 	if inputErr := e.applySteering(ctx, run, settings, &turn); inputErr != nil {
 		return stoppedTurn(inputErr)
 	}
+	ctx, finish, traceErr := e.traceStep(ctx, run)
+	if traceErr != nil {
+		return false, traceErr
+	}
+	again, turnErr := e.executeReadyTurn(ctx, run, principal, token, settings, model, &turn)
+	finish(turnErr)
+	return again, turnErr
+}
 
-	if handled, binaryErr := e.dispatchBinaryReply(ctx, run, principal, token, settings, &turn); handled {
+func (e *Engine) executeReadyTurn(
+	ctx context.Context,
+	run domain.Run,
+	principal domain.Principal,
+	token string,
+	settings domain.Settings,
+	model domain.Model,
+	turn *turnState,
+) (bool, error) {
+	if handled, binaryErr := e.dispatchBinaryReply(ctx, run, principal, token, settings, turn); handled {
 		return binaryErr == nil, binaryErr
 	}
 	if turn.finalCandidate != "" {
@@ -320,14 +339,14 @@ func (e *Engine) executeAuthorizedTurn(
 		return false, e.finish(ctx, run, domain.Paused, "step_limit", "")
 	}
 
-	handled, callErr := e.handlePending(ctx, run, principal, token, settings, &turn)
+	handled, callErr := e.handlePending(ctx, run, principal, token, settings, turn)
 	if handled {
 		if errors.Is(callErr, errCheckpointedStop) {
 			return false, nil
 		}
 		return callErr == nil, callErr
 	}
-	return e.inferOrCompact(ctx, run, principal, token, model, &turn)
+	return e.inferOrCompact(ctx, run, principal, token, model, turn)
 }
 
 func (e *Engine) replaySteps(ctx context.Context, run domain.Run, turn *turnState) error {
@@ -399,11 +418,17 @@ func (e *Engine) applySteering(ctx context.Context, run domain.Run, settings dom
 		return err
 	}
 	turn.newInputSteps = 0
+	var consumed []string
 	for _, input := range inputs {
-		if turn.checkpointedInputs[input.ID] || (input.Kind == "answer" && turn.completed[input.QuestionID]) {
-			if err = e.store.MarkInputsApplied(ctx, id, e.opts.Owner, run.Fence, []string{input.ID}); err != nil {
+		if len(consumed) >= telemetry.MaxTraceInputs {
+			err = e.consumeInputBatch(ctx, run, consumed)
+			if err != nil {
 				return err
 			}
+			consumed = nil
+		}
+		if consumedReply(run, turn, input) {
+			consumed = append(consumed, input.ID)
 			continue
 		}
 		if input.Kind != "steering" {
@@ -421,16 +446,42 @@ func (e *Engine) applySteering(ctx context.Context, run domain.Run, settings dom
 		if err = e.store.CompleteStep(ctx, id, e.opts.Owner, run.Fence, step.ID, item, domain.Usage{}); err != nil {
 			return err
 		}
-		if err = e.store.MarkInputsApplied(ctx, id, e.opts.Owner, run.Fence, []string{input.ID}); err != nil {
-			return err
-		}
+		consumed = append(consumed, input.ID)
 		turn.items = append(turn.items, item)
 		turn.newInputSteps++
 		turn.steeringAfterModel = true
 		turn.finalCandidate = ""
 	}
 
-	return nil
+	return e.consumeInputBatch(ctx, run, consumed)
+}
+
+func consumedReply(run domain.Run, turn *turnState, input domain.RunInput) bool {
+	if turn.checkpointedInputs[input.ID] {
+		return true
+	}
+	switch input.Kind {
+	case "answer":
+		return turn.completed[input.QuestionID] ||
+			run.Question != nil && run.Question.ID == input.QuestionID && run.Question.Answer != nil
+	case domain.InputApproval:
+		return run.Approval != nil && run.Approval.ID == input.ApprovalID && run.Approval.Decision != "" &&
+			run.Approval.Decision == input.Decision
+	default:
+		return false
+	}
+}
+
+func (e *Engine) consumeInputBatch(ctx context.Context, run domain.Run, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := e.store.MarkInputsApplied(ctx, run.ID, e.opts.Owner, run.Fence, ids); err != nil {
+		return err
+	}
+	_, finish, err := e.traceStep(ctx, run)
+	finish(err)
+	return err
 }
 
 func (e *Engine) handlePending(

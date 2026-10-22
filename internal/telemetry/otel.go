@@ -133,14 +133,18 @@ func (t *Telemetry) EnableOTel(ctx context.Context, c config.OTel) (func(context
 // exception text may contain credentials or file contents and is never exported.
 //
 //nolint:spancheck // The returned finish callback owns span.End.
-func (t *Telemetry) Start(ctx context.Context, component, runID string) (context.Context, func(error)) {
+func (t *Telemetry) Start(
+	ctx context.Context,
+	component, runID string,
+	options ...trace.SpanStartOption,
+) (context.Context, func(error)) {
 	if !knownComponent(component) || t.otel == nil {
 		return ctx, func(error) {}
 	}
 	if _, parseErr := uuid.Parse(runID); parseErr == nil {
 		ctx = WithRun(ctx, runID)
 	}
-	ctx, span := t.otel.tracer.Start(ctx, component)
+	ctx, span := t.otel.tracer.Start(ctx, component, options...)
 	ctx = context.WithValue(ctx, operationSpanKey{}, component)
 	return ctx, func(err error) {
 		if err != nil {
@@ -152,6 +156,7 @@ func (t *Telemetry) Start(ctx context.Context, component, runID string) (context
 func knownComponent(component string) bool {
 	switch component {
 	case "diagnostics",
+		"execution_step",
 		modelComponent,
 		"file_processing",
 		"transcription",

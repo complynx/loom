@@ -18,6 +18,7 @@ import (
 
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/store/dbgen"
+	"github.com/complynx/loom/internal/telemetry"
 	"github.com/complynx/loom/migrations"
 )
 
@@ -767,7 +768,7 @@ func (s *Store) persistRun(
 	in := canonical
 	_, e = tx.Exec(
 		ctx,
-		"INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,max_microcredits) VALUES($1,$2,$3,$4,$5,'queued',$6,$7)",
+		"INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,max_microcredits,trace_origin) VALUES($1,$2,$3,$4,$5,'queued',$6,$7,$8)",
 		r.ID,
 		r.ChatID,
 		r.OwnerID,
@@ -775,6 +776,7 @@ func (s *Store) persistRun(
 		p.OrgID,
 		document(r),
 		r.MaxMicrocredits,
+		document(telemetry.CaptureTrace(ctx)),
 	)
 	if e != nil {
 		return e
