@@ -55,6 +55,9 @@ func TestReadBrokerFiltersAndValidates(t *testing.T) {
 	t.Parallel()
 	manifest := example(t)
 	manifest.Modules = manifest.Modules[:1]
+	manifest.Summary = "Manage event appointments."
+	manifest.Modules[0].Summary = "Find and book massage appointments."
+	manifest.Modules[0].Methods[0].Summary = "Find available appointment times."
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/manifest" {
@@ -85,6 +88,10 @@ func TestReadBrokerFiltersAndValidates(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tools, 1)
 	require.Equal(t, "list_slots", tools[0].Method)
+	require.Equal(t, manifest.Summary, tools[0].ServiceSummary)
+	require.Equal(t, manifest.Modules[0].Summary, tools[0].ModuleSummary)
+	require.Equal(t, manifest.Modules[0].Methods[0].Summary, tools[0].Summary)
+	require.Equal(t, manifest.Modules[0].Methods[0].Description, tools[0].Description)
 	var guards atomic.Int32
 	broker := registry.Broker(principal(), "run-one", func(context.Context) error { guards.Add(1); return nil })
 	result, err := broker.Call(
@@ -114,6 +121,7 @@ func TestDynamicDiscoveryCacheIsPerUserAndPolicy(t *testing.T) {
 	manifest := example(t)
 	method := manifest.Modules[0].Methods[0]
 	method.ID = "list"
+	method.Summary = "Find the user's available choices."
 	method.Permissions = []string{}
 	method.Path = "/read"
 	method.InputSchema = json.RawMessage(`{"type":"object"}`)
@@ -140,6 +148,7 @@ func TestDynamicDiscoveryCacheIsPerUserAndPolicy(t *testing.T) {
 		tools, listErr := registry.List(context.Background(), p)
 		require.NoError(t, listErr)
 		require.Len(t, tools, 1)
+		require.Equal(t, method.Summary, tools[0].Summary)
 	}
 	require.EqualValues(t, 1, discoveries.Load())
 	p.Subject = "another"

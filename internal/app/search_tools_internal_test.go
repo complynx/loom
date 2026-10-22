@@ -40,14 +40,30 @@ func TestSemanticToolIsHiddenWhenDisabled(t *testing.T) {
 	raw, err := json.Marshal(catalog)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "semantic")
-	require.Contains(t, string(raw), "literal")
-	require.Contains(t, string(raw), "history.read")
+	page, err := tools.help(
+		t.Context(),
+		domain.Run{},
+		p,
+		helpListMethod,
+		json.RawMessage(`{"module":"history","query":"semantic"}`),
+	)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"items":[],"partial":false}`, string(page))
 	tools.cfg.Search.SemanticEnabled = true
 	catalog, err = tools.tools(t.Context(), domain.Run{}, p, "")
 	require.NoError(t, err)
 	raw, err = json.Marshal(catalog)
 	require.NoError(t, err)
-	require.Contains(t, string(raw), "history.semantic")
+	require.NotContains(t, string(raw), "history.semantic")
+	page, err = tools.help(
+		t.Context(),
+		domain.Run{},
+		p,
+		helpListMethod,
+		json.RawMessage(`{"module":"history","query":"semantic"}`),
+	)
+	require.NoError(t, err)
+	require.Contains(t, string(page), "history.semantic")
 }
 
 func searchToolStore(t *testing.T) (*store.Store, *pgxpool.Pool) {
@@ -194,8 +210,16 @@ func TestArtifactToolsFollowCurrentPermission(t *testing.T) {
 		encoded, err := json.Marshal(catalog)
 		require.NoError(t, err)
 		require.NotContains(t, string(encoded), "modules.artifacts.read")
-		require.Equal(t, allowed, strings.Contains(string(encoded), "modules.artifacts.fetch"))
-		require.Equal(t, allowed, strings.Contains(string(encoded), "modules.artifacts.open"))
+		page, helpErr := tools.help(
+			t.Context(),
+			domain.Run{},
+			p,
+			helpListMethod,
+			json.RawMessage(`{"module":"artifacts"}`),
+		)
+		require.NoError(t, helpErr)
+		require.Equal(t, allowed, strings.Contains(string(page), `"method":"fetch"`))
+		require.Equal(t, allowed, strings.Contains(string(page), `"method":"open"`))
 		require.Equal(t, allowed, strings.Contains(string(encoded), "artifact_attach"))
 		result, err := tools.executeScript(
 			t.Context(),

@@ -53,6 +53,20 @@ prefix for up to 15 minutes. Attached files on either run disable this prefix re
 If reuse is unavailable or incompatible, normal context is built. Reuse does not
 copy tool effects or guarantee a provider cache discount.
 
+## Initial discovery expansion
+
+Run creation optionally accepts `discovery.expand_services`, for example:
+
+```json
+{"input":{"text":"Help me book an appointment"},"discovery":{"expand_services":["booking-service"]}}
+```
+
+Use registered `service_id` values, not module IDs or display names. At most 10 unique IDs are accepted; `$loom` selects builtins. IDs are exact, without wildcards. Invalid values return `422 invalid_discovery`. Omission keeps the compact service/category overview. A requested service adds a bounded first page of its currently authorized method-purpose hints. It never adds full contracts or grants permission. Unknown and inaccessible services both return empty expansions.
+
+The run saves this presentation preference. Restart and subsequent inputs use the same preference; changing it on a retry with the same idempotency key returns `409 idempotency_conflict`. Submit it when creating each new run; it does not set a user-wide default. See [help discovery](../modules/authoring-help.md#reading-help) for page bounds and continuation.
+
+Upgrade Loom before clients send this field. Older binaries reject it as an unknown request field. Before rolling back, stop sending it and remove the new manifest summary fields described in the module authoring guide.
+
 ## Run input
 
 Send `POST /v1/runs/{id}/input` with `runs.control` and `Idempotency-Key`:

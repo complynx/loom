@@ -9,10 +9,12 @@
     "service_id": {"$ref": "#/$defs/identifier"},
     "revision": {"type": "string", "minLength": 1, "maxLength": 128},
     "description": {"type": "string", "maxLength": 4000},
+    "summary": {"$ref": "#/$defs/summary"},
     "caller": {"$ref": "#/$defs/caller"},
     "modules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/module"}}
   },
   "$defs": {
+    "summary": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "\\S"},
     "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
     "path": {"type": "string", "pattern": "^/[^?#]*$", "maxLength": 1024},
     "permissions": {"type": "array", "uniqueItems": true, "maxItems": 100, "items": {"$ref": "#/$defs/identifier"}},
@@ -49,6 +51,7 @@
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "description": {"type": "string", "maxLength": 4000},
+        "summary": {"$ref": "#/$defs/summary"},
         "permissions": {"$ref": "#/$defs/permissions"},
         "discovery": {"enum": ["static", "dynamic"]},
         "methods": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/method"}},
@@ -78,6 +81,7 @@
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "description": {"type": "string", "maxLength": 4000},
+        "summary": {"$ref": "#/$defs/summary"},
         "permissions": {"$ref": "#/$defs/permissions"},
         "path": {"$ref": "#/$defs/path"},
         "effect": {"enum": ["read", "write", "delete"]},

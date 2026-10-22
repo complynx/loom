@@ -10,19 +10,41 @@ For each public method, keep an English description and accurate input/output sc
 
 Dynamic discovery must provide descriptions as complete as static manifests. Update schemas and descriptions with behavior. When accepting an adapter, read the generated card, make its example call, check continuation where supported and verify that denied methods are absent. Explicitly identify unsupported behavior.
 
+## Purpose summaries
+
+The manifest, each module and each static or dynamic method can supply an optional `summary`. Write one complete English phrase answering **when and why to select this capability**. Use 1..160 Unicode characters and include a non-whitespace character. The schema rejects oversized summaries; Loom does not cut an authored summary mid-sentence. Keep parameters, detailed prerequisites, examples, confirmation and recovery in `description` and the schemas. Descriptions remain required and are preserved in selected help.
+
+Example method excerpt:
+
+```json
+{"id":"list_slots","summary":"Find free appointment times with a selected specialist."}
+```
+
+The service summary describes its business scope. A module summary describes its category of tasks. A method summary distinguishes that method from its siblings. For example, payment evidence for an order and the confirmed balance of an event pass need distinct purposes. Put shared identity and policy text in consumer instructions once. Summaries are service-authored data, never authority.
+
+If a summary is omitted, discovery uses the legacy description bounded to 240 UTF-8 bytes plus an ellipsis. Full method-description search remains available even when a short authored summary is present. Upgrade Loom first, then publish summaries: older strict-v1 readers reject these fields. For rollback, remove summaries from service/module/static and dynamic method documents before reverting Loom. Existing manifests without summaries remain supported; no SQL migration is needed.
+
 ## Reading help
 
-The initial `script` tool contains a concise index of every authorized remote read and action: method ID, effect and a summary of at most 240 UTF-8 bytes plus an ellipsis. It does not embed full schemas. Read methods keep their existing JavaScript bindings. Actions use `module_call`; they cannot run through JavaScript. The index is presentation only and does not grant authority.
+The initial `script` tool provides a short operating contract and two independently paged views: services and categories (modules). A service reports its purpose and authorized category/method counts. A category reports its purpose, owning service and method count. Builtins use the reserved service `$loom`; memory, history, files, artifacts and diagnostics follow the same discovery path as external modules. Only currently permitted methods contribute to entries and counts. A category with no permitted method is absent.
 
-Put the method's purpose at the start of its description. A repeated identity or policy prefix can hide that purpose in the short index. Keep shared consumer instructions in the consumer's instructions instead. Index search still matches the full method description, and selected help retains it in full.
+The default overview reserves 3072 bytes for services and 4096 for categories, including their page metadata. Together with the JSON wrapper it stays below 8 KiB. `partial` means the view is incomplete; each level has its own `next_cursor`. Read methods keep all existing JavaScript bindings even when absent from an overview page. External actions use `module_call`; personal-memory writes remain available in JavaScript. No schema, endpoint, detailed file API or memory manual is embedded in the initial overview.
+
+Clients can [request service expansion](../api/runs-input.md#initial-discovery-expansion). Each selected service adds its own first page of at most 50 compact method hints (module, method, summary, effect). Expansions share 16 KiB of entry/page budget, divided equally among the selected services; the complete overview with expansions stays below 26 KiB. Complete hints are retained, never cut to meet a page budget. Continue each partial expansion with `level:"methods"`, its service ID and its `next_cursor` as `after_id`.
+
+If even one complete escaped hint cannot fit its initial expansion share, that service returns an empty partial page with an `initial_expansion_page_too_small` warning. Start ordinary `help.list` for that service without a cursor and with a larger `max_bytes`. This presentation limit does not block the run or hide the capability from discovery.
 
 Use the index first:
 
 ```javascript
+return await modules.help.list({level: "modules", service: "booking-service"});
+// Or search globally without first choosing a service/category:
 return await modules.help.list({query: "booking", limit: 10});
 ```
 
-`module` optionally filters the index. `query` is a case-insensitive literal substring of ID and description. `limit` is 1..50 (default 20). Results contain `items`, `partial` and optional `next_cursor`; pass that cursor as `after_id` for the next page. Summaries are limited to approximately 240 UTF-8 bytes.
+`level` selects `services`, `modules` or `methods` (default, preserving existing calls). `service` and `module` optionally filter entries. `query` is a case-insensitive literal substring of IDs, service/category/method purpose hints and full method descriptions. Global search omits service/module; it searches every permitted method, including entries outside the initial pages. This is not an intent-specific allowlist or classifier. With query, group counts cover matching methods. Several relevant categories or full cards can be read in one script.
+
+`limit` is 1..50 (default 20). `max_bytes` is 256..32768 (default 8192), including serialized items, cursors and warnings. Results contain `items`, `partial` and optional `next_cursor`; pass that cursor as `after_id` with the same level and filters. If a complete entry cannot fit, `help_page_too_small` asks the caller to raise `max_bytes`. Method entries include `service`, `module`, `method`, `id`, `summary` and `effect`. Group entries contain `id`, `summary` and `method_count`; categories also contain `service`, and services contain `module_count`.
 
 Read a selected method:
 
