@@ -3,10 +3,25 @@
 Installation-specific deployment workflows and collector configuration belong to the operator.
 
 The existing CI runs tests, dependency verification, lint and vulnerability checks
-on pushes, pull requests and manual workflow dispatch. Once these pass, a push to `main` builds and publishes
+on pushes to `main`, pull requests and manual workflow dispatch. Feature-branch
+pushes do not start a second run; open a pull request or use manual dispatch to
+check a branch. Once these pass, a push to `main` builds and publishes
 `linux/amd64` images to Docker Hub. Merging a pull request into `main` produces the
-same push event. Other branches and pull requests build locally without publication
+same push event. Manual runs on other branches and pull requests build locally without publication
 or deployment dispatch.
+
+Four independent jobs run in parallel:
+
+- `lint`: module verification, lint configuration, Go lint and vulnerability checks.
+- `test`: race tests for `cmd`, `internal` and `migrations`, without PostgreSQL.
+- `build`: the Linux binary and, outside a push to `main`, both container images.
+- `integration`: the full race suite with PostgreSQL and media tests in the built worker runtime.
+
+Some internal packages contain both unit and database tests. The integration job
+runs all packages so these database tests remain covered; unit tests in these
+packages also run there.
+
+Publication waits for all four jobs.
 
 Published tags:
 

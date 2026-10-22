@@ -70,7 +70,11 @@ source distribution procedure.
 The build reads exact installed package metadata. For each package origin, it
 fetches the APKBUILD and patches at the recorded full aports commit. It downloads
 source archives using Alpine's official distfiles mirror with upstream fallback
-and verifies the APKBUILD checksums. The bundle retains upstream archives with
+and verifies the APKBUILD checksums. Recipe Git operations run sequentially;
+source downloads and checksum checks run in batches of up to 20 package origins.
+All jobs in a batch must finish successfully before the next batch starts. Any
+collection or checksum failure stops the build before it writes the source manifest.
+The bundle retains upstream archives with
 their license and copyright material, package metadata, lock files, recipes,
 patches and a `SHA256SUMS` manifest. Sources can be large, including compiler and
 runtime library sources. Source-collection tools stay in a separate build stage.
