@@ -80,7 +80,7 @@ func (f *callerRecoveryFixture) manifest() modules.Manifest {
 	}
 }
 
-func newCallerRecoveryFixture(t *testing.T) *callerRecoveryFixture {
+func newCallerRecoveryFixture(t *testing.T, acceptedContext ...context.Context) *callerRecoveryFixture {
 	t.Helper()
 	f := &callerRecoveryFixture{}
 	f.present.Store(true)
@@ -153,8 +153,12 @@ func newCallerRecoveryFixture(t *testing.T) *callerRecoveryFixture {
 	require.NoError(t, err)
 	f.session, err = repository.CreateAuthSession(t.Context(), f.principal, envelope, f.principal.ExpiresAt)
 	require.NoError(t, err)
+	ctx := t.Context()
+	if len(acceptedContext) > 0 {
+		ctx = acceptedContext[0]
+	}
 	f.run, err = repository.CreateRun(
-		t.Context(),
+		ctx,
 		f.principal,
 		"caller-recovery",
 		domain.CreateRun{AuthSessionID: f.session.ID, Input: domain.Input{Text: "pending inference"}},

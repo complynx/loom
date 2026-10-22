@@ -155,10 +155,24 @@ func (e *Engine) executeTurn(
 	principal domain.Principal,
 	token string,
 ) (bool, error) {
+	ctx, finish, traceErr := e.traceStep(ctx, run)
+	if traceErr != nil {
+		return false, traceErr
+	}
 	if err := e.checkRetryBudget(ctx, run); err != nil {
+		finish(err)
 		return false, err
 	}
-	return e.executeAuthorizedTurn(ctx, run, principal, token)
+	again, err := e.executeAuthorizedTurn(ctx, run, principal, token)
+	finish(err)
+	return again, err
+}
+
+func (e *Engine) traceStep(ctx context.Context, run domain.Run) (context.Context, func(error), error) {
+	if e.opts.TraceStep == nil {
+		return ctx, func(error) {}, nil
+	}
+	return e.opts.TraceStep(ctx, run)
 }
 
 func (e *Engine) checkpointRetryLimit(ctx context.Context, run domain.Run, step domain.Step) error {

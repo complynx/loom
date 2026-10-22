@@ -55,7 +55,11 @@ type runWorker struct {
 
 func (w *runWorker) Work(ctx context.Context, job *river.Job[executeRun]) (err error) {
 	ctx = telemetry.WithRun(ctx, job.Args.RunID)
-	ctx, finishTrace := w.observer.Start(ctx, "run_execution", job.Args.RunID)
+	origin, previous, applied, err := w.repository.RunTrace(ctx, job.Args.RunID)
+	if err != nil {
+		return err
+	}
+	ctx, finishTrace := w.observer.StartRun(ctx, job.Args.RunID, origin, previous, applied)
 	defer func() { finishTrace(err) }()
 	w.observer.Event(ctx, "run execution started", "run_id", job.Args.RunID)
 	started := time.Now()
@@ -512,6 +516,7 @@ func runtimeEngine(
 		repository,
 		router,
 		runs.Options{
+			TraceStep:               executionTraceStep(repository, observer),
 			PaidTool:                hooks,
 			PaidToolReplay:          hooks.replayPaidTool,
 			SponsoredAttemptLimit:   cfg.Execution.SponsoredAttemptLimit,

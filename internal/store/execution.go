@@ -10,6 +10,7 @@ import (
 
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/telemetry"
 )
 
 func (s *Store) ClaimRun(ctx context.Context, rid, owner string, duration time.Duration) (domain.Run, error) {
@@ -326,6 +327,7 @@ func (s *Store) MarkInputsApplied(ctx context.Context, rid, owner string, fence 
 		if _, e := leaseRun(ctx, tx, rid, owner, fence); e != nil {
 			return e
 		}
+		var consumed []string
 		for _, uid := range ids {
 			tag, e := tx.Exec(
 				ctx,
@@ -337,12 +339,13 @@ func (s *Store) MarkInputsApplied(ctx context.Context, rid, owner string, fence 
 				return e
 			}
 			if tag.RowsAffected() > 0 {
+				consumed = append(consumed, uid)
 				if e = runEvent(ctx, tx, rid, "input.applied", map[string]string{"input_id": uid}); e != nil {
 					return e
 				}
 			}
 		}
-		return nil
+		return applyInputTrace(ctx, tx, rid, consumed)
 	})
 }
 func (s *Store) Control(ctx context.Context, p domain.Principal, rid, key, command string) (domain.Run, error) {
@@ -479,10 +482,11 @@ func (s *Store) claimRun(
 	}
 	_, e = tx.Exec(
 		ctx,
-		"UPDATE runs SET state='running',lease_owner=$2,lease_until=clock_timestamp()+$3*interval '1 second',fence=fence+1 WHERE id=$1",
+		"UPDATE runs SET state='running',lease_owner=$2,lease_until=clock_timestamp()+$3*interval '1 second',fence=fence+1,trace_attempt=$4 WHERE id=$1",
 		rid,
 		owner,
 		duration.Seconds(),
+		document(telemetry.CaptureTrace(ctx)),
 	)
 	if e != nil {
 		return e
@@ -835,7 +839,14 @@ func (s *Store) addInput(
 		return e
 	}
 	wake = wake || conversationWake
-	_, e = tx.Exec(ctx, "INSERT INTO run_inputs(id,run_id,doc) VALUES($1,$2,$3)", in.ID, rid, document(in))
+	_, e = tx.Exec(
+		ctx,
+		"INSERT INTO run_inputs(id,run_id,doc,trace_context) VALUES($1,$2,$3,$4)",
+		in.ID,
+		rid,
+		document(in),
+		document(telemetry.CaptureTrace(ctx)),
+	)
 	if e != nil {
 		return e
 	}

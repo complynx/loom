@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -9,10 +10,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -34,10 +37,11 @@ import (
 )
 
 type orphanProcessConfig struct {
-	DSN      string `json:"dsn"`
-	Provider string `json:"provider"`
-	Issuer   string `json:"issuer"`
-	Manifest string `json:"manifest"`
+	DSN       string `json:"dsn"`
+	Provider  string `json:"provider"`
+	Issuer    string `json:"issuer"`
+	Manifest  string `json:"manifest"`
+	Collector string `json:"collector"`
 }
 
 // Real PostgreSQL/River and SIGKILL; HTTP identity and provider peers are fixtures.
@@ -46,7 +50,17 @@ func TestOrphanQueueSurvivesSIGKILL(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("SIGKILL proof requires Linux")
 	}
-	f := newCallerRecoveryFixture(t)
+	collector := newQueueTraceReceiver(t)
+	observer := collector.observer(t)
+	var f *callerRecoveryFixture
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /accept", func(_ http.ResponseWriter, r *http.Request) {
+		//nolint:contextcheck // Fixture resources use the test lifetime; only acceptance uses the request lifetime.
+		f = newCallerRecoveryFixture(t, r.Context())
+	})
+	request := httptest.NewRequest(http.MethodPost, "/accept", nil)
+	request.Header.Set("Traceparent", traceOrigin)
+	observer.HTTP(mux).ServeHTTP(httptest.NewRecorder(), request)
 	pool := f.repository.Pool()
 	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
 	require.NoError(t, err)
@@ -63,6 +77,17 @@ func TestOrphanQueueSurvivesSIGKILL(t *testing.T) {
  SELECT jsonb_build_object('run_id',id::text,'delivery_fence',fence),'clx_execute_run',5,1,'default' FROM runs WHERE id=$1`, f.run.ID)
 	require.NoError(t, err)
 	var calls atomic.Int32
+	_, inputTrace := tracedInput(
+		t,
+		observer,
+		f.repository,
+		f.principal,
+		f.run.ID,
+		"steering-before-worker",
+		"00-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-bbbbbbbbbbbbbbbb-01",
+		domain.RunInput{Kind: domain.InputSteering, Text: "Continue the same task"},
+	)
+	var firstTrace telemetry.TraceContext
 	started := make(chan struct{})
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -71,6 +96,7 @@ func TestOrphanQueueSurvivesSIGKILL(t *testing.T) {
 			return
 		}
 		if calls.Add(1) == 1 {
+			firstTrace = telemetry.TraceContext{Parent: r.Header.Get("Traceparent"), State: r.Header.Get("Tracestate")}
 			close(started)
 			<-r.Context().Done()
 			return
@@ -85,10 +111,11 @@ func TestOrphanQueueSurvivesSIGKILL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "process.json")
 	raw, err := json.Marshal(
 		orphanProcessConfig{
-			DSN:      pool.Config().ConnString(),
-			Provider: model.URL,
-			Issuer:   f.issuer,
-			Manifest: f.endpoint.URI,
+			DSN:       pool.Config().ConnString(),
+			Provider:  model.URL,
+			Issuer:    f.issuer,
+			Manifest:  f.endpoint.URI,
+			Collector: collector.server.URL,
 		},
 	)
 	require.NoError(t, err)
@@ -107,6 +134,8 @@ func TestOrphanQueueSurvivesSIGKILL(t *testing.T) {
 		t.Fatal("worker did not enter provider inference")
 	}
 	require.NoError(t, first.Process.Kill())
+	_, firstAttempt, _, traceErr := f.repository.RunTrace(t.Context(), f.run.ID)
+	require.NoError(t, traceErr)
 	require.Error(t, first.Wait())
 	start()
 	require.Eventually(t, func() bool {
@@ -130,6 +159,18 @@ func TestOrphanQueueSurvivesSIGKILL(t *testing.T) {
 	count, err := f.repository.SponsoredAttemptCount(t.Context(), run.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+	require.Eventually(t, func() bool { return len(collector.executions()) >= 1 }, 5*time.Second, 20*time.Millisecond)
+	last := collector.executions()[0]
+	origin, _, _, err := f.repository.RunTrace(t.Context(), f.run.ID)
+	require.NoError(t, err)
+	require.True(t, firstTrace.SpanContext().IsValid())
+	require.Equal(t, inputTrace.SpanContext().TraceID().String(), hex.EncodeToString(last.GetTraceId()))
+	require.Equal(t, inputTrace.SpanContext().SpanID().String(), hex.EncodeToString(last.GetParentSpanId()))
+	require.NotEqual(t, firstTrace.SpanContext().SpanID().String(), hex.EncodeToString(last.GetSpanId()))
+	require.Len(t, last.GetLinks(), 2)
+	require.Equal(t, firstAttempt.SpanContext().SpanID().String(), hex.EncodeToString(last.GetLinks()[0].GetSpanId()))
+	requireTraceLink(t, last, origin)
+	require.Equal(t, inputTrace.SpanContext().TraceID(), firstTrace.SpanContext().TraceID())
 }
 
 //nolint:paralleltest // Subprocess entry point; exits with the worker process.
@@ -141,7 +182,8 @@ func TestOrphanQueueProcess(t *testing.T) {
 	require.NoError(t, err)
 	var cfg orphanProcessConfig
 	require.NoError(t, json.Unmarshal(raw, &cfg))
-	ctx := t.Context()
+	ctx, stop := signal.NotifyContext(t.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	pool, err := pgxpool.New(ctx, cfg.DSN)
 	require.NoError(t, err)
 	defer pool.Close()
@@ -176,10 +218,18 @@ func TestOrphanQueueProcess(t *testing.T) {
 	require.NoError(t, err)
 	logger := slog.New(slog.DiscardHandler)
 	observer := telemetry.New(logger)
-	model, err := provider.NewResponses(cfg.Provider, "test-only", http.DefaultClient)
+	if cfg.Collector != "" {
+		otelConfig := config.OTel{Enabled: true, Endpoint: cfg.Collector, SampleRatio: 1, TimeoutMS: 100, MaxBatch: 1}
+		otelConfig.ApplyDefaults()
+		shutdown, enableErr := observer.EnableOTel(ctx, otelConfig)
+		require.NoError(t, enableErr)
+		defer func() { _ = shutdown(context.Background()) }()
+	}
+	model, err := provider.NewResponses(cfg.Provider, "test-only", &http.Client{Transport: telemetry.TraceTransport{}})
 	require.NoError(t, err)
 	engine := runs.New(repository, model, runs.Options{
-		Lease: 3 * time.Second, Heartbeat: time.Second, SponsoredAttemptLimit: 2,
+		TraceStep: executionTraceStep(repository, observer),
+		Lease:     3 * time.Second, Heartbeat: time.Second, SponsoredAttemptLimit: 2,
 		Authorize: executionAuthorizer(repository, auth, cipher, check, observer),
 	})
 	queue, _, err = runtimeQueue(
