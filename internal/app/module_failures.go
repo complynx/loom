@@ -22,7 +22,7 @@ const (
 	moduleFailureKey     = "error"
 )
 
-// Failure output contains only static classifications and an already bound ID.
+// Failure output contains static classifications, bounded validation fields and an already bound ID.
 // Raw backend messages, response bodies and credentials never enter tool output.
 func (b *ModuleBridge) moduleCallFailure(
 	ctx context.Context,
@@ -40,25 +40,12 @@ func (b *ModuleBridge) moduleCallFailure(
 	if op.State == "unknown" || op.State == operationPending || op.State == operationDispatching {
 		return nil, nil, &runs.Suspension{State: domain.Reconciling, Reason: operationUnknown}
 	}
-	code := "dependency_unavailable"
-	switch {
-	case errors.Is(failure, operations.ErrAdoptionUnsupported):
-		code = "operation_adoption_unsupported"
-	case errors.Is(failure, identity.ErrUnauthorized), errors.Is(failure, modules.ErrForbidden):
-		code = "authority_changed"
-	case errors.Is(failure, operations.ErrBinding):
-		code = "operation_binding_changed"
-	case errors.Is(failure, operations.ErrExpired):
-		code = "operation_expired"
-	case errors.Is(failure, operations.ErrApprovalRequired):
-		code = "fresh_consent_required"
-	case errors.Is(failure, modules.ErrUnavailable):
-		code = "method_unavailable"
+	code := moduleFailureCode(failure)
+	invalid, invalidArguments := errors.AsType[*modules.InvalidArgumentsError](failure)
+	response := map[string]any{moduleFailureKey: code}
+	if invalidArguments && code == "invalid_arguments" {
+		response["validation"] = invalid
 	}
-	if denied, ok := errors.AsType[*domain.Error](failure); ok && (denied.Status == 401 || denied.Status == 403) {
-		code = "authority_changed"
-	}
-	response := map[string]string{moduleFailureKey: code}
 	if found {
 		response["operation_id"] = op.ID
 		response["state"] = op.State
@@ -92,6 +79,31 @@ func (b *ModuleBridge) moduleCallFailure(
 		}, nil
 	}
 	return raw, nil, err
+}
+
+func moduleFailureCode(failure error) string {
+	if denied, ok := errors.AsType[*domain.Error](failure); ok && (denied.Status == 401 || denied.Status == 403) {
+		return "authority_changed"
+	}
+	_, invalidArguments := errors.AsType[*modules.InvalidArgumentsError](failure)
+	switch {
+	case invalidArguments:
+		return "invalid_arguments"
+	case errors.Is(failure, operations.ErrAdoptionUnsupported):
+		return "operation_adoption_unsupported"
+	case errors.Is(failure, identity.ErrUnauthorized), errors.Is(failure, modules.ErrForbidden):
+		return "authority_changed"
+	case errors.Is(failure, operations.ErrBinding):
+		return "operation_binding_changed"
+	case errors.Is(failure, operations.ErrExpired):
+		return "operation_expired"
+	case errors.Is(failure, operations.ErrApprovalRequired):
+		return "fresh_consent_required"
+	case errors.Is(failure, modules.ErrUnavailable):
+		return "method_unavailable"
+	default:
+		return "dependency_unavailable"
+	}
 }
 
 func terminalOperationFailure(op operations.Operation) json.RawMessage {

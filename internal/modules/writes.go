@@ -83,16 +83,16 @@ func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (reg
 	}
 	var doc any
 	if err = decodeJSONDocument(op.Arguments, &doc); err != nil {
-		return registered{}, Method{}, Principal{}, err
+		return registered{}, Method{}, Principal{}, &InvalidArgumentsError{Reason: "invalid_json"}
 	}
 	if len(op.Arguments) > maxArgumentBytes {
-		return registered{}, Method{}, Principal{}, errors.New("module arguments exceed 65536 bytes")
+		return registered{}, Method{}, Principal{}, &InvalidArgumentsError{Reason: "too_large"}
 	}
 	if err = validateDocument(doc); err != nil {
-		return registered{}, Method{}, Principal{}, err
+		return registered{}, Method{}, Principal{}, &InvalidArgumentsError{Reason: "too_complex"}
 	}
 	if err = input.Validate(doc); err != nil {
-		return registered{}, Method{}, Principal{}, err
+		return registered{}, Method{}, Principal{}, argumentSchemaError(input, err)
 	}
 	return s, m, p, nil
 }

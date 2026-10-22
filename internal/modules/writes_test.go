@@ -3,6 +3,7 @@ package modules_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -15,6 +16,49 @@ import (
 	"github.com/complynx/loom/internal/modules"
 	"github.com/complynx/loom/internal/operations"
 )
+
+func TestWriteArgumentValidationPrecedesBackendPreparation(t *testing.T) {
+	t.Parallel()
+	manifest := example(t)
+	manifest.Modules = manifest.Modules[:1]
+	manifest.Modules[0].Methods[1].InputSchema = json.RawMessage(
+		`{"type":"object","properties":{"expected_version":{"type":"integer"}},"required":["expected_version"],"additionalProperties":false}`,
+	)
+	var backendCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest" {
+			_ = json.NewEncoder(w).Encode(manifest)
+			return
+		}
+		backendCalls.Add(1)
+		http.Error(w, "PRIVATE_BACKEND_DETAIL", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
+		return []modules.Endpoint{endpoint(t, server.URL, "one")}, nil
+	}), modules.Options{})
+	require.NoError(t, err)
+	require.NoError(t, registry.Refresh(t.Context()))
+	p := principal()
+	descriptor, err := registry.Describe(t.Context(), p, "massage", "book_slot")
+	require.NoError(t, err)
+	op := operations.Operation{
+		Module: "massage", Method: "book_slot", Mode: "service_id", Arguments: json.RawMessage(`{}`),
+		Binding: operations.Binding{Issuer: p.Issuer, Subject: p.Subject, ContractHash: descriptor.ContractHash},
+	}
+	backend := modules.WriteBackend{Registry: registry, Principal: p}
+	_, err = backend.Prepare(t.Context(), op)
+	invalid, ok := errors.AsType[*modules.InvalidArgumentsError](err)
+	require.True(t, ok)
+	require.Equal(t, []string{"expected_version"}, invalid.Fields)
+	require.Zero(t, backendCalls.Load())
+	op.Arguments = json.RawMessage(`{"expected_version":1}`)
+	_, err = backend.Prepare(t.Context(), op)
+	require.Error(t, err)
+	_, ok = errors.AsType[*modules.InvalidArgumentsError](err)
+	require.False(t, ok, "an actual backend outage is not a caller argument error")
+	require.EqualValues(t, 1, backendCalls.Load())
+}
 
 func TestWriteBackendBindsConfirmationAndReconcilesWithoutResend(t *testing.T) {
 	t.Parallel()
