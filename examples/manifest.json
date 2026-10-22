@@ -3,6 +3,7 @@
   "service_id": "booking-service",
   "revision": "example-v1",
   "description": "Example integration; endpoints and service identity are placeholders.",
+  "summary": "Manage appointment bookings and personal orders.",
   "caller": {
     "permissions": ["runs.create", "runs.control", "chat.read", "chat.events.append"],
     "auth": {"type": "zitadel", "issuer": "https://id.example.com", "subject": "replace-with-service-subject", "audience": "replace-with-harness-audience"}
@@ -11,12 +12,14 @@
     {
       "id": "massage",
       "description": "Massage slots and bookings",
+      "summary": "Find or book a massage appointment.",
       "permissions": ["booking.massage.access"],
       "discovery": "static",
       "methods": [
         {
           "id": "list_slots",
           "description": "List currently available slots for a specialist",
+          "summary": "Find free appointment times with a selected specialist.",
           "permissions": ["booking.massage.read"],
           "path": "/internal/agent/massage/list-slots",
           "effect": "read",
@@ -32,6 +35,7 @@
         {
           "id": "book_slot",
           "description": "Book a prepared and confirmed slot",
+          "summary": "Book the appointment selected by the user.",
           "permissions": ["booking.massage.book"],
           "path": "/internal/agent/massage/book-slot",
           "effect": "write",
@@ -52,6 +56,7 @@
     {
       "id": "orders",
       "description": "User-specific order methods returned by authorized discovery",
+      "summary": "View or manage the user's orders.",
       "permissions": ["booking.orders.access"],
       "discovery": "dynamic",
       "discovery_path": "/internal/agent/orders/discover",

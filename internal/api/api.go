@@ -485,6 +485,9 @@ func (s *server) createRun(w http.ResponseWriter, r *http.Request, p domain.Prin
 }
 
 func (s *server) validateRunRequest(body *domain.CreateRun, p domain.Principal) error {
+	if err := domain.ValidateDiscovery(body.Discovery); err != nil {
+		return err
+	}
 	if body.Interaction.ReplyMode != "" && body.Interaction.ReplyMode != domain.ReplyModeProtocol &&
 		body.Interaction.ReplyMode != domain.ReplyModeAgent {
 		return apiError(http.StatusUnprocessableEntity, "unsupported_reply_mode", "Unsupported reply mode")

@@ -68,6 +68,9 @@ type Principal struct {
 	Token                                                        string
 }
 type Tool struct {
+	Summary                   string          `json:"Summary,omitempty"`
+	ModuleSummary             string          `json:"ModuleSummary,omitempty"`
+	ServiceSummary            string          `json:"ServiceSummary,omitempty"`
 	SupportsOperationAdoption bool            `json:"SupportsOperationAdoption,omitempty"`
 	ServiceID                 string          `json:"ServiceID"`
 	Module                    string          `json:"Module"`
@@ -84,6 +87,7 @@ type Confirmation struct {
 	PreparePath string `json:"prepare_path,omitempty"`
 }
 type Method struct {
+	Summary                    string          `json:"summary,omitempty"`
 	ID                         string          `json:"id"`
 	Description                string          `json:"description"`
 	Permissions                []string        `json:"permissions"`
@@ -102,6 +106,7 @@ type Method struct {
 	ExternalDisclosure         bool            `json:"external_disclosure"`
 }
 type Module struct {
+	Summary         string   `json:"summary,omitempty"`
 	ID              string   `json:"id"`
 	Description     string   `json:"description"`
 	Permissions     []string `json:"permissions"`
@@ -122,6 +127,7 @@ type Caller struct {
 	Auth        CallerAuth `json:"auth"`
 }
 type Manifest struct {
+	Summary         string   `json:"summary,omitempty"`
 	ProtocolVersion int      `json:"protocol_version"`
 	ServiceID       string   `json:"service_id"`
 	Revision        string   `json:"revision"`
@@ -622,11 +628,14 @@ func (r *Registry) List(ctx context.Context, p Principal) ([]Tool, error) {
 					tools = append(
 						tools,
 						Tool{
-							ServiceID:   s.manifest.ServiceID,
-							Module:      module.ID,
-							Method:      method.ID,
-							Description: method.Description,
-							InputSchema: method.InputSchema,
+							Summary:        DiscoverySummary(method.Summary, method.Description),
+							ModuleSummary:  DiscoverySummary(module.Summary, module.Description),
+							ServiceSummary: DiscoverySummary(s.manifest.Summary, s.manifest.Description),
+							ServiceID:      s.manifest.ServiceID,
+							Module:         module.ID,
+							Method:         method.ID,
+							Description:    method.Description,
+							InputSchema:    method.InputSchema,
 						},
 					)
 				}
@@ -907,6 +916,9 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 					tools = append(
 						tools,
 						Tool{
+							Summary:                   DiscoverySummary(method.Summary, method.Description),
+							ModuleSummary:             DiscoverySummary(module.Summary, module.Description),
+							ServiceSummary:            DiscoverySummary(s.manifest.Summary, s.manifest.Description),
 							ServiceID:                 s.manifest.ServiceID,
 							Module:                    module.ID,
 							Method:                    method.ID,

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/sandbox"
 )
 
@@ -105,4 +106,18 @@ func TestHelpRejectsInvalidCursorAndBounds(t *testing.T) {
 	require.Error(t, err)
 	_, err = helpPage("help.read", "é", helpRequest{Cursor: "1"})
 	require.Error(t, err)
+}
+
+func TestExpandedServiceRechecksCurrentMethodPermissions(t *testing.T) {
+	t.Parallel()
+	f := referenceFixture(t)
+	f.run.Discovery = &domain.DiscoveryOptions{ExpandServices: []string{"acceptance", "foreign"}}
+	catalog, err := f.tools.tools(t.Context(), f.run, f.p, "")
+	require.NoError(t, err)
+	require.Contains(t, catalog[0].Description, "fetch_file")
+	delete(f.p.Permissions, "qa.read")
+	catalog, err = f.tools.tools(t.Context(), f.run, f.p, "")
+	require.NoError(t, err)
+	require.NotContains(t, catalog[0].Description, "fetch_file")
+	require.NotContains(t, catalog[0].Description, "fixture_dynamic")
 }

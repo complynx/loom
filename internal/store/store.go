@@ -372,6 +372,9 @@ func (s *Store) CreateRun(
 	if !p.Has("runs.create") || !p.Has("chat.read") {
 		return r, domain.Forbidden()
 	}
+	if err := domain.ValidateDiscovery(in.Discovery); err != nil {
+		return r, err
+	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		uid, e := s.ensureUser(ctx, tx, p)
 		if e != nil {
@@ -685,6 +688,7 @@ func buildRun(
 		OrgID:            p.OrgID,
 		State:            domain.Queued,
 		Input:            in.Input,
+		Discovery:        in.Discovery,
 		ModelID:          prefs.ModelID,
 		Effort:           prefs.Effort,
 		Interaction:      in.Interaction,
