@@ -85,11 +85,21 @@ prove whether authority changed.
 For an already bound operation, safe tool failures include `error`,
 `operation_id` and `state`. Codes are `authority_changed`,
 `operation_binding_changed`, `method_unavailable`, `operation_expired`,
-`fresh_consent_required` or `dependency_unavailable`. Codes contain no raw
+`fresh_consent_required`, `invalid_arguments` or `dependency_unavailable`. Codes contain no raw
 backend body, exception, URL, query or credential. A terminal rejected execute
 returns `status: "failed"` and `error: "backend_rejected"`.
 Local terminal failures instead use `operation_expired` or `execution_blocked`;
 older terminal records without a classification use `operation_failed`.
+
+Local caller-input failures before preparation return `error: "invalid_arguments"`
+with `validation.reason` (`schema_validation`, `invalid_json`, `too_large` or
+`too_complex`). When available, `validation.fields` contains at most eight declared
+top-level field names of at most 128 ASCII characters. Values, unknown property
+names, nested keys and raw validator messages are excluded. Read the full method
+contract with `help.read`, correct the arguments and use a new tool-call ID.
+Loom does not automatically retry the mutation. A corrected call still follows
+normal preparation, authorization and exact consent. Invalid backend preparation
+data and actual dependency failures are not caller argument errors.
 
 The dispatch boundary matters. A local guard failure proven to occur before the
 execute RPC requires fresh consent. Once an execute RPC might have reached the
