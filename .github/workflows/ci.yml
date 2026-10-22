@@ -1,12 +1,52 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  behavioral-tests:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - run: go mod verify
+      - run: sh scripts/install-tools.sh
+      - run: bin/golangci-lint config verify
+      - run: bin/golangci-lint run --build-tags=integration ./...
+      - run: bin/govulncheck ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - run: go test -race -parallel=4 ./cmd/... ./internal/... ./migrations/...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/loom
+      - name: Verify container build without publishing
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: |
+          docker build --platform linux/amd64 --target api -t loom:ci .
+          docker build --platform linux/amd64 --target file-worker -t loom:file-worker-ci .
+
+  integration:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -27,26 +67,15 @@ jobs:
         with:
           go-version: '1.27.3'
           cache: true
-      - run: go mod verify
       - run: go test -race -parallel=4 -tags=integration ./...
       - name: Test media CLIs in the built worker runtime
         run: |
           docker build --platform linux/amd64 --target file-runtime-tests -t loom:file-runtime-tests .
           docker run --rm --platform linux/amd64 --network host -e CLX_TEST_DATABASE_DSN loom:file-runtime-tests
-      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/loom
-      - run: sh scripts/install-tools.sh
-      - run: bin/golangci-lint config verify
-      - run: bin/golangci-lint run --build-tags=integration ./...
-      - run: bin/govulncheck ./...
-      - name: Verify container build without publishing
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        run: |
-          docker build --platform linux/amd64 --target api -t loom:ci .
-          docker build --platform linux/amd64 --target file-worker -t loom:file-worker-ci .
 
   publish-and-deploy:
     name: Publish Docker image and request server deployment
-    needs: behavioral-tests
+    needs: [lint, test, build, integration]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
