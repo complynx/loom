@@ -102,7 +102,7 @@ func (s *Store) BeginStep(
 	reserve int64,
 ) (domain.Step, error) {
 	var step domain.Step
-	if reserve < 0 {
+	if !validStepReservation(kind, reserve) {
 		return step, domain.NewError(http.StatusUnprocessableEntity, "invalid_reservation")
 	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
@@ -143,21 +143,7 @@ func (s *Store) BeginStep(
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(ctx, "UPDATE runs SET reserved_microcredits=reserved_microcredits+$2 WHERE id=$1", rid, reserve)
-		if e != nil {
-			return e
-		}
-		_, e = tx.Exec(
-			ctx,
-			"INSERT INTO credit_ledger(id,owner_id,run_id,step_id,settlement_key,amount,kind) VALUES($1,$2,$3,$4,$5,$6,'reserve')",
-			id(),
-			r.OwnerID,
-			rid,
-			step.ID,
-			"reserve:"+step.ID,
-			reserve,
-		)
-		return e
+		return reserveStepLedger(ctx, tx, r, step, reserve)
 	})
 	return step, err
 }
@@ -574,17 +560,7 @@ func (s *Store) completeStep(
 	if e != nil {
 		return e
 	}
-	_, e = tx.Exec(
-		ctx,
-		"INSERT INTO credit_ledger(id,owner_id,run_id,step_id,settlement_key,amount,kind) VALUES($1,$2,$3,$4,$5,$6,'settle')",
-		id(),
-		r.OwnerID,
-		rid,
-		sid,
-		"settle:"+sid,
-		usage.Microcredits,
-	)
-	if e != nil {
+	if e = settleStepLedger(ctx, tx, r, sid, usage, result); e != nil {
 		return e
 	}
 	if e = closeProviderRetry(ctx, tx, rid, sid); e != nil {

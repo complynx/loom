@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
 	"github.com/complynx/loom/internal/artifacts"
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/fileproc"
@@ -25,11 +27,14 @@ const (
 )
 
 type audioArguments struct {
-	HandleID string  `json:"handle_id"`
-	Language string  `json:"language"`
-	Prompt   string  `json:"prompt"`
-	Start    float64 `json:"start"`
-	End      float64 `json:"end"`
+	ReuseOnly    bool    `json:"reuse_only"`
+	ArtifactID   string  `json:"artifact_id"`
+	ReprocessKey string  `json:"reprocess_key"`
+	HandleID     string  `json:"handle_id"`
+	Language     string  `json:"language"`
+	Prompt       string  `json:"prompt"`
+	Start        float64 `json:"start"`
+	End          float64 `json:"end"`
 }
 
 type preparedAudio struct {
@@ -46,10 +51,10 @@ func transcriptionTool() provider.Tool {
 	return provider.Tool{
 		Type:        "function",
 		Name:        "audio_transcribe",
-		Description: "Transcribe audio/video from temporary handle outside JS. Paid durable action; credits reserved before provider dispatch, no automatic retry. Optional start/end choose a <=300-second audio chunk, language and short prompt improve terms. Returns bounded transcript, full transcript handle, provider timestamps only if available and next_cursor for following chunks. Use files.video_storyboard separately for visual frames.",
+		Description: "Transcribe audio/video outside JS. Supply exactly one handle_id or artifact_id. First reuses an owned completed transcript for the same source, language, prompt and requested start/end, even after source bytes expire; model upgrades do not regenerate it. Set reuse_only:true for stored text only; a miss returns transcript_not_found without processing or billing. New processing is paid, durably reserved before dispatch, never automatically retried. Optional start/end choose a <=300-second chunk. Returns bounded text, durable transcript_id, source_artifact_id, original model/provider provenance, reused flag and next_cursor. Read complete text with modules.files.transcript_read({transcript_id,offset?,limit?}); start at offset 0 and copy next_offset until partial is false. next_cursor is for source-audio chunks, not text pages. Only explicitly requested reprocessing may set a new UUID reprocess_key; do not use it to bypass an unknown outcome. Use files.video_storyboard separately for visual frames.",
 		Strict:      false,
 		Parameters: json.RawMessage(
-			`{"type":"object","properties":{"handle_id":{"type":"string"},"language":{"type":"string"},"prompt":{"type":"string"},"start":{"type":"number"},"end":{"type":"number"}},"required":["handle_id"],"additionalProperties":false}`,
+			`{"type":"object","properties":{"reuse_only":{"type":"boolean"},"handle_id":{"type":"string"},"artifact_id":{"type":"string"},"reprocess_key":{"type":"string","format":"uuid"},"language":{"type":"string"},"prompt":{"type":"string"},"start":{"type":"number"},"end":{"type":"number"}},"additionalProperties":false}`,
 		),
 	}
 }
@@ -73,14 +78,22 @@ func (t runtimeTools) Prepare(
 	if err = decodeAudio(call.Arguments, &args); err != nil {
 		return domain.PaidToolIntent{}, 0, err
 	}
-	if args.HandleID == "" || len(args.Language) > 32 || len(args.Prompt) > 1000 || args.Start < 0 || args.End < 0 ||
-		math.IsNaN(args.Start) ||
-		math.IsNaN(args.End) ||
-		math.IsInf(args.Start, 0) ||
-		math.IsInf(args.End, 0) {
+	if err = validateAudioArguments(args); err != nil {
+		return domain.PaidToolIntent{}, 0, err
+	}
+	if args.ReuseOnly {
 		return domain.PaidToolIntent{}, 0, artifacts.ErrInvalid
 	}
-	source, err := t.fileSource(ctx, r, current, args.HandleID)
+	original, key, err := t.audioIdentity(ctx, r, current, args)
+	if err != nil {
+		return domain.PaidToolIntent{}, 0, err
+	}
+	var source domain.Artifact
+	if args.HandleID != "" {
+		source, err = t.fileSource(ctx, r, current, args.HandleID)
+	} else {
+		source, err = t.resolveArtifact(ctx, r, current, args.ArtifactID)
+	}
 	if err != nil {
 		return domain.PaidToolIntent{}, 0, err
 	}
@@ -116,7 +129,7 @@ func (t runtimeTools) Prepare(
 	billing.ReserveMicrocredits = reserve
 	prepared, _ := json.Marshal(
 		preparedAudio{
-			SourceArtifactID: source.ID,
+			SourceArtifactID: original.ID,
 			HandleID:         audio.Outputs[0].HandleID,
 			Language:         args.Language,
 			Prompt:           args.Prompt,
@@ -126,10 +139,26 @@ func (t runtimeTools) Prepare(
 		},
 	)
 	return domain.PaidToolIntent{
+		TranscriptSourceID: original.ID, TranscriptKey: key, ReprocessKey: args.ReprocessKey,
 		Call:     domain.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments},
 		Billing:  billing,
 		Prepared: prepared,
 	}, reserve, nil
+}
+
+func validateAudioArguments(args audioArguments) error {
+	if (args.HandleID == "" && args.ArtifactID == "") ||
+		len(args.Language) > 32 ||
+		len(args.Prompt) > 1000 ||
+		args.Start < 0 ||
+		args.End < 0 ||
+		math.IsNaN(args.Start) ||
+		math.IsNaN(args.End) ||
+		math.IsInf(args.Start, 0) ||
+		math.IsInf(args.End, 0) {
+		return artifacts.ErrInvalid
+	}
+	return nil
 }
 
 func decodeAudio(raw json.RawMessage, target *audioArguments) error {
@@ -141,6 +170,13 @@ func decodeAudio(raw json.RawMessage, target *audioArguments) error {
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return artifacts.ErrInvalid
+	}
+	if target.ReprocessKey != "" {
+		key, err := uuid.Parse(target.ReprocessKey)
+		if err != nil {
+			return artifacts.ErrInvalid
+		}
+		target.ReprocessKey = key.String()
 	}
 	return nil
 }
@@ -183,6 +219,11 @@ func (t runtimeTools) Execute(
 		defer func() { finishTrace(err) }()
 	}
 	started := time.Now()
+	if intent.TranscriptKey != "" {
+		if err = t.repository.ClaimTranscriptDispatch(ctx, r, stepID); err != nil {
+			return nil, domain.Usage{}, err
+		}
+	}
 	result, err := t.transcriber.Transcribe(
 		ctx,
 		transcription.Request{
@@ -217,7 +258,7 @@ func (t runtimeTools) Execute(
 		AudioDurationMS: durationMS,
 		RequestID:       result.RequestID,
 	}
-	output, err := t.transcriptOutput(ctx, r, prepared, source, result)
+	output, err := t.finishTranscript(ctx, r, intent, prepared, source, result, stepID)
 	return output, usage, err
 }
 
@@ -293,13 +334,13 @@ func (t runtimeTools) transcriptOutput(
 	}
 	return json.Marshal(
 		map[string]any{
-			"text":                   text,
-			"partial":                partial,
+			transcriptTextKey:        text,
+			transcriptPartialKey:     partial,
 			"transcript_handle_id":   handle.ID,
 			"segments":               segments,
 			"transcript_artifact_id": transcript.ID,
-			"start":                  prepared.Start,
-			"end":                    prepared.End,
+			audioStartKey:            prepared.Start,
+			audioEndKey:              prepared.End,
 			"next_cursor":            prepared.NextCursor,
 			"provider_request_id":    result.RequestID,
 		},
@@ -321,16 +362,6 @@ func (t runtimeTools) authorizeAudioSource(ctx context.Context, r domain.Run, pr
 	if !p.Has("artifacts.read") || !p.Has("chat.read") {
 		return domain.Forbidden()
 	}
-	source, err := t.resolveArtifact(ctx, r, p, prepared.SourceArtifactID)
-	if err != nil {
-		return err
-	}
-	settings, err := t.repository.GetSettings(ctx)
-	if err != nil {
-		return err
-	}
-	if !settings.ExternalDisclosure || !r.SettingsSnapshot.ExternalDisclosure || !source.ExternalDisclosureAllowed {
-		return artifacts.ErrForbidden
-	}
-	return nil
+	_, err = t.authorizeTranscriptSource(ctx, r, p, prepared.SourceArtifactID)
+	return err
 }

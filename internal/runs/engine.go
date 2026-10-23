@@ -385,6 +385,8 @@ func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState
 		}
 		turn.items = append(turn.items, step.Result)
 		turn.completed[intent.Call.ID] = true
+	case domain.TranscriptReuseStepKind:
+		return e.replayTranscriptReuse(ctx, run, turn, step)
 	case "tool":
 		var call provider.Call
 		if err = json.Unmarshal(step.Input, &call); err != nil {
