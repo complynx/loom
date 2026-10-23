@@ -19,6 +19,7 @@ const filesModule = "files"
 
 func fileMethods() []string {
 	return []string{
+		"transcript_read",
 		"info",
 		"pdf_info",
 		"pdf_text",
@@ -113,6 +114,9 @@ func (t runtimeTools) processFile(
 	method string,
 	raw json.RawMessage,
 ) (json.RawMessage, error) {
+	if method == "transcript_read" {
+		return t.readTranscript(ctx, r, raw)
+	}
 	if !t.cfg.FileTools.Enabled {
 		return nil, domain.NotFound()
 	}

@@ -41,10 +41,86 @@ func validateStepSettlement(ctx context.Context, tx pgx.Tx, rid, sid string, res
 		return err
 	}
 	if kind != transcriptionStepKind {
+		if kind == domain.TranscriptReuseStepKind && usage != (domain.Usage{}) {
+			return domain.Conflict("invalid_transcript_reuse_usage")
+		}
 		return nil
 	}
 	_, err := paidReceiptCost(input, usage)
 	return err
+}
+
+func validStepReservation(kind string, reserve int64) bool {
+	return reserve >= 0 && (kind != domain.TranscriptReuseStepKind || reserve == 0)
+}
+
+func reserveStepLedger(ctx context.Context, tx pgx.Tx, r domain.Run, step domain.Step, reserve int64) error {
+	if err := bindTranscriptStep(ctx, tx, r, step); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, "UPDATE runs SET reserved_microcredits=reserved_microcredits+$2 WHERE id=$1", r.ID, reserve)
+	if err != nil {
+		return err
+	}
+	if step.Kind == domain.TranscriptReuseStepKind {
+		return nil
+	}
+	_, err = tx.Exec(
+		ctx,
+		"INSERT INTO credit_ledger(id,owner_id,run_id,step_id,settlement_key,amount,kind) VALUES($1,$2,$3,$4,$5,$6,'reserve')",
+		id(),
+		r.OwnerID,
+		r.ID,
+		step.ID,
+		"reserve:"+step.ID,
+		reserve,
+	)
+	return err
+}
+
+func settleStepLedger(
+	ctx context.Context,
+	tx pgx.Tx,
+	r domain.Run,
+	sid string,
+	usage domain.Usage,
+	result json.RawMessage,
+) error {
+	var kind string
+	if err := tx.QueryRow(ctx, "SELECT kind FROM steps WHERE id=$1", sid).Scan(&kind); err != nil {
+		return err
+	}
+	if kind == domain.TranscriptReuseStepKind {
+		return nil
+	}
+	if kind == transcriptionStepKind && usage == (domain.Usage{}) && rejectedTranscriptResult(result) {
+		if _, err := tx.Exec(ctx, "DELETE FROM audio_transcripts WHERE id=$1 AND result IS NULL", sid); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(
+		ctx,
+		"INSERT INTO credit_ledger(id,owner_id,run_id,step_id,settlement_key,amount,kind) VALUES($1,$2,$3,$4,$5,$6,'settle')",
+		id(),
+		r.OwnerID,
+		r.ID,
+		sid,
+		"settle:"+sid,
+		usage.Microcredits,
+	)
+	return err
+}
+
+// Only a definite, zero-usage rejection releases an unused transcript identity.
+func rejectedTranscriptResult(result json.RawMessage) bool {
+	var envelope struct {
+		Output string `json:"output"`
+	}
+	var output struct {
+		Error string `json:"error"`
+	}
+	return json.Unmarshal(result, &envelope) == nil && json.Unmarshal([]byte(envelope.Output), &output) == nil &&
+		output.Error == "transcription_rejected"
 }
 
 func paidReceiptCost(input []byte, usage domain.Usage) (int64, error) {

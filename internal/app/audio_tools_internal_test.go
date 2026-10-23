@@ -239,7 +239,7 @@ func exerciseAudioAdapter(t *testing.T, tools runtimeTools, run domain.Run, p do
 		requests.Add(1)
 		assert.Equal(t, "/v1/audio/transcriptions", r.URL.Path)
 		assert.Equal(t, "Bearer fixture-only-key", r.Header.Get("Authorization"))
-		assert.Equal(t, "audio-acceptance-step", r.Header.Get("X-Client-Request-Id"))
+		assert.NotEmpty(t, r.Header.Get("X-Client-Request-Id"))
 		if !assert.NoError(t, r.ParseMultipartForm(1<<20)) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -307,7 +307,7 @@ func exerciseAudioAdapter(t *testing.T, tools runtimeTools, run domain.Run, p do
 	step, err := tools.repository.BeginStep(ctx, run.ID, run.LeaseOwner, run.Fence, "transcription", payload, reserve)
 	require.NoError(t, err)
 	tools.cfg.Transcription.CreditsPerSecond = 999
-	output, usage, err := tools.Execute(ctx, run, p, "", intent, "audio-acceptance-step")
+	output, usage, err := tools.Execute(ctx, run, p, "", intent, step.ID)
 	require.NoError(t, err)
 	require.Positive(t, uploaded.Load())
 	require.EqualValues(t, 500, usage.AudioDurationMS)
@@ -333,20 +333,15 @@ func exerciseAudioAdapter(t *testing.T, tools runtimeTools, run domain.Run, p do
 	require.EqualValues(t, 38, got.SpentMicrocredits)
 	require.Zero(t, got.ReservedMicrocredits)
 	var receipt struct {
-		Text       string `json:"text"`
-		ArtifactID string `json:"transcript_artifact_id"`
-		HandleID   string `json:"transcript_handle_id"`
+		Text         string `json:"text"`
+		TranscriptID string `json:"transcript_id"`
 	}
 	require.NoError(t, json.Unmarshal(output, &receipt))
 	require.Equal(t, "actual extracted audio transcript", receipt.Text)
-	require.NotEmpty(t, receipt.ArtifactID)
-	require.NotEmpty(t, receipt.HandleID)
-	_, data, err := tools.files.Download(ctx, artifacts.Principal{OwnerID: uid, OrgID: p.OrgID}, receipt.ArtifactID)
+	require.NotEmpty(t, receipt.TranscriptID)
+	page, err := tools.readTranscript(ctx, run, json.RawMessage(`{"transcript_id":"`+receipt.TranscriptID+`"}`))
 	require.NoError(t, err)
-	transcript, err := io.ReadAll(data)
-	require.NoError(t, err)
-	require.NoError(t, data.Close())
-	require.Equal(t, receipt.Text, string(transcript))
+	require.Contains(t, string(page), receipt.Text)
 	require.NoError(t, tools.replayPaidTool(ctx, run, intent))
 	revoked := p
 	revoked.Permissions = maps.Clone(p.Permissions)

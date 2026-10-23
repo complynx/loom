@@ -25,6 +25,11 @@ type PaidTool interface {
 
 const PaidToolRejected = "rejected"
 
+// PaidToolReuse resolves settled durable results without new paid admission.
+type PaidToolReuse interface {
+	Reuse(context.Context, domain.Run, domain.Principal, string, provider.Call) (json.RawMessage, bool, error)
+}
+
 // PaidToolError distinguishes definite rejection from an uncertain paid dispatch.
 type PaidToolError struct {
 	Disposition string
@@ -42,6 +47,9 @@ func (e *Engine) executePaidTool(
 	call provider.Call,
 	tool PaidTool,
 ) (bool, error) {
+	if handled, reuseErr := e.reusePaidTool(ctx, run, principal, token, call, tool); handled || reuseErr != nil {
+		return handled, reuseErr
+	}
 	intent, reserve, err := tool.Prepare(ctx, run, principal, token, call)
 	if err != nil {
 		if suspension, ok := errors.AsType[*Suspension](err); ok {
@@ -59,7 +67,7 @@ func (e *Engine) executePaidTool(
 	}
 	step, err := e.store.BeginStep(ctx, run.ID, e.opts.Owner, run.Fence, "transcription", payload, reserve)
 	if err != nil {
-		return true, checkpointed(e.admissionFailure(ctx, run, err))
+		return true, e.paidAdmissionFailure(ctx, run, err)
 	}
 	output, usage, callErr := tool.Execute(ctx, run, principal, token, intent, step.ID)
 	if callErr != nil {
@@ -87,6 +95,69 @@ func (e *Engine) executePaidTool(
 		usage,
 	)
 	return true, err
+}
+
+func (e *Engine) paidAdmissionFailure(ctx context.Context, run domain.Run, err error) error {
+	if failure, ok := errors.AsType[*domain.Error](err); ok && failure.Code == "transcription_in_progress" {
+		return e.stopTurn(ctx, run, domain.Paused, failure.Code)
+	}
+	return checkpointed(e.admissionFailure(ctx, run, err))
+}
+
+func (e *Engine) reusePaidTool(
+	ctx context.Context,
+	run domain.Run,
+	p domain.Principal,
+	token string,
+	call provider.Call,
+	tool PaidTool,
+) (bool, error) {
+	reuse, ok := tool.(PaidToolReuse)
+	if !ok {
+		return false, nil
+	}
+	output, found, err := reuse.Reuse(ctx, run, p, token, call)
+	if err != nil {
+		if suspension, isSuspension := errors.AsType[*Suspension](err); isSuspension {
+			return true, e.stopTurn(ctx, run, suspension.State, suspension.Reason)
+		}
+		return e.completeRejectedPaidTool(ctx, run, call)
+	}
+	if !found {
+		return false, nil
+	}
+	payload, _ := json.Marshal(call)
+	step, err := e.store.BeginStep(ctx, run.ID, e.opts.Owner, run.Fence, domain.TranscriptReuseStepKind, payload, 0)
+	if err != nil {
+		return true, checkpointed(e.admissionFailure(ctx, run, err))
+	}
+	return true, e.store.CompleteStep(
+		ctx,
+		run.ID,
+		e.opts.Owner,
+		run.Fence,
+		step.ID,
+		provider.CallOutput(call.ID, output),
+		domain.Usage{},
+	)
+}
+
+func (e *Engine) replayTranscriptReuse(ctx context.Context, run domain.Run, turn *turnState, step domain.Step) error {
+	var call provider.Call
+	if err := json.Unmarshal(step.Input, &call); err != nil {
+		return err
+	}
+	reuse, ok := e.opts.PaidTool.(PaidToolReuse)
+	if !ok {
+		return e.stopTurn(ctx, run, domain.Paused, "transcript_unavailable")
+	}
+	_, found, err := reuse.Reuse(ctx, run, domain.Principal{}, "", call)
+	if err != nil || !found {
+		return e.stopTurn(ctx, run, domain.Paused, "transcript_unavailable")
+	}
+	turn.items = append(turn.items, step.Result)
+	turn.completed[call.ID] = true
+	return nil
 }
 
 func (e *Engine) completeRejectedPaidTool(ctx context.Context, run domain.Run, call provider.Call) (bool, error) {

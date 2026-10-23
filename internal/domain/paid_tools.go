@@ -8,6 +8,8 @@ import (
 
 const paidTokenTariffScale = 1000000
 
+const TranscriptReuseStepKind = "transcript_reuse"
+
 // PaidToolBillingSnapshot freezes the tariff before a paid operation starts.
 type PaidToolBillingSnapshot struct {
 	Provider                    string `json:"provider"`
@@ -23,9 +25,12 @@ type PaidToolBillingSnapshot struct {
 
 // PaidToolIntent stores a validated call and its trusted billing snapshot.
 type PaidToolIntent struct {
-	Call     ToolCall                `json:"call"`
-	Billing  PaidToolBillingSnapshot `json:"billing"`
-	Prepared json.RawMessage         `json:"prepared,omitempty"`
+	Call               ToolCall                `json:"call"`
+	Billing            PaidToolBillingSnapshot `json:"billing"`
+	Prepared           json.RawMessage         `json:"prepared,omitempty"`
+	TranscriptSourceID string                  `json:"transcript_source_id,omitempty"`
+	TranscriptKey      string                  `json:"transcript_key,omitempty"`
+	ReprocessKey       string                  `json:"reprocess_key,omitempty"`
 }
 
 func (b PaidToolBillingSnapshot) Validate() error {
