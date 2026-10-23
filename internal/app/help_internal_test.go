@@ -68,6 +68,18 @@ func TestHelpDiscoverReadAndPageWithCurrentRights(t *testing.T) {
 	)
 	require.NoError(t, paidErr)
 	require.Contains(t, string(paid), `"effect":"paid"`)
+	card, cardErr := f.tools.builtin(t.Context(), f.run, helpModule, builtinReadMethod,
+		json.RawMessage(`{"module":"$tools","method":"audio_transcribe"}`))
+	require.NoError(t, cardErr)
+	var audioCard struct {
+		Text    string `json:"text"`
+		Partial bool   `json:"partial"`
+	}
+	require.NoError(t, json.Unmarshal(card, &audioCard))
+	require.False(t, audioCard.Partial)
+	for _, term := range []string{"exactly one", "artifact_id", "reuse_only", "transcript_not_found", "transcript_id", "source_artifact_id", "files.transcript_read", "next_offset", "next_cursor", "UUID", "reprocess_key"} {
+		require.Contains(t, audioCard.Text, term)
+	}
 	delete(f.p.Permissions, "artifacts.read")
 	_, err = f.tools.builtin(
 		t.Context(),
