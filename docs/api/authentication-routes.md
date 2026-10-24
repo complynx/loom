@@ -48,6 +48,7 @@ organization, lifecycle and additional handler checks still apply.
 | GET | `/chats/default` | Get or create default chat; `chat.read` |
 | GET | `/chats/{id}/history` | Read event pages; `chat.read` |
 | POST | `/chats/{id}/events` | Append passive action; `chat.events.append` |
+| POST | `/chats/{id}/reactions` | Set or remove own passive reaction; `chat.events.append` and `chat.read` |
 | POST | `/chats/{id}/history/search` | Search history; `chat.read` |
 | POST | `/chats/{id}/history/read` | Read bounded events or event text; `chat.read` |
 | POST | `/chats/{id}/history/embeddings` | Index supplied vector when enabled; `chat.embeddings.write` and `chat.read` |

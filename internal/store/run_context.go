@@ -44,7 +44,7 @@ func (s *Store) ExecutionCachedContext(ctx context.Context, rid string) (domain.
 		return out, nil
 	}
 	var raw []byte
-	err = s.pool.QueryRow(ctx, `SELECT c.through_seq,c.items FROM run_contexts c JOIN chats ch ON ch.id=c.chat_id WHERE c.run_id=$1 AND c.chat_id=$2 AND ch.deleted_at IS NULL AND c.expires_at>now() AND NOT EXISTS(SELECT 1 FROM chat_events excluded WHERE excluded.run_id=c.run_id AND excluded.seq<=c.through_seq AND excluded.kind IN('input.steering','input.answer','question.created','approval.created')) AND c.source_count=(SELECT count(*) FROM chat_events WHERE chat_id=c.chat_id AND seq<=c.through_seq)`, previous.ID, current.ChatID).
+	err = s.pool.QueryRow(ctx, `SELECT c.through_seq,c.items FROM run_contexts c JOIN chats ch ON ch.id=c.chat_id WHERE c.run_id=$1 AND c.chat_id=$2 AND ch.deleted_at IS NULL AND c.expires_at>now() AND NOT EXISTS(SELECT 1 FROM chat_events excluded WHERE excluded.run_id=c.run_id AND excluded.seq<=c.through_seq AND excluded.kind IN('input.steering','input.answer','question.created','approval.created')) AND NOT EXISTS(SELECT 1 FROM chat_events changes WHERE changes.chat_id=c.chat_id AND changes.seq>c.through_seq AND changes.kind='message.reaction') AND c.source_count=(SELECT count(*) FROM chat_events WHERE chat_id=c.chat_id AND seq<=c.through_seq)`, previous.ID, current.ChatID).
 		Scan(&out.ThroughSeq, &raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.CachedContext{}, nil

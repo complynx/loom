@@ -110,7 +110,7 @@ func (s *Store) searchSemantic(ctx context.Context, cid string, in domain.Search
 		return out, err
 	}
 	// Exact cosine ranking after chat/model/dimension filters avoids ANN filter recall loss.
-	query := `SELECT ` + eventColumns + ` FROM (SELECT e.seq,e.kind,e.action,e.text,e.doc,e.run_id,e.source_actor,e.source_event_id,e.occurred_at,e.received_at, (v.embedding::text::` + vector + ` OPERATOR(` + strings.TrimSuffix(
+	query := `SELECT ` + eventColumns + ` FROM (SELECT e.seq,e.kind,e.action,e.text,e.doc,e.run_id,e.source_actor,e.source_event_id,e.occurred_at,e.received_at,e.reactions,e.reactions_seq, (v.embedding::text::` + vector + ` OPERATOR(` + strings.TrimSuffix(
 		vector,
 		`"vector"`,
 	) + `<=>) $6::text::` + vector + `) AS distance FROM chat_events e JOIN event_embeddings v ON v.chat_id=e.chat_id AND v.seq=e.seq JOIN chats c ON c.id=e.chat_id WHERE e.chat_id=$1 AND c.deleted_at IS NULL AND e.seq>$2 AND ($3=0 OR e.seq<$3) AND ($4='' OR e.source_actor=$4) AND (COALESCE(cardinality($5::text[]),0)=0 OR e.kind=ANY($5)) AND v.model=$7 AND v.dimensions=$8) ranked ORDER BY distance,seq LIMIT $9 OFFSET $10`
@@ -145,6 +145,8 @@ func (s *Store) searchSemantic(ctx context.Context, cid string, in domain.Search
 			&event.SourceEventID,
 			&event.OccurredAt,
 			&event.ReceivedAt,
+			&event.Reactions,
+			&event.ReactionsSeq,
 		); err != nil {
 			return out, err
 		}

@@ -74,9 +74,10 @@ const (
 )
 
 type Interaction struct {
-	ReplyMode string `json:"reply_mode,omitempty" enum:"protocol,agent"`
-	Questions string `json:"questions"`
-	Approvals bool   `json:"approvals"`
+	Reactions *ReactionPolicy `json:"reactions,omitempty"`
+	ReplyMode string          `json:"reply_mode,omitempty" enum:"protocol,agent"`
+	Questions string          `json:"questions"`
+	Approvals bool            `json:"approvals"`
 }
 type Input struct {
 	Text        string   `json:"text"`
@@ -146,16 +147,18 @@ type Event struct {
 	CreatedAt time.Time       `json:"created_at"`
 }
 type ChatEvent struct {
-	Action        string          `json:"action,omitempty"`
-	Seq           int64           `json:"seq"`
-	Type          string          `json:"type"`
-	Text          string          `json:"text"`
-	Data          json.RawMessage `json:"data,omitempty"`
-	RunID         string          `json:"run_id,omitempty"`
-	SourceActor   string          `json:"source_actor"`
-	SourceEventID string          `json:"source_event_id,omitempty"`
-	OccurredAt    time.Time       `json:"occurred_at"`
-	ReceivedAt    time.Time       `json:"received_at"`
+	ReactionsSeq  int64               `json:"reactions_seq,omitempty"`
+	Reactions     map[string][]string `json:"reactions,omitempty"`
+	Action        string              `json:"action,omitempty"`
+	Seq           int64               `json:"seq"`
+	Type          string              `json:"type"`
+	Text          string              `json:"text"`
+	Data          json.RawMessage     `json:"data,omitempty"`
+	RunID         string              `json:"run_id,omitempty"`
+	SourceActor   string              `json:"source_actor"`
+	SourceEventID string              `json:"source_event_id,omitempty"`
+	OccurredAt    time.Time           `json:"occurred_at"`
+	ReceivedAt    time.Time           `json:"received_at"`
 }
 type AppendEvent struct {
 	SourceEventID string          `json:"source_event_id"`

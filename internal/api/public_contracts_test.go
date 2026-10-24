@@ -38,6 +38,21 @@ func TestOpenAPIBillingAndSessionContracts(t *testing.T) {
 	require.Contains(t, properties, "version")
 }
 
+func TestOpenAPIReactionContracts(t *testing.T) {
+	t.Parallel()
+	response := request(api.New(nil, authFunc(allowed), api.Options{}), "GET", "/openapi.json", "", "", "")
+	var document map[string]any
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &document))
+	paths := document["paths"].(map[string]any)
+	op := paths["/v1/chats/{id}/reactions"].(map[string]any)["post"].(map[string]any)
+	properties := publicSchemaProperties(t, document, op["requestBody"])
+	for _, name := range []string{"source_event_id", "message_seq", "reaction", "active"} {
+		require.Contains(t, properties, name)
+	}
+	properties = publicSchemaProperties(t, document, op["responses"].(map[string]any)["201"])
+	require.Contains(t, properties, "reactions")
+}
+
 func TestOpenAPIRunWaitAndCollectionResponses(t *testing.T) {
 	t.Parallel()
 	response := request(api.New(nil, authFunc(allowed), api.Options{}), "GET", "/openapi.json", "", "", "")

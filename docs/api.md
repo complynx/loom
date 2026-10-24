@@ -38,6 +38,10 @@ Read [Passive events](api/runs-input.md#passive-events).
 
 Read [History and search](api/history-events.md#history-and-search).
 
+## Message reactions
+
+Read [optional client support, user actions and bot reactions](api/reactions.md).
+
 ## Sessions and versions
 
 Read [Sessions and versions](api/history-events.md#sessions-and-versions).

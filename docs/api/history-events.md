@@ -9,6 +9,10 @@ use `GET /v1/chats/{id}/history?after=0&limit=50`. The response is `{events:[...
 use the last event's `seq` as the next `after`. The limit is 1–100. These chat
 sequence numbers are separate from run SSE sequence numbers.
 
+Messages can include compact current `reactions`; changes are separate
+`message.reaction` events. See [Message reactions](reactions.md) for negotiation,
+actor IDs, replay and snapshot rules.
+
 For bounded excerpts, send `POST /v1/chats/{id}/history/read` with
 `{after_seq,before_seq,limit,max_bytes,snippet_chars}`. To read one event's text,
 send `{event_seq,offset_chars,max_bytes,snippet_chars}`. Continue partial text with
@@ -76,6 +80,8 @@ sequence number: delivery is at least once. Ignore unknown event types safely.
 Common types include `run.status`, `input.applied`, `question.created`,
 `approval.created`, `interaction.resolved`, `artifact.ready`, `message.completed`,
 `usage.updated` and `run.resumable`. Recovery/retry can emit additional types.
+Clients advertising reactions also receive bot `message.reaction` events.
+`message.completed` includes the final message's chat `message_seq` beside `text`.
 The stream contains saved run events, not provider token deltas. It reads bounded
 database batches; slow writes have a deadline. Reconnect to recover saved events.
 

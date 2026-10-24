@@ -621,7 +621,8 @@ func (s *Store) transition(
 		return e
 	}
 	if state == domain.Completed {
-		if _, e = chatEvent(
+		var message domain.ChatEvent
+		if message, e = chatEvent(
 			ctx,
 			tx,
 			r.ChatID,
@@ -633,7 +634,13 @@ func (s *Store) transition(
 		); e != nil {
 			return e
 		}
-		if e = runEvent(ctx, tx, rid, "message.completed", map[string]string{eventTextKey: result}); e != nil {
+		if e = runEvent(
+			ctx,
+			tx,
+			rid,
+			"message.completed",
+			map[string]any{eventTextKey: result, "message_seq": message.Seq},
+		); e != nil {
 			return e
 		}
 	}

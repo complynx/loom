@@ -306,12 +306,12 @@ func currentRequestContext(items []provider.Item, events []domain.ChatEvent, run
 		if event.RunID == run.ID && event.Type == "message.user" {
 			out[offset+i] = provider.Message(
 				"user",
-				fmt.Sprintf(
+				history.WithMessageMetadata(fmt.Sprintf(
 					"Current explicit request: %s\nRequest provenance: run %s, event %d.",
 					event.Text,
 					run.ID,
 					event.Seq,
-				),
+				), event),
 			)
 			return out
 		}

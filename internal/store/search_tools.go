@@ -35,6 +35,8 @@ func boundSearchResult(out domain.SearchResult, in domain.SearchRequest) domain.
 		if used+len(raw) > budget && len(out.Events) == 0 {
 			event.Text = ""
 			event.Data = nil
+			event.Reactions = nil
+			event.ReactionsSeq = 0
 			raw, _ = json.Marshal(event)
 		}
 		if used+len(raw) > budget {
@@ -45,7 +47,8 @@ func boundSearchResult(out domain.SearchResult, in domain.SearchRequest) domain.
 		}
 		used += len(raw)
 		out.Events = append(out.Events, event)
-		if event.Text != original.Text || string(event.Data) != string(original.Data) {
+		if event.Text != original.Text || string(event.Data) != string(original.Data) ||
+			len(event.Reactions) != len(original.Reactions) || event.ReactionsSeq != original.ReactionsSeq {
 			out.TruncatedSeqs = append(out.TruncatedSeqs, event.Seq)
 		}
 	}
@@ -137,6 +140,8 @@ func boundedHistoryText(event domain.ChatEvent, in domain.ReadHistoryRequest) (d
 	}
 	budget := max(minPositive(in.MaxBytes, searchMaxOutputBytes), searchMinOutputBytes)
 	event.Data = nil
+	event.Reactions = nil
+	event.ReactionsSeq = 0
 	// Remove large optional metadata from this text-only page. The event sequence
 	// still identifies the complete source record.
 	event.SourceEventID = ""
