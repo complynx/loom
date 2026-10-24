@@ -34,6 +34,10 @@ chat text can reach the agent. `answer` returns `409 use_steering` in this mode.
 `approvals=true` additionally advertises dedicated binary callbacks. A client can
 support both chat and native confirmation buttons, or chat only with `false`.
 
+Optional `interaction.reactions` declares the bot reaction catalog. Omit it when
+unsupported. See [Message reactions](api/reactions.md) for emoji/custom policies,
+passive user actions, model tools and history. Reactions are never consent.
+
 ### Reply policy selection
 
 `confirmation.mode` binds prepare/execute to service state; it is independent of

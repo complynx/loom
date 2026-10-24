@@ -102,6 +102,7 @@ func (t runtimeTools) helpEntries(
 	for id, card := range cards {
 		module, method, _ := strings.Cut(id, ".")
 		if !t.builtinHelpAvailable(p, module) || (id == "history.semantic" && !t.cfg.Search.SemanticEnabled) ||
+			(id == "$tools.message_react" && (!r.Interaction.Reactions.Enabled() || !p.Has("chat.read"))) ||
 			(id == "$tools.interaction_resolve" && r.Interaction.ReplyMode != domain.ReplyModeAgent) ||
 			(id == "$tools.artifact_attach" && !p.Has("artifacts.read")) ||
 			(id == "$tools.audio_transcribe" && (!t.cfg.Transcription.Enabled || !p.Has("artifacts.read") || !p.Has("chat.read"))) {
@@ -274,7 +275,7 @@ func builtinHelpEffect(module, method string) string {
 		return "paid"
 	case "module_call":
 		return "action"
-	case "question", "interaction_resolve":
+	case "question", "interaction_resolve", "message_react":
 		return "interaction"
 	default:
 		return "model_function"

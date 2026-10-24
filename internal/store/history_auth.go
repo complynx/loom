@@ -47,7 +47,7 @@ func (s *Store) History(
 	return s.history(ctx, cid, after, 0, limit, false)
 }
 
-const eventColumns = "seq,kind,action,text,doc,COALESCE(run_id::text,''),source_actor,COALESCE(source_event_id,''),occurred_at,received_at"
+const eventColumns = "seq,kind,action,text,doc,COALESCE(run_id::text,''),source_actor,COALESCE(source_event_id,''),occurred_at,received_at,reactions,reactions_seq"
 
 func (s *Store) history(
 	ctx context.Context,
@@ -86,6 +86,8 @@ func (s *Store) history(
 			&v.SourceEventID,
 			&v.OccurredAt,
 			&v.ReceivedAt,
+			&v.Reactions,
+			&v.ReactionsSeq,
 		); e != nil {
 			return nil, e
 		}
@@ -120,7 +122,8 @@ func (s *Store) AppendEvent(
 	if !p.Has("chat.events.append") {
 		return out, domain.Forbidden()
 	}
-	if in.SourceEventID == "" || len(in.SourceEventID) > 128 || len(in.Type) > 128 || len(in.Action) > 256 ||
+	if in.Type == "message.reaction" || in.SourceEventID == "" || len(in.SourceEventID) > 128 || len(in.Type) > 128 ||
+		len(in.Action) > 256 ||
 		in.Text == "" ||
 		len(in.Text) > 65536 ||
 		len(in.Data) > 65536 {
@@ -400,6 +403,8 @@ func (s *Store) searchFulltext(ctx context.Context, cid string, in domain.Search
 			&v.SourceEventID,
 			&v.OccurredAt,
 			&v.ReceivedAt,
+			&v.Reactions,
+			&v.ReactionsSeq,
 		); queryErr != nil {
 			return out, queryErr
 		}
@@ -535,7 +540,7 @@ func (s *Store) appendEvent(
 			return domain.Conflict("event_conflict")
 		}
 		return tx.QueryRow(ctx, "SELECT "+eventColumns+" FROM chat_events WHERE chat_id=$1 AND seq=$2", cid, seq).
-			Scan(&out.Seq, &out.Type, &out.Action, &out.Text, &out.Data, &out.RunID, &out.SourceActor, &out.SourceEventID, &out.OccurredAt, &out.ReceivedAt)
+			Scan(&out.Seq, &out.Type, &out.Action, &out.Text, &out.Data, &out.RunID, &out.SourceActor, &out.SourceEventID, &out.OccurredAt, &out.ReceivedAt, &out.Reactions, &out.ReactionsSeq)
 	}
 	if !errors.Is(e, pgx.ErrNoRows) {
 		return e

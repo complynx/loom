@@ -158,6 +158,7 @@ func (s *server) registerRoutes(mux *http.ServeMux) {
 	s.route(mux, "GET /v1/chats/default", "chat.read", s.defaultChat)
 	s.route(mux, "DELETE /v1/chats/{id}", "chat.delete", s.deleteChat)
 	s.route(mux, "GET /v1/chats/{id}/history", "chat.read", s.history)
+	s.route(mux, "POST /v1/chats/{id}/reactions", "chat.events.append", s.setReaction)
 	s.route(mux, "POST /v1/chats/{id}/events", "chat.events.append", s.appendEvent)
 	s.route(mux, "POST /v1/chats/{id}/history/search", "chat.read", s.search)
 	s.route(mux, "POST /v1/chats/{id}/history/read", "chat.read", s.readHistory)
@@ -485,6 +486,9 @@ func (s *server) createRun(w http.ResponseWriter, r *http.Request, p domain.Prin
 }
 
 func (s *server) validateRunRequest(body *domain.CreateRun, p domain.Principal) error {
+	if err := body.Interaction.Reactions.Validate(); err != nil {
+		return err
+	}
 	if err := domain.ValidateDiscovery(body.Discovery); err != nil {
 		return err
 	}

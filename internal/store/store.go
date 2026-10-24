@@ -672,6 +672,9 @@ func buildRun(
 	if in.BillingAccountID != "" && in.BillingAccountID != uid {
 		return domain.Run{}, domain.Forbidden()
 	}
+	if err := in.Interaction.Reactions.Validate(); err != nil {
+		return domain.Run{}, err
+	}
 	if in.Interaction.ReplyMode != "" && in.Interaction.ReplyMode != domain.ReplyModeProtocol &&
 		in.Interaction.ReplyMode != domain.ReplyModeAgent {
 		return domain.Run{}, domain.NewError(http.StatusUnprocessableEntity, "unsupported_reply_mode")

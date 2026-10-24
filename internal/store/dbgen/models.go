@@ -46,6 +46,18 @@ type ArtifactHandle struct {
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
 
+type AudioTranscript struct {
+	ID               pgtype.UUID        `json:"id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	OrgID            string             `json:"org_id"`
+	SourceArtifactID pgtype.UUID        `json:"source_artifact_id"`
+	ProcessingKey    string             `json:"processing_key"`
+	ReprocessKey     string             `json:"reprocess_key"`
+	DispatchedAt     pgtype.Timestamptz `json:"dispatched_at"`
+	Result           []byte             `json:"result"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
 type AuditEvent struct {
 	ID        pgtype.UUID        `json:"id"`
 	Actor     string             `json:"actor"`
@@ -104,6 +116,8 @@ type ChatEvent struct {
 	OccurredAt    pgtype.Timestamptz `json:"occurred_at"`
 	ReceivedAt    pgtype.Timestamptz `json:"received_at"`
 	Action        string             `json:"action"`
+	Reactions     []byte             `json:"reactions"`
+	ReactionsSeq  int64              `json:"reactions_seq"`
 }
 
 type ContextSummary struct {
@@ -141,6 +155,11 @@ type IdempotencyRecord struct {
 	RequestHash string      `json:"request_hash"`
 	ResourceID  pgtype.UUID `json:"resource_id"`
 	RequestDoc  []byte      `json:"request_doc"`
+}
+
+type IdentityCacheState struct {
+	Singleton bool  `json:"singleton"`
+	Epoch     int64 `json:"epoch"`
 }
 
 type Membership struct {
@@ -201,6 +220,10 @@ type Run struct {
 	ActiveElapsedMs      int64              `json:"active_elapsed_ms"`
 	ActiveStartedAt      pgtype.Timestamptz `json:"active_started_at"`
 	StateEnteredAt       pgtype.Timestamptz `json:"state_entered_at"`
+	TraceOrigin          []byte             `json:"trace_origin"`
+	TraceAttempt         []byte             `json:"trace_attempt"`
+	TraceApplied         []byte             `json:"trace_applied"`
+	TraceStep            []byte             `json:"trace_step"`
 }
 
 type RunContext struct {
@@ -221,11 +244,13 @@ type RunEvent struct {
 }
 
 type RunInput struct {
-	ID        pgtype.UUID        `json:"id"`
-	RunID     pgtype.UUID        `json:"run_id"`
-	Doc       []byte             `json:"doc"`
-	Applied   bool               `json:"applied"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID            pgtype.UUID        `json:"id"`
+	RunID         pgtype.UUID        `json:"run_id"`
+	Doc           []byte             `json:"doc"`
+	Applied       bool               `json:"applied"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	TraceContext  []byte             `json:"trace_context"`
+	TraceSequence pgtype.Int8        `json:"trace_sequence"`
 }
 
 type ServiceIdentity struct {
