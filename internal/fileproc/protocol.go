@@ -98,7 +98,7 @@ func Process(ctx context.Context, req Request, inputPath, outputDir string) (Res
 	switch req.Operation {
 	case "pdf.info", "pdf.text", "pdf.search", "pdf.render", "pdf.images":
 		return processPDF(ctx, req, inputPath, outputDir)
-	case "video.info", "video.storyboard", "video.frame", "video.audio":
+	case videoInfoOperation, "video.storyboard", "video.frame", videoAudioOperation:
 		return processVideo(ctx, req, inputPath, outputDir)
 	default:
 		return Result{}, errors.New("unsupported file operation")

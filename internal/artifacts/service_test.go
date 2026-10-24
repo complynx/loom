@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"io"
 	"os"
@@ -18,12 +20,70 @@ import (
 
 	"github.com/complynx/loom/internal/artifacts"
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/mediaimage"
 )
+
+func TestModelRejectsAnimationButAllowsStillGIF(t *testing.T) {
+	t.Parallel()
+	s, _ := service(t, 4096, 16384)
+	for _, count := range []int{1, 2} {
+		var content bytes.Buffer
+		g := &gif.GIF{}
+		for range count {
+			g.Image = append(
+				g.Image,
+				image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.Black, color.White}),
+			)
+			g.Delay = append(g.Delay, 100)
+		}
+		if err := gif.EncodeAll(&content, g); err != nil {
+			t.Fatal(err)
+		}
+		a, err := s.Upload(t.Context(), testOwner(), "image/gif", bytes.NewReader(content.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := s.ForModel(t.Context(), testOwner(), a.ID, "openai", []string{"openai"}, true, 4096)
+		if count == 2 {
+			if !errors.Is(err, mediaimage.ErrAnimated) || len(out.Bytes) != 0 {
+				t.Fatalf("animation forwarded: %+v %v", out, err)
+			}
+		} else if err != nil || len(out.Bytes) == 0 {
+			t.Fatalf("still rejected: %v", err)
+		}
+	}
+}
 
 type metadataStore struct {
 	mu        sync.Mutex
 	rows      map[string]domain.Artifact
 	ambiguous bool
+}
+
+func TestAnimatedContainersNeverReachModelAsStillImages(t *testing.T) {
+	t.Parallel()
+	s, _ := service(t, 4096, 32768)
+	for _, fixture := range []struct {
+		Extension string
+		MIME      string
+	}{
+		{"apng", "image/png"}, {"webp", "image/webp"}, {"avif", "image/avif"},
+		{"jxl", "image/jxl"}, {"heics", "image/heic-sequence"}, {"mng", "video/x-mng"},
+		{"webm", "video/webm"}, {"tgs", "application/x-tgsticker"},
+	} {
+		data, err := os.ReadFile(filepath.Join("..", "fileproc", "testdata", "animated."+fixture.Extension))
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := s.Upload(t.Context(), testOwner(), fixture.MIME, bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := s.ForModel(t.Context(), testOwner(), a.ID, "openai", []string{"openai"}, true, 4096)
+		if err == nil || len(out.Bytes) != 0 {
+			t.Fatalf("%s was forwarded as still: err=%v", fixture.Extension, err)
+		}
+	}
 }
 
 func (m *metadataStore) CommitArtifact(_ context.Context, a domain.Artifact, quota int64) error {

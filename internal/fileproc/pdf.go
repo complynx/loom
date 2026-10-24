@@ -96,7 +96,7 @@ func pdfImages(ctx context.Context, p PDFOptions, input, dir string) (Result, er
 		return Result{}, err
 	}
 	for _, path := range files[start:end] {
-		result.Outputs = append(result.Outputs, Output{Name: filepath.Base(path), MIME: "image/png", Path: path})
+		result.Outputs = append(result.Outputs, Output{Name: filepath.Base(path), MIME: pngMIME, Path: path})
 	}
 	result.Partial = end < len(files)
 	if result.Partial {
@@ -144,7 +144,7 @@ func pdfRender(ctx context.Context, p PDFOptions, input, dir string) (Result, er
 		return Result{}, err
 	}
 	for _, path := range files {
-		result.Outputs = append(result.Outputs, Output{Name: filepath.Base(path), MIME: "image/png", Path: path})
+		result.Outputs = append(result.Outputs, Output{Name: filepath.Base(path), MIME: pngMIME, Path: path})
 	}
 	return result, nil
 }

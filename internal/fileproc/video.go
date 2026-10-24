@@ -20,48 +20,29 @@ type VideoOptions struct {
 }
 
 func processVideo(ctx context.Context, req Request, input, dir string) (Result, error) {
+	if result, handled, err := processNativeAnimation(ctx, req, input, dir); handled || err != nil {
+		return result, err
+	}
+	if result, handled, err := processAnimatedWebP(ctx, req, input, dir); handled || err != nil {
+		return result, err
+	}
 	var p VideoOptions
 	if err := decodeOptions(req.Params, &p); err != nil {
 		return Result{}, err
 	}
+	requestedInterval := p.Interval
 	var err error
 	p, err = videoOptions(p)
 	if err != nil {
 		return Result{}, err
 	}
-	b, err := command(
-		ctx,
-		"ffprobe",
-		"-v",
-		"error",
-		"-protocol_whitelist",
-		"file,pipe",
-		"-show_entries",
-		"format=duration,format_name,size:stream=index,codec_name,codec_type,width,height,duration,sample_rate,channels",
-		"-of",
-		"json",
-		input,
-	)
+	probe, err := probeVideo(ctx, input)
 	if err != nil {
 		return Result{}, err
 	}
-	if req.Operation == "video.info" {
-		if !json.Valid(b) {
-			return Result{}, errors.New("invalid probe result")
-		}
-		return Result{Data: b}, nil
-	}
-	var probe struct {
-		Format struct {
-			Duration string `json:"duration"`
-		} `json:"format"`
-		Streams []struct {
-			CodecType string `json:"codec_type"`
-			Duration  string `json:"duration"`
-		} `json:"streams"`
-	}
-	if err = json.Unmarshal(b, &probe); err != nil {
-		return Result{}, err
+	if req.Operation == videoInfoOperation {
+		data, marshalErr := json.Marshal(probe)
+		return Result{Data: data}, marshalErr
 	}
 	duration, _ := strconv.ParseFloat(probe.Format.Duration, 64)
 	hasAudio := false
@@ -73,14 +54,37 @@ func processVideo(ctx context.Context, req Request, input, dir string) (Result, 
 			duration, _ = strconv.ParseFloat(s.Duration, 64)
 		}
 	}
-	if req.Operation == "video.audio" {
+	if requestedInterval == 0 && duration > 0 && (probe.isAnimation() || duration < p.Interval) {
+		p.Interval = math.Max(minAnimationInterval, duration/float64(p.MaxFrames))
+	}
+	if req.Operation == videoAudioOperation {
 		return videoAudio(ctx, p, input, dir, duration, hasAudio)
+	}
+	selected, err := probe.visualStream()
+	if err != nil {
+		return Result{}, err
 	}
 	timestamps, partial, next, err := videoTimestamps(req, p, duration)
 	if err != nil {
 		return Result{}, err
 	}
-	return videoFrames(ctx, p, input, dir, duration, hasAudio, timestamps, partial, next)
+	stream := -1 // Preserve FFmpeg's automatic stream selection for ordinary video.
+	if len(probe.FrameTimes) > 0 {
+		stream = probe.Streams[selected].Index
+	}
+	return videoFrames(
+		ctx,
+		p,
+		input,
+		dir,
+		duration,
+		hasAudio,
+		stream,
+		probe.FrameTimes,
+		timestamps,
+		partial,
+		next,
+	)
 }
 
 func videoOptions(p VideoOptions) (VideoOptions, error) {
@@ -174,7 +178,11 @@ func videoTimestamps(req Request, p VideoOptions, duration float64) ([]float64, 
 			return nil, false, 0, errors.New("video duration or end is required")
 		}
 		timestamps = nil
-		for at := p.Start; at < end; at += p.Interval {
+		for index := 0; ; index++ {
+			at := p.Start + float64(index)*p.Interval
+			if at >= end || end-at < timestampTolerance {
+				break
+			}
 			if len(timestamps) == p.MaxFrames {
 				partial = true
 				next = at
@@ -192,11 +200,13 @@ func videoFrames(
 	input, dir string,
 	duration float64,
 	hasAudio bool,
+	stream int,
+	frameTimes []float64,
 	timestamps []float64,
 	partial bool,
 	next float64,
 ) (Result, error) {
-	result, err := dataResult(map[string]any{"timestamps": timestamps, hasAudioKey: hasAudio, "duration": duration})
+	result, err := dataResult(map[string]any{timestampsKey: timestamps, hasAudioKey: hasAudio, durationKey: duration})
 	if err != nil {
 		return Result{}, err
 	}
@@ -206,31 +216,41 @@ func videoFrames(
 		}
 		name := fmt.Sprintf("frame-%03d.jpg", index)
 		path := filepath.Join(dir, name)
-		_, err = command(
-			ctx,
-			"ffmpeg",
+		args := []string{
 			"-v",
 			"error",
 			"-nostdin",
 			"-y",
-			"-ss",
-			number(at),
-			"-protocol_whitelist",
-			"file,pipe",
-			"-i",
-			input,
+		}
+		if len(frameTimes) == 0 {
+			args = append(args, "-ss", number(at))
+		}
+		args = append(args, "-protocol_whitelist", "file,pipe", "-i", input)
+		filter := videoFrameFilter(p.Width, at, frameTimes)
+		if stream >= 0 {
+			args = append(args, "-map", fmt.Sprintf("0:%d", stream))
+		}
+		args = append(args,
 			"-frames:v",
 			"1",
+			"-threads",
+			"1",
 			"-vf",
-			fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", p.Width, p.Width),
+			filter,
 			"-q:v",
 			"3",
+			"-update",
+			"1",
 			path,
 		)
+		_, err = command(ctx, "ffmpeg", args...)
+		if err == nil {
+			err = validateFrame(path)
+		}
 		if err != nil {
 			if len(result.Outputs) > 0 {
 				result.Partial = true
-				result.NextCursor = number(at)
+				result.NextCursor = preciseSeconds(at)
 				return result, nil
 			}
 			return Result{}, err
@@ -239,8 +259,32 @@ func videoFrames(
 	}
 	result.Partial = partial
 	if partial {
-		result.NextCursor = number(next)
+		result.NextCursor = preciseSeconds(next)
 	}
 	return result, nil
 }
+
+func videoFrameFilter(width int, at float64, times []float64) string {
+	filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", width, width)
+	if len(times) == 0 {
+		return filter
+	}
+	frame := 0
+	for i, timestamp := range times {
+		if timestamp > at {
+			break
+		}
+		frame = i
+	}
+	return fmt.Sprintf("select=eq(n\\,%d),%s", frame, filter)
+}
 func number(v float64) string { return strconv.FormatFloat(v, 'f', 3, 64) }
+
+func preciseSeconds(v float64) string {
+	short := number(v)
+	parsed, _ := strconv.ParseFloat(short, 64)
+	if parsed == v {
+		return short
+	}
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
