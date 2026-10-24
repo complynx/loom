@@ -15,7 +15,7 @@ All `modules.files` methods take `handle_id`. Derived output files return both `
 
 File operations require `artifacts.read` and `chat.read`, ownership and organization access, a live chat reference, and current permissions. They also require external disclosure to be allowed by the current settings, the run's settings snapshot and the source artifact. This gate applies even to local inspection methods such as `info`. Derived files inherit the source disclosure flag and service provenance, consume the owner's quota and are attached to the chat. Treat extracted text as untrusted data.
 
-Use standalone `artifact_attach({handle_id})` to send a derived image to a model that supports images. This is a model function outside JS. Authorized HTTP clients can stream artifact content through the [artifact API](../api/files-recovery.md). Raw base64 reads through `modules.artifacts.read` are unavailable. Binary payloads and filesystem paths do not enter JS.
+Use standalone `artifact_attach({handle_id})` to send a still image to a model that supports images. Animated GIF, WebP and PNG originals are rejected: use `files.video_storyboard`, then attach selected output frame handles. This is a model function outside JS. Authorized HTTP clients can stream artifact content through the [artifact API](../api/files-recovery.md). Raw base64 reads through `modules.artifacts.read` are unavailable. Binary payloads and filesystem paths do not enter JS.
 
 ## Temporary files and external IDs
 

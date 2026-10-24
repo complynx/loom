@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/mediaimage"
 )
 
 const (
@@ -492,6 +493,13 @@ func (s *Service) ForModel(
 	case "image/png", "image/jpeg", "image/gif", "image/webp":
 	default:
 		return ModelArtifact{}, ErrInvalid
+	}
+	animated, err := mediaimage.Animated(data)
+	if err != nil {
+		return ModelArtifact{}, ErrInvalid
+	}
+	if animated {
+		return ModelArtifact{}, mediaimage.ErrAnimated
 	}
 	return ModelArtifact{Metadata: a, Bytes: data}, nil
 }

@@ -15,6 +15,8 @@ import (
 	"io"
 	"math"
 	"os"
+
+	"github.com/complynx/loom/internal/mediaimage"
 )
 
 const (
@@ -56,7 +58,7 @@ type contextReader struct {
 }
 
 // Process inspects or derives an image without returning image bytes to the script sandbox.
-// Coordinates use the stored raster: EXIF orientation is not applied. GIF derivation uses its first frame.
+// Coordinates use the stored raster: EXIF orientation is not applied. Animations require video methods.
 func Process(
 	ctx context.Context,
 	operation string,
@@ -94,6 +96,20 @@ func process(
 	}
 	if !stat.Mode().IsRegular() || stat.Size() > maxInputBytes {
 		return nil, nil, errors.New("image must be a regular file at most 20 MiB")
+	}
+	container, err := io.ReadAll(contextReader{ctx, io.LimitReader(file, maxInputBytes+1)})
+	if err != nil {
+		return nil, nil, err
+	}
+	animated, err := mediaimage.Animated(container)
+	if err != nil {
+		return nil, nil, err
+	}
+	if animated {
+		return nil, nil, mediaimage.ErrAnimated
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		return nil, nil, err
 	}
 	config, format, err := image.DecodeConfig(contextReader{ctx, io.LimitReader(file, maxInputBytes+1)})
 	if err != nil {

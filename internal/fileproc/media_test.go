@@ -2,11 +2,13 @@ package fileproc_test
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"os/exec"
@@ -17,6 +19,85 @@ import (
 
 	"github.com/complynx/loom/internal/fileproc"
 )
+
+// Synthetic 16x16 lossless animation: red for one second, then blue for one second.
+//
+//go:embed testdata/animated.webp
+var animatedWebP []byte
+
+func TestAnimatedWebPStoryboardPreservesTimeAndPixels(t *testing.T) {
+	t.Parallel()
+	needCommands(t, "ffmpeg")
+	input := filepath.Join(t.TempDir(), "input") // Worker inputs have no extension.
+	if err := os.WriteFile(input, animatedWebP, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := fileproc.Process(t.Context(), fileproc.Request{Operation: "video.info"}, input, t.TempDir())
+	if err != nil || !bytes.Contains(r.Data, []byte(`"duration":"2.000"`)) {
+		t.Fatalf("metadata=%s err=%v", r.Data, err)
+	}
+	r, err = fileproc.Process(
+		t.Context(),
+		fileproc.Request{
+			Operation: "video.storyboard",
+			Params:    json.RawMessage(`{"interval":1,"width":16,"max_frames":1}`),
+		},
+		input,
+		t.TempDir(),
+	)
+	if err != nil || len(r.Outputs) != 1 || !r.Partial || r.NextCursor != "1.000" {
+		t.Fatalf("first=%+v err=%v", r, err)
+	}
+	assertFrameColor(t, r.Outputs[0].Path, true)
+	r, err = fileproc.Process(
+		t.Context(),
+		fileproc.Request{
+			Operation: "video.storyboard",
+			Params:    json.RawMessage(`{"start":1,"interval":1,"width":16,"max_frames":1}`),
+		},
+		input,
+		t.TempDir(),
+	)
+	if err != nil || len(r.Outputs) != 1 || r.Partial {
+		t.Fatalf("next=%+v err=%v", r, err)
+	}
+	assertFrameColor(t, r.Outputs[0].Path, false)
+	r, err = fileproc.Process(
+		t.Context(),
+		fileproc.Request{Operation: "video.frame", Params: json.RawMessage(`{"timestamp":1.5,"width":16}`)},
+		input,
+		t.TempDir(),
+	)
+	if err != nil || len(r.Outputs) != 1 {
+		t.Fatalf("frame=%+v err=%v", r, err)
+	}
+	assertFrameColor(t, r.Outputs[0].Path, false)
+	r, err = fileproc.Process(t.Context(), fileproc.Request{Operation: "video.audio"}, input, t.TempDir())
+	if err != nil || len(r.Outputs) != 0 || !bytes.Contains(r.Data, []byte(`"has_audio":false`)) {
+		t.Fatalf("audio=%+v err=%v", r, err)
+	}
+	r, err = fileproc.Process(t.Context(), fileproc.Request{Operation: "video.storyboard"}, input, t.TempDir())
+	if err != nil || len(r.Outputs) < 2 {
+		t.Fatalf("default animation storyboard=%+v err=%v", r, err)
+	}
+}
+
+func assertFrameColor(t *testing.T, path string, red bool) {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	im, err := jpeg.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _, b, _ := im.At(8, 8).RGBA()
+	if red && (r < 50000 || b > 5000) || !red && (b < 50000 || r > 5000) {
+		t.Fatalf("wrong frame color: red=%v r=%d b=%d", red, r, b)
+	}
+}
 
 func needCommands(t *testing.T, names ...string) {
 	t.Helper()

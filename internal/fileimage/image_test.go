@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -13,7 +14,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/complynx/loom/internal/fileimage"
+	"github.com/complynx/loom/internal/mediaimage"
 )
+
+func TestImageMethodsDoNotFlattenAnimation(t *testing.T) {
+	t.Parallel()
+	input := filepath.Join(t.TempDir(), "animation.gif")
+	f, err := os.Create(input)
+	require.NoError(t, err)
+	frame := image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.Black, color.White})
+	require.NoError(t, gif.EncodeAll(f, &gif.GIF{Image: []*image.Paletted{frame, frame}, Delay: []int{100, 100}}))
+	require.NoError(t, f.Close())
+	for _, op := range []string{"image.info", "image.resize", "image.crop"} {
+		_, out, _, _, processErr := fileimage.Process(t.Context(), op, json.RawMessage(`{}`), input, t.TempDir())
+		require.ErrorIs(t, processErr, mediaimage.ErrAnimated)
+		require.Empty(t, out)
+	}
+}
 
 func TestResizeFitsModelAndNeverUpscales(t *testing.T) {
 	t.Parallel()
