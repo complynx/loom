@@ -699,6 +699,9 @@ func buildRun(
 		MaxMicrocredits:  budget,
 	}
 
+	if in.OutputPolicy != nil {
+		r.OutputPolicy = *in.OutputPolicy
+	}
 	return r, nil
 }
 

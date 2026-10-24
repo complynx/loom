@@ -41,6 +41,7 @@ organization, lifecycle and additional handler checks still apply.
 
 | Method | Path | Purpose / route permission |
 | --- | --- | --- |
+| GET | `/capabilities` | Supported consumer contracts; `chat.read` |
 | POST | `/auth/sessions` | Save delegation; `chat.read` |
 | POST | `/auth/sessions/{id}/reauthorize` | Replace delegation with fresh same-user/actor authorization; `chat.read` |
 | DELETE | `/auth/sessions/{id}` | Revoke local session; `chat.read` |

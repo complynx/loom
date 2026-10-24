@@ -80,6 +80,8 @@ func (e *Engine) executeCall(
 	settings domain.Settings,
 ) (json.RawMessage, bool, error) {
 	switch call.Name {
+	case approvalPresentTool:
+		return e.presentApproval(ctx, run, call)
 	case "message_react":
 		return e.executeReaction(ctx, run, principal, call)
 	case toolInteractionResolve:
@@ -134,6 +136,22 @@ func (e *Engine) executeModuleCall(
 	}
 	if e.opts.ModuleCall == nil {
 		return json.RawMessage(`{"error":"module_call_unavailable"}`), false, nil
+	}
+	if run.OutputPolicy.DisallowCustomEmoji {
+		if pending, lookupErr := e.pendingPresentation(ctx, run); lookupErr != nil {
+			return nil, false, lookupErr
+		} else if pending != nil {
+			return json.RawMessage(
+				`{"error":"approval_presentation_required","rewrite_tool":"approval_present"}`,
+			), false, nil
+		}
+		var presentation struct {
+			ConfirmationText string `json:"confirmation_text"`
+		}
+		if json.Unmarshal(call.Arguments, &presentation) == nil &&
+			run.OutputPolicy.InvalidText(presentation.ConfirmationText) {
+			return outputValidationResult(), false, nil
+		}
 	}
 	result, approval, err := e.opts.ModuleCall(ctx, run, principal, token, call)
 	if err != nil {
@@ -211,6 +229,14 @@ func (e *Engine) executeQuestionCall(
 			return json.RawMessage(`{"error":"invalid_choices"}`), false, nil
 		}
 		seen[choice.ID] = true
+	}
+	if run.OutputPolicy.InvalidText(args.Text) {
+		return outputValidationResult(), false, nil
+	}
+	for _, choice := range args.Choices {
+		if run.OutputPolicy.InvalidText(choice.Label) {
+			return outputValidationResult(), false, nil
+		}
 	}
 	switch run.Interaction.Questions {
 	case "text":

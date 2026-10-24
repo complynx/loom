@@ -87,6 +87,19 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 	mux := http.NewServeMux()
 	s.docs = documentation(mux)
 	s.registerHealth(mux)
+	s.route(
+		mux,
+		"GET /v1/capabilities",
+		"chat.read",
+		func(w http.ResponseWriter, _ *http.Request, _ domain.Principal) error {
+			write(
+				w,
+				http.StatusOK,
+				map[string]any{"output_validation": map[string]any{"version": 1, "disallow_custom_emoji": true}},
+			)
+			return nil
+		},
+	)
 	s.registerRoutes(mux)
 	s.registerDiagnostics(mux)
 	s.registerMemory(mux)
