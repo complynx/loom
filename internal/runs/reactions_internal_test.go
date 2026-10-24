@@ -33,3 +33,50 @@ func TestReactionToolNegotiationAndDeniedExecution(t *testing.T) {
 	require.False(t, waiting)
 	require.JSONEq(t, `{"error":"reaction_not_supported"}`, string(result))
 }
+
+func TestReactionAvailabilityMatchesExecutionCapability(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		policy    *domain.ReactionPolicy
+		profile   domain.ExecutionProfile
+		available bool
+	}{
+		{name: "absent"},
+		{name: "disabled", policy: &domain.ReactionPolicy{}},
+		{name: "emoji", policy: &domain.ReactionPolicy{Emoji: []string{"👍"}}, available: true},
+		{name: "all", policy: &domain.ReactionPolicy{AllEmoji: true}, available: true},
+		{name: "custom", policy: &domain.ReactionPolicy{Custom: []domain.CustomReaction{{ID: "thanks", Description: "Thank you"}}}, available: true},
+		{name: "restricted", policy: &domain.ReactionPolicy{AllEmoji: true}, profile: domain.ProfileNativeFiles},
+	} {
+		for _, mode := range []string{"", domain.ReplyModeAgent} {
+			t.Run(tc.name+"/"+mode, func(t *testing.T) {
+				t.Parallel()
+				run := domain.Run{
+					ExecutionProfile: tc.profile,
+					Interaction:      domain.Interaction{ReplyMode: mode, Reactions: tc.policy},
+				}
+				engine := New(nil, nil, Options{})
+				tools, err := engine.turnTools(t.Context(), run, domain.Principal{}, "")
+				require.NoError(t, err)
+				found := false
+				for _, tool := range tools {
+					if tool.Name == "message_react" {
+						found = true
+					}
+				}
+				require.Equal(t, tc.available, found)
+				instructions := conversationInstructions(run)
+				if tc.available {
+					require.Contains(
+						t,
+						instructions,
+						"Quick message reactions are available; you might react before starting the task.",
+					)
+				} else {
+					require.NotContains(t, instructions, "Quick message reactions are available")
+				}
+			})
+		}
+	}
+}

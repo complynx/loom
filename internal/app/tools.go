@@ -228,7 +228,7 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 	)
 	scriptCtx, cancel := context.WithTimeout(ctx, time.Duration(limit)*time.Millisecond)
 	defer cancel()
-	return t.executor.Execute(scriptCtx, code, bindings, profileBroker(r, broker))
+	return t.executor.Execute(scriptCtx, code, bindings, loggedScriptBroker(t.observer, r.ID, profileBroker(r, broker)))
 }
 func (t runtimeTools) modelArtifacts(ctx context.Context, r domain.Run) ([]provider.Item, error) {
 	fresh, _, err := t.fresh(ctx, r)

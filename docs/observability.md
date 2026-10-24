@@ -83,3 +83,96 @@ and [Alloy structured logs](https://grafana.com/docs/alloy/latest/monitor/monito
 define the integration format. Cloud delivery and notifications still require
 post-deployment acceptance; local validation is not delivery proof. Replace the
 example `job` and `instance` labels with those supplied by your log collector.
+
+## Action journal
+
+Use the optional local JSONL journal to analyze tool selection, scripts, model
+usage and orchestration. It is disabled by default and is independent of
+`log_level`, `log_payloads`, OTel sampling and the database schema.
+
+```yaml
+observability:
+  action_log:
+    enabled: true
+    path: /var/lib/loom/actions.jsonl
+    max_size_mb: 32
+    max_backups: 5
+```
+
+Create the parent directory before startup. Give only the Loom runtime user access
+to it, and mount a writable persistent volume at that location in containers. Use
+one path per process/replica. Loom creates or restricts the active file to mode
+0600. It appends after restart. A missing/unwritable directory or invalid setting
+fails startup when enabled. Set `enabled: false` and restart to stop recording;
+existing files remain. Settings take effect at startup, not through the settings API.
+
+### Recorded actions
+
+Each action has `action.started` and `action.completed` records. Records include
+UTC time, format `version: 1`, `run_id`, `request_id` when available and a unique
+`action_id`. A start record contains its `parent_action_id`, kind and input. A
+completion contains the same action ID, output, outcome and elapsed milliseconds.
+Parallel RPC completion order can differ from start order. A process crash can
+leave a start without a completion.
+
+The journal records:
+
+- Run execution deliveries, state transitions, applied input IDs, questions and
+  approvals. State/interaction completion means its store call returned; the
+  authoritative state remains in PostgreSQL.
+- Dispatched model tool calls, including arguments, script source, results and
+  waiting/error outcomes. Superseded calls record their cancellation result.
+- Each RPC from inside a script, including module, method, arguments and result.
+  This includes built-in methods and remote module reads.
+- Provider respond, native compaction and token-count calls, including model,
+  effort, durable step ID when assigned, effective instructions, tool contracts,
+  output limit, responses and reported token usage. History summarization and
+  fallback compaction use the same provider observation path.
+
+The input history is represented by an ordered `input_manifest`: SHA-256 of each
+serialized provider input item, its byte length and available type/role/item/call
+IDs. Large history and file/image bytes are not copied into every request record.
+Use chat history, durable step results and summaries with the manifest when
+investigating context. Hashes identify exact serialized bytes, not semantic text;
+serialization changes can change them. The journal is an analysis aid, not a
+self-contained exact replay: history can expire, files can be deleted, redaction
+removes content, and generated context may require the corresponding runtime code.
+Private model reasoning is not made readable by logging.
+
+### Payload size, rotation and failures
+
+The diagnostic 4 KiB limit does not apply. Each action record is one complete JSON
+line, with no payload truncation. Large model output, script arguments and tool
+results can exceed 4 KiB by a wide margin. JWT signatures, credential fields,
+encrypted reasoning and image/base64 fields use the existing diagnostic redaction;
+numeric token counts remain visible. Arbitrary secrets embedded in free text or
+script source cannot be reliably recognized. Treat the journal as private user data.
+Raw error strings are omitted; outcome and structured tool/provider response data
+remain available. Typed provider failures also emit `model.failure` with the safe
+error code, HTTP status, retry metadata and unknown-usage flag under the same action ID.
+
+`max_size_mb` is in MiB; zero/omission selects 32, and the maximum is 1024.
+Before a record would cross that size, Loom rotates the current nonempty file:
+`.1` is newest, `.2` is older, and so on. `max_backups` selects 0–100 archived files;
+zero/omission keeps no archives. Examples retain five. The oldest archive is
+removed during rotation. A single oversized record stays intact and can exceed
+the threshold; the next record rotates it. Thus this is a rotation threshold,
+not a strict disk quota. Reducing backup count does not remove older archives from
+previous configurations; remove those separately if required. Read the active
+file and retained archives to collect a run; rotation can remove its older records.
+
+Writes are serialized within the process. A write/rotation failure reports
+`action log disabled after write failure` once in normal application logs and
+disables further journal writes until restart. It does not stop business execution.
+There is no per-record fsync or guaranteed crash delivery. Slow storage can delay
+the caller while a synchronous record is written. The journal does not replace
+durable checkpoints, financial records or audit events. OTel is still best effort.
+
+For example, read the retained records for a run with:
+
+```sh
+jq -c 'select(.run_id == "<run UUID>")' /var/lib/loom/actions.jsonl*
+```
+
+File glob order is not chronological; correlate actions by ID and timestamp. Do
+not collect this journal twice or send it to a public log destination.

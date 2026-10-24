@@ -49,6 +49,7 @@ type sample struct {
 type HTTPKey struct{ Route, Method, Status string }
 type CallKey struct{ Component, Outcome string }
 type Telemetry struct {
+	actions              *actionJournal
 	identityCacheEvents  map[string]uint64
 	identityCacheAge     sample
 	traceExportFailures  uint64

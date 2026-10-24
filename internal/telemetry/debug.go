@@ -139,7 +139,9 @@ func redactJWTs(text string) string {
 
 func redactString(v string) any {
 	var nested any
-	if json.Unmarshal([]byte(v), &nested) == nil {
+	decoder := json.NewDecoder(strings.NewReader(v))
+	decoder.UseNumber()
+	if json.Valid([]byte(v)) && decoder.Decode(&nested) == nil {
 		switch nested.(type) {
 		case map[string]any, []any:
 			raw, err := json.Marshal(redactValue(nested))
@@ -153,6 +155,15 @@ func redactString(v string) any {
 
 func redactField(key string, child any) any {
 	lower := strings.ToLower(key)
+	// Token counts are measurements, not credentials.
+	switch lower {
+	case "inputtokens", "outputtokens", "cachedinputtokens", "cachewritetokens", "maxoutputtokens",
+		"input_tokens", "output_tokens", "cached_input_tokens", "cache_write_tokens", "max_output_tokens":
+		switch child.(type) {
+		case float64, json.Number:
+			return child
+		}
+	}
 	if strings.Contains(lower, "token") || lower == authorizationComponent {
 		if text, ok := child.(string); ok {
 			return redactToken(text)

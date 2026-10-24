@@ -10,7 +10,7 @@ Artifacts have a separate, finite lifetime. `artifacts.ttl_seconds` defaults to 
 
 Cleanup marks expired artifacts as deleted, then the artifact collector removes their bytes and records collection. Collection is asynchronous; a tombstone does not prove that bytes have already been unlinked. Recovery, financial, credential and audit records remain stored. There is no configurable expiry or cleanup for `idempotency_records` or `passive_event_receipts`; these receipts survive history removal and prevent reuse of accepted keys. External backends have their own deduplication windows.
 
-There is no separate persisted diagnostic trace stream. Duration-based `trace_retention` is rejected; `forever` or an unspecified value is accepted. Application logs and exported telemetry follow the operator's separate storage and retention policies. `forever` does not remove storage quotas or prevent explicit deletion.
+The optional [action journal](../observability.md#action-journal) uses local file rotation, independently of database retention. Duration-based `trace_retention` is rejected; `forever` or an unspecified value is accepted. Application logs, action journal files and exported telemetry follow the operator's separate storage and retention policies. `forever` does not remove storage quotas or prevent explicit deletion.
 
 Deleting a chat marks it deleted, blocks access and new runs, cancels and fences active runs, and removes chat events, context summaries, cached prefixes and artifact handles in the database transaction. Artifacts attached only to deleted chats are marked for physical collection; artifacts also attached to a live chat remain until their own expiry. Deleting the default chat lets the next request create a new default chat atomically.
 

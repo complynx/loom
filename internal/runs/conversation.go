@@ -11,6 +11,8 @@ import (
 
 const interactionStepKind = "interaction"
 
+const reactionAvailability = "\nQuick message reactions are available; you might react before starting the task."
+
 const toolInteractionResolve = "interaction_resolve"
 const toolInteractionDispatch = "interaction_dispatch"
 
@@ -20,6 +22,9 @@ type interactionStore interface {
 
 func conversationInstructions(run domain.Run) string {
 	instructions := agentInstructions
+	if run.Interaction.Reactions.Enabled() && run.AllowsModelTool("message_react") {
+		instructions += reactionAvailability
+	}
 	if run.OutputPolicy.DisallowCustomEmoji {
 		instructions += "\nOutput policy: custom emoji markup/entities are unsupported. Use ordinary text or Unicode emoji in final text, questions, choice labels and approval presentations. On output_validation_failed, rewrite the rejected presentation in the requested language, preserving meaning and verified facts. Do not repeat completed tools/business operations. If an approval presentation is rejected, use approval_present with the supplied approval_id to rewrite only its display text; original operation, terms, expiry and consent remain unchanged."
 	}

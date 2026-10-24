@@ -100,6 +100,7 @@ func (e *Engine) compactActive(ctx context.Context, run domain.Run, model domain
 	}
 	request.ClientRequestID = step.ID
 	request.Instructions = strings.Replace(request.Instructions, agentInstructions, compactionInstructions, 1)
+	request.Instructions = strings.Replace(request.Instructions, reactionAvailability, "", 1)
 	request.MaxOutputTokens = int(outputBound)
 	request.Tools = nil
 	inferCtx, cancel := context.WithTimeout(ctx, e.opts.InferenceTimeout)

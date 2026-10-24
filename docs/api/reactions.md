@@ -73,6 +73,11 @@ action under its new source ID.
 
 ## Bot reactions and client delivery
 
+When reactions are enabled and permitted by the execution profile, the agent receives
+a short instruction: "Quick message reactions are available; you might react before
+starting the task." Before reacting, check the target author and `message_seq` in
+history; the assistant can also react to its own messages.
+
 The agent calls this standalone model function, outside JavaScript:
 
 ```js
