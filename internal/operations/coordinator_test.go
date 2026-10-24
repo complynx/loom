@@ -355,10 +355,17 @@ func TestExactParameterApprovalCannotOutlivePreparation(t *testing.T) {
 	c, req := fixture(t)
 	ctx := context.Background()
 	req.Mode = "exact_parameters"
-	b := &backend{expiry: time.Now().Add(100 * time.Millisecond)}
+	b := &backend{}
 	op, err := c.Prepare(ctx, req, b)
 	require.NoError(t, err)
-	time.Sleep(time.Until(op.Preparation.ExpiresAt) + time.Millisecond)
+	// Install a valid expired receipt instead of racing a short wall-clock deadline.
+	op.Preparation.ExpiresAt = op.CreatedAt.Add(-time.Hour)
+	op.BindingHash, err = operations.SealForTest(op)
+	require.NoError(t, err)
+	raw, err := json.Marshal(op)
+	require.NoError(t, err)
+	_, err = c.Pool.Exec(ctx, "UPDATE write_operations SET doc=$2 WHERE id=$1", op.ID, raw)
+	require.NoError(t, err)
 	_, err = c.Approve(ctx, op.ID, approval(op))
 	require.ErrorIs(t, err, operations.ErrExpired)
 	require.Zero(t, b.writes.Load())
