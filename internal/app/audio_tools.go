@@ -66,6 +66,9 @@ func (t runtimeTools) Prepare(
 	_ string,
 	call provider.Call,
 ) (domain.PaidToolIntent, int64, error) {
+	if r.NativeFilesOnly() {
+		return domain.PaidToolIntent{}, 0, domain.Forbidden()
+	}
 	ctx = identity.RequireFresh(ctx)
 	if !t.cfg.Transcription.Enabled || t.transcriber == nil {
 		return domain.PaidToolIntent{}, 0, domain.Forbidden()

@@ -95,7 +95,10 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 			write(
 				w,
 				http.StatusOK,
-				map[string]any{"output_validation": map[string]any{"version": 1, "disallow_custom_emoji": true}},
+				map[string]any{
+					"output_validation":  map[string]any{"version": 1, "disallow_custom_emoji": true},
+					"execution_profiles": []domain.ExecutionProfile{domain.ProfileNativeFiles},
+				},
 			)
 			return nil
 		},
@@ -499,6 +502,9 @@ func (s *server) createRun(w http.ResponseWriter, r *http.Request, p domain.Prin
 }
 
 func (s *server) validateRunRequest(body *domain.CreateRun, p domain.Principal) error {
+	if err := body.ExecutionProfile.Validate(); err != nil {
+		return err
+	}
 	if err := body.Interaction.Reactions.Validate(); err != nil {
 		return err
 	}

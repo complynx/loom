@@ -59,6 +59,10 @@ copy tool effects or guarantee a provider cache discount.
 
 ## Initial discovery expansion
 
+For runs that must use only native files and must not consult business modules,
+use the [native file execution profile](execution-profiles.md). Discovery expansion
+below changes presentation only.
+
 Run creation optionally accepts `discovery.expand_services`, for example:
 
 ```json

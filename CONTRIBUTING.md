@@ -4,7 +4,7 @@
 
 Start with the [README](README.md), [architecture](docs/architecture.md) and [limitations](docs/mvp-limitations.md). Read the contract for the boundary you change. The [development track](docs/development-track.md) separates existing implementation, missing acceptance and new work.
 
-A run is one durable task in a chat. Its status, inputs, steps and effects survive worker restarts. A user has one default chat. A service actor can act for a user only through an authorized caller binding and delegation. Model output is not authority to bypass these checks.
+A run is one durable task in a chat. Its status, inputs, steps and effects survive worker restarts. A user has one default chat. A service actor can act for a user only through an authorized caller binding and delegation. An explicitly configured [service account](docs/api/service-accounts.md) can act under its own subject and permission ceiling. Model output is not authority to bypass these checks.
 
 ## Code map
 

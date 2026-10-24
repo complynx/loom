@@ -25,6 +25,11 @@ Each poll fetches the full manifest with GET; conditional ETag requests are not 
 
 ## Caller registration
 
+Caller registration authorizes delegation for a user. For machine-owned tasks,
+configure a [service account](../api/service-accounts.md). An SA can call the
+service methods allowed by its own rights without registering as a business user
+in unrelated services.
+
 `caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read` and `artifacts.write`. These are caller permissions, not user delegation. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
 
 The schema also accepts `auth.type: "secret"` with `secret_ref`. Incoming opaque-secret authentication is not implemented; do not use that branch for an active integration. Never place secret values in a manifest.

@@ -1,5 +1,7 @@
 # Authentication and routes
 
+For machine tasks that own their chats and data, see [service accounts](service-accounts.md).
+
 [API index](../api.md)
 
 ## Authentication

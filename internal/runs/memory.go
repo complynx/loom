@@ -16,8 +16,11 @@ type userMemoryStore interface {
 // Personal memory stays outside cached history and compaction checkpoints.
 // Reload it for each inference so edits and deletion affect continuing runs.
 func (e *Engine) userMemoryInstructions(ctx context.Context, run domain.Run,
-	_ domain.Principal, instructions string,
+	p domain.Principal, instructions string,
 ) (string, error) {
+	if run.NativeFilesOnly() || p.ServiceAccount {
+		return instructions, nil
+	}
 	repository, ok := e.store.(userMemoryStore)
 	if !ok {
 		return instructions, nil

@@ -180,7 +180,7 @@ func (a *Authenticator) VerifySession(
 	if err != nil {
 		return domain.Principal{}, "", err
 	}
-	userService, err := a.classifyService(ctx, user)
+	userService, err := a.sessionSubjectIsService(ctx, expected, user)
 	if err != nil {
 		return domain.Principal{}, "", err
 	}

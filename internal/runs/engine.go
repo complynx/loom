@@ -659,7 +659,7 @@ func (e *Engine) turnTools(
 			}
 		}
 	}
-	return tools, nil
+	return profileTools(run, tools), nil
 }
 
 // inputBound uses exact counting when available and retains conservative artifact bounds.
@@ -1023,7 +1023,7 @@ func (e *Engine) executePending(
 	turn *turnState,
 	call provider.Call,
 ) (bool, error) {
-	if call.Name == "audio_transcribe" && e.opts.PaidTool != nil && !turn.steeringAfterModel {
+	if !run.NativeFilesOnly() && call.Name == "audio_transcribe" && e.opts.PaidTool != nil && !turn.steeringAfterModel {
 		return e.executePaidTool(ctx, run, principal, token, call, e.opts.PaidTool)
 	}
 	id := run.ID

@@ -15,13 +15,19 @@ const (
 	memorySetMicro    = "set_micro"
 )
 
-func memoryMethods(_ domain.Principal) []string {
+func memoryMethods(p domain.Principal) []string {
+	if p.ServiceAccount {
+		return nil
+	}
 	return []string{memoryStateMethod, "list", "read", memorySetMicro, "set_index", "put", "delete", "clear"}
 }
 
 func (t runtimeTools) memory(ctx context.Context, run domain.Run, p domain.Principal,
 	method string, raw json.RawMessage,
 ) (json.RawMessage, error) {
+	if run.NativeFilesOnly() || p.ServiceAccount {
+		return nil, domain.Forbidden()
+	}
 	// A service credential must resolve to the same user as the current run.
 	owner, err := t.repository.ResolveUser(ctx, p)
 	if err != nil {

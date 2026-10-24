@@ -36,6 +36,9 @@ func (t runtimeTools) fetchExternal(
 	broker sandbox.Broker,
 	raw json.RawMessage,
 ) (json.RawMessage, error) {
+	if run.NativeFilesOnly() {
+		return nil, domain.Forbidden()
+	}
 	current, _, err := t.fresh(ctx, run)
 	if err != nil {
 		return nil, err
