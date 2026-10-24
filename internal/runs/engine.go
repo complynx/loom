@@ -18,6 +18,7 @@ import (
 )
 
 type Store interface {
+	SaveOutputValidation(context.Context, string, string, int64, json.RawMessage, json.RawMessage) error
 	ClaimRun(context.Context, string, string, time.Duration) (domain.Run, error)
 	Heartbeat(context.Context, string, string, int64, time.Duration) error
 	ExecutionRun(context.Context, string) (domain.Run, error)
@@ -177,6 +178,12 @@ func (e *Engine) finish(ctx context.Context, run domain.Run, state domain.RunSta
 }
 
 func (e *Engine) askApproval(ctx context.Context, run domain.Run, approval domain.Approval) error {
+	if run.OutputPolicy.InvalidText(approval.ConfirmationText) {
+		return &Suspension{State: domain.Paused, Reason: "approval_confirmation_unsupported"}
+	}
+	if run.OutputPolicy.InvalidText(approval.Text) {
+		return &approvalPresentationError{approval}
+	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
 	return e.store.AskApproval(saveCtx, run.ID, e.opts.Owner, run.Fence, approval)
@@ -333,6 +340,13 @@ func (e *Engine) executeReadyTurn(
 		return binaryErr == nil, binaryErr
 	}
 	if turn.finalCandidate != "" {
+		pending, lookupErr := e.pendingPresentation(ctx, run)
+		if lookupErr != nil {
+			return false, lookupErr
+		}
+		if run.OutputPolicy.InvalidText(turn.finalCandidate) || pending != nil {
+			return e.rejectFinalOutput(ctx, run, settings, turn, pending)
+		}
 		return e.completeTurn(ctx, run, turn.finalCandidate)
 	}
 	if len(turn.steps)+turn.newInputSteps >= settings.MaxSteps {
@@ -364,6 +378,9 @@ func (e *Engine) replaySteps(ctx context.Context, run domain.Run, turn *turnStat
 func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState, step domain.Step) error {
 	var err error
 	switch step.Kind {
+	case outputValidationKind:
+		turn.items = append(turn.items, step.Result)
+		turn.finalCandidate = ""
 	case interactionStepKind:
 		turn.items = append(turn.items, step.Result)
 		turn.finalCandidate = ""
@@ -617,7 +634,7 @@ func (e *Engine) turnTools(
 	principal domain.Principal,
 	token string,
 ) ([]provider.Tool, error) {
-	tools := standardTools(run.Interaction)
+	tools := append(standardTools(run.Interaction), presentationTools(run)...)
 
 	if e.opts.Tools != nil {
 		extra, listErr := e.opts.Tools(ctx, run, principal, token)
@@ -1030,6 +1047,12 @@ func (e *Engine) executePending(
 		turn.steeringAfterModel,
 	)
 
+	if rejected, ok := errors.AsType[*approvalPresentationError](callErr); ok {
+		if saveErr := e.saveOutputRejection(ctx, run, &rejected.approval); saveErr != nil {
+			return true, saveErr
+		}
+		output, waiting, callErr = outputValidationResult(), false, nil
+	}
 	if suspension, ok := errors.AsType[*Suspension](callErr); ok {
 		if settleErr := e.settleUnstartedScript(ctx, run, step.ID, call.ID, callErr); settleErr != nil {
 			return true, settleErr

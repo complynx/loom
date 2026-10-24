@@ -25,6 +25,10 @@ must use the [delegation headers](authentication-routes.md#authentication).
 user's own account: omit `billing_account_id` or supply that user's internal ID;
 another payer returns 403.
 
+Clients can opt into [output validation](output-validation.md) with
+`output_policy:{"disallow_custom_emoji":true}`. The policy is saved with the run
+and is part of the idempotency request. Omission preserves existing output behavior.
+
 Model and effort come from user preferences; `model` is not an accepted request
 field. A positive `budget.max_microcredits` can only lower the allowed run limit;
 zero or omission uses that limit. `disconnect_policy` defaults to `continue`;

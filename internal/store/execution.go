@@ -595,7 +595,7 @@ func (s *Store) transition(
 		return err
 	}
 	if state == domain.Completed {
-		if err := validateCompletion(ctx, tx, r); err != nil {
+		if err := validateCompletion(ctx, tx, r, result); err != nil {
 			return err
 		}
 	}
@@ -664,6 +664,14 @@ func (s *Store) askQuestion(ctx context.Context, tx pgx.Tx, rid, owner string, f
 	}
 	if r.CancelRequested {
 		return cancelInteraction(ctx, tx, r)
+	}
+	if r.OutputPolicy.InvalidText(q.Text) {
+		return domain.Conflict("output_validation_failed")
+	}
+	for _, choice := range q.Choices {
+		if r.OutputPolicy.InvalidText(choice.Label) {
+			return domain.Conflict("output_validation_failed")
+		}
 	}
 	q, e = prepareQuestion(r, q)
 	if e != nil {
@@ -859,11 +867,22 @@ func (s *Store) askApproval(ctx context.Context, tx pgx.Tx, rid, owner string, f
 	if r.CancelRequested {
 		return cancelInteraction(ctx, tx, r)
 	}
+	if r.OutputPolicy.InvalidText(a.Text) || r.OutputPolicy.InvalidText(a.ConfirmationText) {
+		return domain.Conflict("output_validation_failed")
+	}
 	if a.ID == "" || a.OperationID == "" || !a.ExpiresAt.After(time.Now()) {
 		return domain.NewError(http.StatusUnprocessableEntity, "invalid_approval")
 	}
 	if r.Approval != nil && r.Approval.Decision == "" && r.Approval.ID != a.ID {
 		return domain.Conflict("pending_approval_exists")
+	}
+	if _, err := tx.Exec(
+		ctx,
+		`UPDATE steps SET input=jsonb_set(input,'{presented}','true'::jsonb) WHERE run_id=$1 AND kind='output_validation' AND input#>>'{approval,approval_id}'=$2`,
+		rid,
+		a.ID,
+	); err != nil {
+		return err
 	}
 	r.Approval = &a
 	r.Question = nil
@@ -916,7 +935,10 @@ func (s *Store) askApproval(ctx context.Context, tx pgx.Tx, rid, owner string, f
 	return runEvent(ctx, tx, rid, "approval.created", a)
 }
 
-func validateCompletion(ctx context.Context, tx pgx.Tx, r domain.Run) error {
+func validateCompletion(ctx context.Context, tx pgx.Tx, r domain.Run, result string) error {
+	if r.OutputPolicy.InvalidText(result) {
+		return domain.Conflict("output_validation_failed")
+	}
 	var pending bool
 	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM steps WHERE run_id=$1 AND state IN('pending','unknown'))", r.ID).
 		Scan(&pending); err != nil {
