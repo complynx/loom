@@ -516,6 +516,7 @@ func runtimeEngine(
 		repository,
 		router,
 		runs.Options{
+			ObserveAction:           observer.BeginAction,
 			TraceStep:               executionTraceStep(repository, observer),
 			PaidTool:                hooks,
 			PaidToolReplay:          hooks.replayPaidTool,
@@ -1054,7 +1055,17 @@ func runtimeTelemetry(
 		return nil, nil, nil, err
 	}
 	stop, err := observer.EnableOTel(ctx, cfg.Observability.OTel)
-	return logger, observer, stop, err
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	closeActions, err := observer.EnableActionLog(cfg.Observability.ActionLog)
+	if err != nil {
+		_ = stop(ctx)
+		return nil, nil, nil, err
+	}
+	return logger, observer, func(c context.Context) error {
+		return errors.Join(closeActions(), stop(c))
+	}, nil
 }
 func flushTelemetry(ctx context.Context, stop func(context.Context) error) {
 	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)

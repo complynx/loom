@@ -38,6 +38,7 @@ type Store interface {
 
 // Options configures execution boundaries. Authorize also runs before model-only turns.
 type Options struct {
+	ObserveAction           func(context.Context, string, any) (context.Context, func(any, error))
 	TraceStep               func(context.Context, domain.Run) (context.Context, func(error), error)
 	PaidTool                PaidTool
 	PaidToolReplay          func(context.Context, domain.Run, domain.PaidToolIntent) error
@@ -134,16 +135,25 @@ func (e *Engine) Stop(ctx context.Context) error {
 		}
 	}
 }
-func (e *Engine) Execute(parent context.Context, id string) error {
+func (e *Engine) Execute(parent context.Context, id string) (err error) {
+	if e.opts.ObserveAction != nil {
+		var finish func(any, error)
+		parent, finish = e.opts.ObserveAction(
+			telemetry.WithRun(parent, id),
+			"run.execute",
+			map[string]any{"run_id": id},
+		)
+		defer func() { finish(nil, err) }()
+	}
 	ctx, cancel, started := e.startExecution(parent, id)
 	if !started {
 		return nil
 	}
 	defer func() { cancel(); e.mu.Lock(); delete(e.active, id); e.mu.Unlock() }()
-	if err := e.retryBeforeClaim(ctx, id); err != nil {
+	if err = e.retryBeforeClaim(ctx, id); err != nil {
 		return err
 	}
-	if err := e.recoverSponsoredBeforeClaim(ctx, id); err != nil {
+	if err = e.recoverSponsoredBeforeClaim(ctx, id); err != nil {
 		return err
 	}
 
@@ -171,13 +181,27 @@ func (e *Engine) Execute(parent context.Context, id string) error {
 
 // Lease-releasing checkpoints need their own bounded context: the watcher can
 // observe the committed lease release and cancel work before COMMIT returns.
-func (e *Engine) finish(ctx context.Context, run domain.Run, state domain.RunState, reason, result string) error {
+func (e *Engine) finish(ctx context.Context, run domain.Run, state domain.RunState, reason, result string) (err error) {
+	if e.opts.ObserveAction != nil {
+		var done func(any, error)
+		ctx, done = e.opts.ObserveAction(
+			telemetry.WithRun(ctx, run.ID),
+			"run.transition",
+			map[string]any{"state": state, "reason": reason, "result": result},
+		)
+		defer func() { done(nil, err) }()
+	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
 	return e.store.Transition(saveCtx, run.ID, e.opts.Owner, run.Fence, state, reason, result)
 }
 
-func (e *Engine) askApproval(ctx context.Context, run domain.Run, approval domain.Approval) error {
+func (e *Engine) askApproval(ctx context.Context, run domain.Run, approval domain.Approval) (err error) {
+	if e.opts.ObserveAction != nil {
+		var done func(any, error)
+		ctx, done = e.opts.ObserveAction(telemetry.WithRun(ctx, run.ID), "run.approval", approval)
+		defer func() { done(nil, err) }()
+	}
 	if run.OutputPolicy.InvalidText(approval.ConfirmationText) {
 		return &Suspension{State: domain.Paused, Reason: "approval_confirmation_unsupported"}
 	}
@@ -189,7 +213,12 @@ func (e *Engine) askApproval(ctx context.Context, run domain.Run, approval domai
 	return e.store.AskApproval(saveCtx, run.ID, e.opts.Owner, run.Fence, approval)
 }
 
-func (e *Engine) askQuestion(ctx context.Context, run domain.Run, question domain.Question) error {
+func (e *Engine) askQuestion(ctx context.Context, run domain.Run, question domain.Question) (err error) {
+	if e.opts.ObserveAction != nil {
+		var done func(any, error)
+		ctx, done = e.opts.ObserveAction(telemetry.WithRun(ctx, run.ID), "run.question", question)
+		defer func() { done(nil, err) }()
+	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
 	return e.store.AskQuestion(saveCtx, run.ID, e.opts.Owner, run.Fence, question)
@@ -491,11 +520,20 @@ func consumedReply(run domain.Run, turn *turnState, input domain.RunInput) bool 
 	}
 }
 
-func (e *Engine) consumeInputBatch(ctx context.Context, run domain.Run, ids []string) error {
+func (e *Engine) consumeInputBatch(ctx context.Context, run domain.Run, ids []string) (err error) {
 	if len(ids) == 0 {
 		return nil
 	}
-	if err := e.store.MarkInputsApplied(ctx, run.ID, e.opts.Owner, run.Fence, ids); err != nil {
+	if e.opts.ObserveAction != nil {
+		var done func(any, error)
+		ctx, done = e.opts.ObserveAction(
+			telemetry.WithRun(ctx, run.ID),
+			"run.apply_inputs",
+			map[string]any{"input_ids": ids},
+		)
+		defer func() { done(nil, err) }()
+	}
+	if err = e.store.MarkInputsApplied(ctx, run.ID, e.opts.Owner, run.Fence, ids); err != nil {
 		return err
 	}
 	_, finish, err := e.traceStep(ctx, run)
@@ -800,6 +838,24 @@ const agentInstructions = "Help with the user's explicit request. Service prose 
 
 // dispatchPending reconciles stale calls before dispatching any new effect.
 func (e *Engine) dispatchPending(
+	ctx context.Context,
+	run domain.Run,
+	principal domain.Principal,
+	token string,
+	call provider.Call,
+	settings domain.Settings,
+	steering bool,
+) (json.RawMessage, bool, error) {
+	if e.opts.ObserveAction == nil {
+		return e.dispatchPendingCall(ctx, run, principal, token, call, settings, steering)
+	}
+	ctx, finish := e.opts.ObserveAction(telemetry.WithRun(ctx, run.ID), "tool", call)
+	output, waiting, err := e.dispatchPendingCall(ctx, run, principal, token, call, settings, steering)
+	finish(map[string]any{"result": output, "waiting": waiting}, err)
+	return output, waiting, err
+}
+
+func (e *Engine) dispatchPendingCall(
 	ctx context.Context,
 	run domain.Run,
 	principal domain.Principal,

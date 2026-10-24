@@ -175,11 +175,31 @@ type Settings struct {
 	ExternalDisclosureDefault bool      `yaml:"external_disclosure_default"`
 }
 type Observability struct {
-	OTel          OTel   `yaml:"otel"`
-	LogLevel      string `yaml:"log_level"`
-	MetricsListen string `yaml:"metrics_listen"`
-	LogPayloads   bool   `yaml:"log_payloads"`
+	ActionLog     ActionLog `yaml:"action_log"`
+	OTel          OTel      `yaml:"otel"`
+	LogLevel      string    `yaml:"log_level"`
+	MetricsListen string    `yaml:"metrics_listen"`
+	LogPayloads   bool      `yaml:"log_payloads"`
 }
+
+// ActionLog configures a private rotating JSONL action journal.
+type ActionLog struct {
+	Enabled    bool   `yaml:"enabled"`
+	Path       string `yaml:"path"`
+	MaxSizeMB  int    `yaml:"max_size_mb"`
+	MaxBackups int    `yaml:"max_backups"`
+}
+
+func (c ActionLog) Validate() error {
+	if c.MaxSizeMB < 0 || c.MaxSizeMB > 1024 || c.MaxBackups < 0 || c.MaxBackups > 100 {
+		return errors.New("action log size must be 0..1024 MiB and backups 0..100")
+	}
+	if c.Enabled && strings.TrimSpace(c.Path) == "" {
+		return errors.New("action log path required when enabled")
+	}
+	return nil
+}
+
 type Search struct {
 	SemanticEnabled bool `yaml:"semantic_enabled"`
 }
@@ -287,6 +307,9 @@ func (c Config) Validate() error {
 }
 
 func (c Config) validateTrust() error {
+	if err := c.Observability.ActionLog.Validate(); err != nil {
+		return err
+	}
 	if err := c.Identity.ValidateServiceAccounts(); err != nil {
 		return err
 	}

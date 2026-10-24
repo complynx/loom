@@ -107,6 +107,11 @@ observability:
   metrics_listen: ":9090" # Private Alloy scrape; use the observability Compose overlay.
   log_level: "info"
   log_payloads: false
+  action_log:
+    enabled: false
+    path: /var/lib/loom/actions.jsonl
+    max_size_mb: 32
+    max_backups: 5
 
 # Disable to omit vector search from agent tools and reject vector operations.
 search:
