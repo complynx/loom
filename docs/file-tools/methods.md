@@ -45,11 +45,11 @@ For `pdf_render`, `width` defaults to 1280 and is at most 2048. Without `height`
 
 ### Images and video
 
-`image_info`, `image_resize` and `image_crop` support JPEG, PNG and the first frame of GIF. Coordinates use the stored raster; EXIF orientation is not applied. Resize uses `max_edge` (default 1280) and preserves aspect ratio; `allow_upscale` defaults to false. Crop takes `x,y,width,height`. Outputs can use `format:"png"` or `format:"jpeg"`; JPEG accepts `quality` from 1 to 100. Input images are limited to 16 million pixels; outputs to 4 million pixels.
+`image_info`, `image_resize` and `image_crop` support still JPEG, PNG and GIF. Animated GIF, WebP and PNG containers are rejected by these methods and by `artifact_attach`; use video methods and attach selected storyboard frames. Detection uses file content, not the filename. Coordinates use the stored raster; EXIF orientation is not applied. Resize uses `max_edge` (default 1280) and preserves aspect ratio; `allow_upscale` defaults to false. Crop takes `x,y,width,height`. Outputs can use `format:"png"` or `format:"jpeg"`; JPEG accepts `quality` from 1 to 100. Input images are limited to 16 million pixels; outputs to 4 million pixels.
 
-`video_info` returns FFprobe JSON in `data`. Inspect `data.streams` for `codec_type:"audio"` before requesting audio. Use video methods for animated GIF frames.
+`video_info` returns FFprobe-compatible `format` and `streams` metadata in `data`. Inspect `data.streams` for `codec_type:"audio"` before requesting audio. GIF, WebP, APNG, AVIF, HEIF sequences, JPEG XL, WebM, MNG and Telegram TGS use these video methods. See [Animation storyboards](animations.md) for detection, timing, decoder limits and supported Lottie content.
 
-- `video_storyboard` samples frames using `start,end,interval,width,max_frames`. Times are seconds. Defaults are `start:0`, `interval:10`, `width:1280` and `max_frames:12`; the maximum is 24 frames. Pass numeric `next_cursor` as the next `start`, keeping the other options unchanged.
+- `video_storyboard` samples frames using `start,end,interval,width,max_frames`. Times are seconds. Defaults are `start:0`, `interval:10`, `width:1280` and `max_frames:12`; the maximum is 24 frames. For animations and clips shorter than 10 seconds, an omitted interval uses `max(0.1, duration/max_frames)` seconds. Use a smaller explicit interval for brief movements. Pass numeric `next_cursor` as the next `start`, keeping the other options unchanged.
 - `video_frame` reads one frame using `timestamp` in seconds and optional `width`. Video frame width is at most 2048.
 - `video_audio` extracts mono 16 kHz WAV using `start,end`, at most 300 seconds per chunk. Without `end`, it selects up to 300 seconds from `start`. Pass numeric `next_cursor` as the next `start`. A source without audio returns `data.has_audio:false` and no WAV.
 

@@ -36,10 +36,17 @@ A worker failure must not trigger an automatic paid transcription retry.
 
 ## PDF rendering and media packages
 
-The worker installs Poppler, FFmpeg and fallback fonts from the repositories of
+The worker installs Poppler, FFmpeg, ImageMagick, rlottie and fallback fonts from the repositories of
 the pinned stable Alpine image. The [requested package list](../examples/file-worker.packages)
 contains package names without version pins. Dependabot updates the Alpine image
 tag and digest. The API image is separate and contains no media CLI.
+
+The native `loom-animation` helper renders MNG with ImageMagick and self-contained
+Telegram TGS/Lottie shapes with rlottie. Its C source and build script are in
+`native/` and are included in the source bundle. Compiler and development packages
+remain in a separate build stage. FFmpeg uses one decoder, encoder and filter
+thread per process so concurrent jobs fit the worker PID limit. See
+[Animation storyboards](file-tools/animations.md) for format and content limits.
 
 Roboto and Roboto Mono (Apache-2.0) provide fallback fonts for
 unembedded PDF text. Fontconfig substitutes installed fonts; the result can have
@@ -60,6 +67,11 @@ LGPL-only. Process isolation does not remove third-party distribution obligation
 Keep Loom's license separate from third-party notices. The runtime image records
 installed package metadata, FFmpeg's license and build configuration under
 `/licenses/runtime`, with Loom and dependency notices elsewhere under `/licenses`.
+
+ImageMagick uses the ImageMagick license. rlottie reports MIT, BSD-3-Clause and
+MPL-2.0 components. Their matching upstream archives retain license and copyright
+material in the same source bundle. These libraries are used only in the isolated
+worker; they are not linked into the Go API binary.
 
 The worker image includes a matching source bundle at
 `/licenses/corresponding-source`. Building `file-worker` requires successful source

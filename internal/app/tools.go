@@ -85,7 +85,7 @@ func (t runtimeTools) tools(
 			provider.Tool{
 				Type:        toolFunctionType,
 				Name:        "artifact_attach",
-				Description: "Attach supported image from temporary handle directly to model, outside JS. Get handle with modules.artifacts.open. Current model/disclosure policy checked; bytes never returned to JS.",
+				Description: "Attach a supported still image from temporary handle directly to model, outside JS. Get handle with modules.artifacts.open. Animations (GIF/WebP/APNG/AVIF/HEIF/JXL/WebM/MNG/TGS/Lottie) must use files.video_info and files.video_storyboard first; attach selected output frames. Current model/disclosure policy checked; bytes never returned to JS.",
 				Strict:      true,
 				Parameters: json.RawMessage(
 					`{"type":"object","properties":{"handle_id":{"type":"string"}},"required":["handle_id"],"additionalProperties":false}`,

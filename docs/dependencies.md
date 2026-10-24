@@ -38,6 +38,12 @@ container. Their licenses and corresponding-source requirements are described in
 [file-worker distribution](file-worker.md). These exceptions do not approve
 arbitrary GPL/AGPL Go libraries.
 
+The isolated animation helper also uses ImageMagick (ImageMagick license) and
+rlottie (MIT/BSD-3-Clause/MPL-2.0 components). Their runtime package metadata,
+matching sources and notices follow the same worker distribution procedure.
+The helper source and build script are included in that bundle. These additions
+do not change the Go dependency graph or approve unrelated native libraries.
+
 Review licenses manually when selecting direct dependencies and periodically for
 transitive changes. This review is not a CI merge gate. Follow the
 [license review procedure](dependency-audit/README.md); preserve required notices

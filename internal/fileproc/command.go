@@ -9,6 +9,8 @@ import (
 	"os/exec"
 )
 
+const ffprobeCommand = "ffprobe"
+
 func bytesReader(b []byte) *bytes.Reader { return bytes.NewReader(b) }
 
 type boundedBuffer struct {
@@ -27,13 +29,27 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 // command runs a fixed executable directly. No shell or caller-supplied executable is allowed.
 func command(ctx context.Context, name string, args ...string) ([]byte, error) {
 	switch name {
-	case "pdfinfo", "pdftotext", "pdftoppm", "pdfimages", "ffprobe", "ffmpeg":
+	case "pdfinfo", "pdftotext", "pdftoppm", "pdfimages", ffprobeCommand, "ffmpeg", "loom-animation":
 	default:
 		return nil, errors.New("unsupported executable")
+	}
+	if name == "ffmpeg" {
+		// Two concurrent jobs must fit the worker's PID budget on large hosts.
+		args = append([]string{"-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1"}, args...)
+		if len(args) > 0 {
+			output := args[len(args)-1]
+			args = append(args[:len(args)-1], "-threads", "1", output)
+		}
+	}
+	if name == ffprobeCommand {
+		args = append([]string{"-threads", "1"}, args...)
 	}
 	// #nosec G702 -- Fixed executable allowlist above; arguments never pass through a shell.
 	cmd := exec.CommandContext(ctx, name, args...)
 	stdout := &boundedBuffer{limit: MaxTextBytes}
+	if name == ffprobeCommand {
+		stdout.limit = MaxResultJSONBytes
+	}
 	stderr := &boundedBuffer{limit: MaxStderrBytes}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

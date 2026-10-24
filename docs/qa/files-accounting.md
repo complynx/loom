@@ -28,7 +28,7 @@ identity, quota before/after and the expected expiry. Do not use private user me
 - Source outage: keep durable metadata and source ID. After recovery, read the same reference. Do not infer permanent deletion from an arbitrary 503.
 - PDF: extract text and render a standard-font document. Decode and inspect the output for readable text; HTTP 200 alone is insufficient. OCR/scans/font fidelity are separate properties.
 - Images: resize/crop, invalid bounds, malformed/oversized input and a model attachment. Recheck ownership, disclosure and model capabilities.
-- Video/GIF: metadata, storyboard, a detailed interval, a selected frame and extracted audio. Decode the result and compare dimensions, duration and a known signal.
+- Video and animation: metadata, storyboard, a detailed interval, a selected frame and extracted audio when present. Cover GIF/WebP/APNG/AVIF/HEIF/JXL/WebM/MNG/TGS with [animation fixtures](../file-tools/animations.md#worker-dependencies-and-verification). Compare dimensions, precise duration and known frame changes. For WebP, check offsets and disposal. Verify held-frame timestamps, fractional playback boundaries, cursors and the ordinary-video fallback above 1000 frames. Verify that direct model attachment and image resize/crop reject animations without sending a single still frame.
 - Transcription: reserve, settle, lose a reply, and reconcile without redispatch using a fixture provider. Use a real provider separately for speech quality and actual usage.
 - Isolation: check non-root/no-network/read-only execution, bounded temp/memory/CPU/PIDs, cancellation and the next healthy job.
 

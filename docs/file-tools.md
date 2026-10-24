@@ -8,6 +8,9 @@ Start with [References](file-tools/references.md) to open an uploaded or service
 
 Commands use the repository root unless stated otherwise. See [Contributing](../CONTRIBUTING.md) for the code map and development workflow.
 
+For GIF, WebP, APNG, AVIF, HEIF sequences, JPEG XL, WebM, MNG and Telegram TGS,
+see [Animation storyboards](file-tools/animations.md).
+
 ## Handles and access
 
 Read [References](file-tools/references.md).
