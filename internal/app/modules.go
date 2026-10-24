@@ -83,6 +83,9 @@ func (b *ModuleBridge) Call(
 	_ string,
 	call provider.Call,
 ) (json.RawMessage, *domain.Approval, error) {
+	if run.NativeFilesOnly() {
+		return nil, nil, domain.Forbidden()
+	}
 	ctx = identity.RequireFresh(ctx)
 	var args struct {
 		ResumeOperationID string          `json:"resume_operation_id,omitempty"`

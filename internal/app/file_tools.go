@@ -16,10 +16,11 @@ import (
 )
 
 const filesModule = "files"
+const transcriptReadMethod = "transcript_read"
 
 func fileMethods() []string {
 	return []string{
-		"transcript_read",
+		transcriptReadMethod,
 		"info",
 		"pdf_info",
 		"pdf_text",
@@ -114,7 +115,7 @@ func (t runtimeTools) processFile(
 	method string,
 	raw json.RawMessage,
 ) (json.RawMessage, error) {
-	if method == "transcript_read" {
+	if method == transcriptReadMethod {
 		return t.readTranscript(ctx, r, raw)
 	}
 	if !t.cfg.FileTools.Enabled {

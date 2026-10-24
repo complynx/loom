@@ -35,6 +35,7 @@ func (s *Store) ExecutionCachedContext(ctx context.Context, rid string) (domain.
 	if previous.State != domain.Completed || previous.ChatID != current.ChatID || previous.OwnerID != current.OwnerID ||
 		previous.OrgID != current.OrgID ||
 		previous.ActorID != current.ActorID ||
+		previous.ExecutionProfile != current.ExecutionProfile ||
 		previous.ModelID != current.ModelID ||
 		previous.Effort != current.Effort ||
 		hash(previous.Model) != hash(current.Model) ||

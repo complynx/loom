@@ -244,7 +244,11 @@ func TestOutputValidationCapabilities(t *testing.T) {
 	f := newFixture(t)
 	code, raw := f.request(t, "alice", http.MethodGet, "/v1/capabilities", "", nil)
 	require.Equal(t, http.StatusOK, code)
-	require.JSONEq(t, `{"output_validation":{"version":1,"disallow_custom_emoji":true}}`, string(raw))
+	require.JSONEq(
+		t,
+		`{"output_validation":{"version":1,"disallow_custom_emoji":true},"execution_profiles":["native_files"]}`,
+		string(raw),
+	)
 }
 
 func captureWireProof(t *testing.T, requests []json.RawMessage) {

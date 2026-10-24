@@ -58,6 +58,7 @@ type Identity struct {
 	JWKSCacheTTLSeconds        int                 `yaml:"jwks_cache_ttl_seconds"`
 	RolePermissions            map[string][]string `yaml:"role_permissions"`
 	ServiceSubjects            []string            `yaml:"service_subjects"`
+	ServiceAccounts            map[string][]string `yaml:"service_accounts"`
 }
 type Discovery struct {
 	DockerAPI                  string   `yaml:"docker_api"`
@@ -286,6 +287,9 @@ func (c Config) Validate() error {
 }
 
 func (c Config) validateTrust() error {
+	if err := c.Identity.ValidateServiceAccounts(); err != nil {
+		return err
+	}
 	if err := c.validateOperator(); err != nil {
 		return err
 	}

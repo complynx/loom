@@ -1,5 +1,9 @@
 # Personal user memory
 
+[Service accounts](api/service-accounts.md) have no personal-memory API or tools.
+The [native file execution profile](api/execution-profiles.md) also disables
+personal memory for a run. Neither path injects micro-memory into model requests.
+
 Personal memory belongs to the authenticated Zitadel issuer, subject, and organization. All chats of that user in that organization share it. HTTP callers cannot select another owner. Cross-user and cross-organization paths are not exposed.
 
 ## Layout

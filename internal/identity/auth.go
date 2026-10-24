@@ -88,6 +88,9 @@ func (a *audience) UnmarshalJSON(b []byte) error {
 	return nil
 }
 func New(cfg config.Identity, client *http.Client, binding BindingResolver) (*Authenticator, error) {
+	if err := cfg.ValidateServiceAccounts(); err != nil {
+		return nil, err
+	}
 	var err error
 	cfg, err = cfg.ResolveCredentials()
 	if err != nil {
@@ -131,6 +134,9 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (doma
 	p, err := a.authenticateToken(ctx, token)
 	if err != nil {
 		return domain.Principal{}, err
+	}
+	if p.ServiceAccount {
+		return p, serviceAccountRequest(r)
 	}
 	service, err := a.classifyService(ctx, p)
 	if err != nil {
@@ -208,10 +214,21 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 	if err != nil {
 		return domain.Principal{}, err
 	}
-	return domain.Principal{
+	p := domain.Principal{
 		Issuer: info.Issuer, Subject: info.Subject, Actor: info.Subject,
 		OrgID: info.OrgID, Permissions: a.rolePermissions(info), ExpiresAt: time.Unix(info.Expires, 0),
-	}, nil
+	}
+	if ceiling, ok := a.cfg.ServiceAccounts[p.Subject]; ok {
+		p.ServiceAccount = true
+		permissions := map[string]bool{}
+		for _, permission := range ceiling {
+			if p.Has(permission) {
+				permissions[permission] = true
+			}
+		}
+		p.Permissions = permissions
+	}
+	return p, nil
 }
 
 func (a *Authenticator) introspectToken(ctx context.Context, token string) (tokenInfo, error) {

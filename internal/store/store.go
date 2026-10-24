@@ -375,6 +375,9 @@ func (s *Store) CreateRun(
 	if err := domain.ValidateDiscovery(in.Discovery); err != nil {
 		return r, err
 	}
+	if err := in.ExecutionProfile.Validate(); err != nil {
+		return r, err
+	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		uid, e := s.ensureUser(ctx, tx, p)
 		if e != nil {
@@ -680,6 +683,7 @@ func buildRun(
 		return domain.Run{}, domain.NewError(http.StatusUnprocessableEntity, "unsupported_reply_mode")
 	}
 	r := domain.Run{
+		ExecutionProfile: in.ExecutionProfile,
 		PreviousRunID:    in.PreviousRunID,
 		DisconnectPolicy: in.DisconnectPolicy,
 		Model:            selected,

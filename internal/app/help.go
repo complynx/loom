@@ -55,6 +55,8 @@ type helpRequest struct {
 
 func (t runtimeTools) builtinHelpAvailable(p domain.Principal, module string) bool {
 	switch module {
+	case memoryModule:
+		return !p.ServiceAccount
 	case filesModule:
 		return t.cfg.FileTools.Enabled && p.Has("artifacts.read") && p.Has("chat.read")
 	case artifactsModule:
@@ -74,6 +76,10 @@ func (t runtimeTools) helpCatalog(
 	p domain.Principal,
 	token string,
 ) ([]helpEntry, map[string]helpCard, []string, error) {
+	if r.NativeFilesOnly() {
+		entries, cards, err := t.helpEntries(r, p, nil, nil)
+		return entries, cards, nil, err
+	}
 	mp := modulePrincipal(p, token, r.SettingsSnapshot.Version)
 	reads, readErr := t.registry.List(ctx, mp)
 	actions, actionErr := t.registry.ListActions(ctx, mp)
@@ -101,6 +107,9 @@ func (t runtimeTools) helpEntries(
 	entries := []helpEntry{}
 	for id, card := range cards {
 		module, method, _ := strings.Cut(id, ".")
+		if r.NativeFilesOnly() && !nativeFileMethod(module, method) {
+			continue
+		}
 		if !t.builtinHelpAvailable(p, module) || (id == "history.semantic" && !t.cfg.Search.SemanticEnabled) ||
 			(id == "$tools.message_react" && (!r.Interaction.Reactions.Enabled() || !p.Has("chat.read"))) ||
 			(id == "$tools.interaction_resolve" && r.Interaction.ReplyMode != domain.ReplyModeAgent) ||

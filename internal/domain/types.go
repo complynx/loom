@@ -10,6 +10,7 @@ import (
 const DefaultArtifactTTL = 24 * time.Hour
 
 type Principal struct {
+	ServiceAccount                bool
 	Issuer, Subject, Actor, OrgID string
 	Permissions                   map[string]bool
 	ExpiresAt                     time.Time
@@ -91,6 +92,7 @@ type Delivery struct {
 	WaitMS int    `json:"wait_ms"`
 }
 type CreateRun struct {
+	ExecutionProfile ExecutionProfile  `json:"execution_profile,omitempty"`
 	OutputPolicy     *OutputPolicy     `json:"output_policy,omitempty"`
 	Discovery        *DiscoveryOptions `json:"discovery,omitempty"`
 	PreviousRunID    string            `json:"previous_run_id,omitempty"`
@@ -105,6 +107,7 @@ type CreateRun struct {
 	BillingAccountID string            `json:"billing_account_id,omitempty"`
 }
 type Run struct {
+	ExecutionProfile     ExecutionProfile  `json:"execution_profile,omitempty"`
 	OutputPolicy         OutputPolicy      `json:"output_policy,omitzero"`
 	Discovery            *DiscoveryOptions `json:"discovery,omitempty"`
 	ConversationRevision int64             `json:"conversation_revision,omitempty"`

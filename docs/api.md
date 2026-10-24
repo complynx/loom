@@ -17,6 +17,7 @@ acceptance; it does not prove an external effect has finished.
 ## Authentication
 
 Read [Authentication](api/authentication-routes.md#authentication).
+For machine-owned tasks, read [service accounts](api/service-accounts.md).
 
 ## Routes
 
@@ -25,6 +26,7 @@ Read the [route table](api/authentication-routes.md#routes).
 ## Create a run
 
 Read [Run creation](api/runs-input.md#create-a-run).
+To restrict a run to native files, read [execution profiles](api/execution-profiles.md).
 
 ## Run input
 

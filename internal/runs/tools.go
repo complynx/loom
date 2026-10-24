@@ -79,6 +79,9 @@ func (e *Engine) executeCall(
 	call provider.Call,
 	settings domain.Settings,
 ) (json.RawMessage, bool, error) {
+	if !run.AllowsModelTool(call.Name) {
+		return json.RawMessage(`{"error":"execution_profile_denied"}`), false, nil
+	}
 	switch call.Name {
 	case approvalPresentTool:
 		return e.presentApproval(ctx, run, call)

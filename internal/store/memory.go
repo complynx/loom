@@ -28,6 +28,9 @@ var memoryKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,79}$`)
 
 func memoryInvalid() error { return domain.NewError(http.StatusUnprocessableEntity, "invalid_memory") }
 func (s *Store) memoryOwner(ctx context.Context, p domain.Principal) (string, error) {
+	if p.ServiceAccount {
+		return "", domain.Forbidden()
+	}
 	if p.OrgID == "" {
 		return "", domain.NewError(http.StatusUnprocessableEntity, "invalid_identity")
 	}

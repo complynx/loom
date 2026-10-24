@@ -44,6 +44,11 @@ func refreshImportPolicy(
 }
 
 func (t runtimeTools) fileBroker(run domain.Run) sandbox.Broker {
+	if run.NativeFilesOnly() {
+		return sandbox.BrokerFunc(func(context.Context, string, string, json.RawMessage) (json.RawMessage, error) {
+			return nil, domain.Forbidden()
+		})
+	}
 	return t.registry.BrokerLive(func(ctx context.Context) (modules.Principal, error) {
 		p, credential, err := t.fresh(ctx, run)
 		value := modulePrincipal(p, credential, run.SettingsSnapshot.Version)
@@ -53,6 +58,9 @@ func (t runtimeTools) fileBroker(run domain.Run) sandbox.Broker {
 }
 
 func (t runtimeTools) authorizeFileOrigin(ctx context.Context, run domain.Run, original domain.Artifact) error {
+	if run.NativeFilesOnly() {
+		return domain.Forbidden()
+	}
 	p, token, err := t.fresh(ctx, run)
 	if err != nil {
 		return err
@@ -98,6 +106,9 @@ func (t runtimeTools) resolveArtifact(
 	}
 	if err != nil && !missingFile(err) {
 		return domain.Artifact{}, err
+	}
+	if run.NativeFilesOnly() {
+		return unavailableNativeFile(err)
 	}
 	for {
 		ref, refErr := t.repository.FileReference(ctx, p, aid)
