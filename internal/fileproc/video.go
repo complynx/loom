@@ -17,6 +17,8 @@ type VideoOptions struct {
 	Interval  float64 `json:"interval,omitempty"`
 	Width     int     `json:"width,omitempty"`
 	MaxFrames int     `json:"max_frames,omitempty"`
+	Quality   int     `json:"quality,omitempty"`
+	Lossless  bool    `json:"lossless,omitempty"`
 }
 
 func processVideo(ctx context.Context, req Request, input, dir string) (Result, error) {
@@ -79,6 +81,7 @@ func processVideo(ctx context.Context, req Request, input, dir string) (Result, 
 		dir,
 		duration,
 		hasAudio,
+		probe,
 		stream,
 		probe.FrameTimes,
 		timestamps,
@@ -88,6 +91,9 @@ func processVideo(ctx context.Context, req Request, input, dir string) (Result, 
 }
 
 func videoOptions(p VideoOptions) (VideoOptions, error) {
+	if p.Quality == 0 {
+		p.Quality = 90
+	}
 	if p.Width == 0 {
 		p.Width = 1280
 	}
@@ -97,7 +103,9 @@ func videoOptions(p VideoOptions) (VideoOptions, error) {
 	if p.Interval == 0 {
 		p.Interval = 10
 	}
-	if p.Start < 0 || p.End < 0 || p.Timestamp < 0 || p.Width < 1 || p.Width > 2048 || p.MaxFrames < 1 ||
+	if p.Quality < 1 || p.Quality > 100 || p.Start < 0 || p.End < 0 || p.Timestamp < 0 || p.Width < 1 ||
+		p.Width > 2048 ||
+		p.MaxFrames < 1 ||
 		p.MaxFrames > MaxFrames ||
 		p.Interval < 0.1 ||
 		p.Interval > 3600 ||
@@ -200,6 +208,7 @@ func videoFrames(
 	input, dir string,
 	duration float64,
 	hasAudio bool,
+	probe videoProbe,
 	stream int,
 	frameTimes []float64,
 	timestamps []float64,
@@ -214,7 +223,7 @@ func videoFrames(
 		if duration > 0 && at >= duration {
 			return Result{}, errors.New("frame timestamp exceeds duration")
 		}
-		name := fmt.Sprintf("frame-%03d.jpg", index)
+		name := fmt.Sprintf("frame-%03d.webp", index)
 		path := filepath.Join(dir, name)
 		args := []string{
 			"-v",
@@ -225,24 +234,17 @@ func videoFrames(
 		if len(frameTimes) == 0 {
 			args = append(args, "-ss", number(at))
 		}
+		args = append(args, probe.decoderOptions()...)
 		args = append(args, "-protocol_whitelist", "file,pipe", "-i", input)
-		filter := videoFrameFilter(p.Width, at, frameTimes)
-		if stream >= 0 {
-			args = append(args, "-map", fmt.Sprintf("0:%d", stream))
-		}
+		args = append(args, videoFrameFilterOptions(p.Width, at, frameTimes, stream, probe)...)
 		args = append(args,
 			"-frames:v",
 			"1",
 			"-threads",
 			"1",
-			"-vf",
-			filter,
-			"-q:v",
-			"3",
-			"-update",
-			"1",
-			path,
 		)
+		args = append(args, webPEncodingOptions(p)...)
+		args = append(args, "-update", "1", path)
 		_, err = command(ctx, "ffmpeg", args...)
 		if err == nil {
 			err = validateFrame(path)
@@ -255,7 +257,7 @@ func videoFrames(
 			}
 			return Result{}, err
 		}
-		result.Outputs = append(result.Outputs, Output{Name: name, MIME: "image/jpeg", Path: path})
+		result.Outputs = append(result.Outputs, Output{Name: name, MIME: webPMIME, Path: path})
 	}
 	result.Partial = partial
 	if partial {
@@ -287,4 +289,17 @@ func preciseSeconds(v float64) string {
 		return short
 	}
 	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+func videoFrameFilterOptions(width int, at float64, frameTimes []float64, stream int, probe videoProbe) []string {
+	filter := videoFrameFilter(width, at, frameTimes)
+	if probe.AlphaStream >= 0 {
+		return []string{"-filter_complex", fmt.Sprintf("[0:%d][0:%d]alphamerge,%s[out]",
+			stream, probe.Streams[probe.AlphaStream].Index, filter), "-map", "[out]"}
+	}
+	args := []string{"-vf", filter}
+	if stream >= 0 {
+		args = append(args, "-map", fmt.Sprintf("0:%d", stream))
+	}
+	return args
 }

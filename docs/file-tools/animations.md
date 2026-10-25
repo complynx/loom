@@ -18,7 +18,7 @@ hide motion or display a separate cover image.
 | Animated AVIF | The worker selects the timed image track instead of a single-frame cover. |
 | HEIF image sequences (`.heics`, `.heifs`) | FFmpeg decodes supported sequence tracks, including HEVC. A collection of unrelated still images is not a timed sequence. |
 | Animated JPEG XL (`.jxl`) | FFmpeg decodes frames; frame timestamps supply missing duration metadata. |
-| WebM, including Telegram VP9 video stickers | The video path decodes frames. Small silent clips use a bounded frame timeline to preserve held frames; other files keep normal video processing. |
+| WebM, including Telegram VP9 video stickers | The video path uses libvpx for VP8/VP9 streams marked with alpha; native decoders discard the auxiliary alpha bitstream. Small silent clips use a bounded frame timeline to preserve held frames; other files keep normal video processing. |
 | MNG | The native helper uses ImageMagick to coalesce frames and preserve their delays. |
 | Telegram TGS and shape-only Lottie JSON | The worker expands bounded gzip input, validates self-contained JSON, and renders selected frames with rlottie. |
 
@@ -26,6 +26,14 @@ Detection uses file contents, not the extension or caller-declared MIME type.
 TGS is gzip-compressed Lottie JSON. Lottie image/font resources and expressions
 are unsupported. A path, URL or expression fails validation before rendering.
 SVG, dotLottie archives and interactive animation engines are not supported.
+
+## Frame encoding and alpha
+
+All sampled frames use still WebP. The default `quality:90` compresses color while preserving alpha losslessly. Set `quality` from 1 to 100, or `lossless:true` for lossless decoded color and alpha. The agent can repeat `video_frame` or `video_storyboard` with different encoding options; use the original source handle and the same timestamp or range. Lossless encoding cannot restore detail already lost in the input.
+
+APNG and JPEG XL decode alpha directly. AVIF/HEIF can store alpha in a separate auxiliary track; the worker identifies its alpha type and color-track reference and merges the planes before scaling. MNG/WebP preserve composition and disposal; TGS/Lottie renders RGBA. No output background is added.
+
+For vector TGS/Lottie, `width` selects the render size as a maximum edge, with aspect ratio preserved. The default is 1280 and the maximum is 2048. Set a larger `width` when fine vector details need inspection; encoding options apply independently.
 
 ## Sampling and limits
 

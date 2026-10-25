@@ -8,7 +8,6 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
-	"image/jpeg"
 	"image/png"
 	"os"
 	"os/exec"
@@ -16,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/complynx/loom/internal/fileproc"
 )
@@ -84,15 +85,7 @@ func TestAnimatedWebPStoryboardPreservesTimeAndPixels(t *testing.T) {
 
 func assertFrameColor(t *testing.T, path string, red bool) {
 	t.Helper()
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	im, err := jpeg.Decode(f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	im := decodeFrame(t, path)
 	r, _, b, _ := im.At(8, 8).RGBA()
 	if red && (r < 50000 || b > 5000) || !red && (b < 50000 || r > 5000) {
 		t.Fatalf("wrong frame color: red=%v r=%d b=%d", red, r, b)
@@ -355,5 +348,34 @@ func assertPDFBoundarySearch(t *testing.T, regex bool) {
 	}
 	if !finished || found != 1 {
 		t.Fatalf("finished=%v matches=%d", finished, found)
+	}
+}
+
+func TestGIFFramesPreserveTransparency(t *testing.T) {
+	t.Parallel()
+	needCommands(t, "ffmpeg", "ffprobe")
+	input := filepath.Join(t.TempDir(), "animation")
+	palette := color.Palette{color.NRGBA{}, color.Black, color.White}
+	first := image.NewPaletted(image.Rect(0, 0, 16, 16), palette)
+	second := image.NewPaletted(first.Bounds(), palette)
+	first.SetColorIndex(8, 8, 1)
+	second.SetColorIndex(8, 8, 2)
+	f, err := os.Create(input)
+	require.NoError(t, err)
+	require.NoError(t, gif.EncodeAll(f, &gif.GIF{Image: []*image.Paletted{first, second}, Delay: []int{100, 100}}))
+	require.NoError(t, f.Close())
+	for _, operation := range []string{"video.frame", "video.storyboard"} {
+		r, processErr := fileproc.Process(t.Context(), fileproc.Request{Operation: operation,
+			Params: json.RawMessage(`{"interval":1,"width":16}`)}, input, t.TempDir())
+		require.NoError(t, processErr)
+		require.NotEmpty(t, r.Outputs)
+		for _, out := range r.Outputs {
+			require.Equal(t, "image/webp", out.MIME)
+			im := decodeFrame(t, out.Path)
+			_, _, _, alpha := im.At(0, 0).RGBA()
+			require.Zero(t, alpha)
+			_, _, _, alpha = im.At(8, 8).RGBA()
+			require.Equal(t, uint32(65535), alpha)
+		}
 	}
 }

@@ -376,7 +376,9 @@ func TestModelImageRequiresDisclosureAndCapability(t *testing.T) {
 	t.Parallel()
 	s, _ := service(t, 1024, 4096)
 	var content bytes.Buffer
-	if encodeErr := png.Encode(&content, image.NewRGBA(image.Rect(0, 0, 1, 1))); encodeErr != nil {
+	picture := image.NewNRGBA(image.Rect(0, 0, 2, 1))
+	picture.SetNRGBA(1, 0, color.NRGBA{R: 200, G: 100, B: 50, A: 128})
+	if encodeErr := png.Encode(&content, picture); encodeErr != nil {
 		t.Fatal(encodeErr)
 	}
 	a, err := s.Upload(context.Background(), testOwner(), "image/png", bytes.NewReader(content.Bytes()))

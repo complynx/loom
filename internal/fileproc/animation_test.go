@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
-	"image"
 	"os"
 	"path/filepath"
 	"testing"
@@ -176,13 +175,7 @@ func TestAnimationFormatsUseTimedStoryboards(t *testing.T) {
 
 func assertAnimationColor(t *testing.T, path string, red bool) {
 	t.Helper()
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	im, _, err := image.Decode(f)
-	require.NoError(t, err)
+	im := decodeFrame(t, path)
 	r, _, b, _ := im.At(im.Bounds().Dx()/2, im.Bounds().Dy()/2).RGBA()
 	if red {
 		require.Greater(t, r, uint32(45000))

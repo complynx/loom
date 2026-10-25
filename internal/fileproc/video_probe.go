@@ -11,6 +11,7 @@ import (
 )
 
 type videoProbe struct {
+	AlphaStream   int       `json:"-"`
 	ImageSequence bool      `json:"-"`
 	FrameTimes    []float64 `json:"-"`
 	Format        struct {
@@ -22,20 +23,25 @@ type videoProbe struct {
 }
 
 type videoStream struct {
-	Index       int    `json:"index"`
-	CodecName   string `json:"codec_name"`
-	CodecType   string `json:"codec_type"`
-	Width       int    `json:"width,omitempty"`
-	Height      int    `json:"height,omitempty"`
-	Duration    string `json:"duration,omitempty"`
-	Frames      string `json:"nb_frames,omitempty"`
-	SampleRate  string `json:"sample_rate,omitempty"`
-	Channels    int    `json:"channels,omitempty"`
-	AverageRate string `json:"avg_frame_rate,omitempty"`
+	ID          string            `json:"id,omitempty"`
+	PixelFormat string            `json:"pix_fmt,omitempty"`
+	Tags        map[string]string `json:"tags,omitempty"`
+	Alpha       bool              `json:"-"`
+	AlphaFor    uint32            `json:"-"`
+	Index       int               `json:"index"`
+	CodecName   string            `json:"codec_name"`
+	CodecType   string            `json:"codec_type"`
+	Width       int               `json:"width,omitempty"`
+	Height      int               `json:"height,omitempty"`
+	Duration    string            `json:"duration,omitempty"`
+	Frames      string            `json:"nb_frames,omitempty"`
+	SampleRate  string            `json:"sample_rate,omitempty"`
+	Channels    int               `json:"channels,omitempty"`
+	AverageRate string            `json:"avg_frame_rate,omitempty"`
 }
 
 func probeVideo(ctx context.Context, input string) (videoProbe, error) {
-	var probe videoProbe
+	probe := videoProbe{AlphaStream: -1}
 	b, err := command(
 		ctx,
 		"ffprobe",
@@ -44,7 +50,7 @@ func probeVideo(ctx context.Context, input string) (videoProbe, error) {
 		"-protocol_whitelist",
 		"file,pipe",
 		"-show_entries",
-		"format=duration,format_name,size:stream=index,codec_name,codec_type,width,height,duration,nb_frames,sample_rate,channels,avg_frame_rate",
+		"format=duration,format_name,size:stream=index,id,codec_name,codec_type,pix_fmt,width,height,duration,nb_frames,sample_rate,channels,avg_frame_rate:stream_tags=alpha_mode,title",
 		"-of",
 		"json",
 		input,
@@ -56,6 +62,11 @@ func probeVideo(ctx context.Context, input string) (videoProbe, error) {
 		return probe, err
 	}
 	probe.ImageSequence = isImageSequence(input)
+	if probe.ImageSequence {
+		if probe, err = identifyAlphaTracks(input, probe); err != nil {
+			return probe, err
+		}
+	}
 	selected, err := probe.visualStream()
 	if errors.Is(err, errNoVideo) {
 		return probe, nil
@@ -63,6 +74,7 @@ func probeVideo(ctx context.Context, input string) (videoProbe, error) {
 	if err != nil {
 		return probe, err
 	}
+	probe.AlphaStream = probe.alphaStream(selected)
 	if probe.isAnimation() || probe.shortSilentWebM() {
 		duration, times, frameErr := probeFrameTimeline(ctx, input, probe.Streams[selected].Index)
 		if frameErr != nil {
@@ -109,7 +121,7 @@ func (p videoProbe) shortSilentWebM() bool {
 func (p videoProbe) visualStream() (int, error) {
 	selected := -1
 	for i, s := range p.Streams {
-		if s.CodecType != videoCodecType {
+		if s.CodecType != videoCodecType || s.Alpha {
 			continue
 		}
 		if !p.ImageSequence {
