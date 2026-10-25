@@ -45,12 +45,16 @@ For `pdf_render`, `width` defaults to 1280 and is at most 2048. Without `height`
 
 ### Images and video
 
+PNG is the default image output and preserves alpha through resize and crop. An explicit `format:"jpeg"` composites transparency onto white because JPEG has no alpha channel. Direct still-image attachment forwards the original bytes, including alpha, without re-encoding.
+
+`video_frame` and `video_storyboard` return still WebP frames (`image/webp`). Color uses `quality:90` by default; alpha remains lossless. Set `quality` from 1 to 100 for another color quality, or `lossless:true` to preserve decoded color too. Repeat a request with the same source and timestamp/range to obtain a different encoding. Originals are unchanged. Existing output and attachment byte limits still apply.
+
 `image_info`, `image_resize` and `image_crop` support still JPEG, PNG and GIF. Animated GIF, WebP and PNG containers are rejected by these methods and by `artifact_attach`; use video methods and attach selected storyboard frames. Detection uses file content, not the filename. Coordinates use the stored raster; EXIF orientation is not applied. Resize uses `max_edge` (default 1280) and preserves aspect ratio; `allow_upscale` defaults to false. Crop takes `x,y,width,height`. Outputs can use `format:"png"` or `format:"jpeg"`; JPEG accepts `quality` from 1 to 100. Input images are limited to 16 million pixels; outputs to 4 million pixels.
 
 `video_info` returns FFprobe-compatible `format` and `streams` metadata in `data`. Inspect `data.streams` for `codec_type:"audio"` before requesting audio. GIF, WebP, APNG, AVIF, HEIF sequences, JPEG XL, WebM, MNG and Telegram TGS use these video methods. See [Animation storyboards](animations.md) for detection, timing, decoder limits and supported Lottie content.
 
 - `video_storyboard` samples frames using `start,end,interval,width,max_frames`. Times are seconds. Defaults are `start:0`, `interval:10`, `width:1280` and `max_frames:12`; the maximum is 24 frames. For animations and clips shorter than 10 seconds, an omitted interval uses `max(0.1, duration/max_frames)` seconds. Use a smaller explicit interval for brief movements. Pass numeric `next_cursor` as the next `start`, keeping the other options unchanged.
-- `video_frame` reads one frame using `timestamp` in seconds and optional `width`. Video frame width is at most 2048.
+- `video_frame` reads one frame using `timestamp` in seconds and optional `width`. For raster and vector animations, `width` sets the maximum output edge while preserving aspect ratio: default 1280, maximum 2048. TGS/Lottie renders at the requested resolution before encoding; use a larger value to inspect vector details.
 - `video_audio` extracts mono 16 kHz WAV using `start,end`, at most 300 seconds per chunk. Without `end`, it selects up to 300 seconds from `start`. Pass numeric `next_cursor` as the next `start`. A source without audio returns `data.has_audio:false` and no WAV.
 
 For video understanding, read a storyboard, use standalone `artifact_attach` with selected output handles, then use standalone `audio_transcribe` on the original handle if audio exists. Choose explicit `start,end` ranges for longer recordings and follow the returned cursor. See [Transcription limits](transcription-limits.md).

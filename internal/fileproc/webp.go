@@ -106,7 +106,7 @@ func webPResult(ctx context.Context, req Request, a mediaimage.WebPAnimation, di
 	if err != nil {
 		return Result{}, err
 	}
-	r.Outputs, err = composeWebPSamples(ctx, a, times, p.Width, dir)
+	r.Outputs, err = composeWebPSamples(ctx, a, times, p, dir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,7 +121,7 @@ func composeWebPSamples(
 	ctx context.Context,
 	a mediaimage.WebPAnimation,
 	times []float64,
-	width int,
+	p VideoOptions,
 	dir string,
 ) ([]Output, error) {
 	var outputs []Output
@@ -148,7 +148,7 @@ func composeWebPSamples(
 		draw.Draw(canvas, rect, picture, picture.Bounds().Min, op)
 		end := at + float64(frame.DelayMS)/millisecondsPerSecond
 		for sample < len(times) && times[sample] < end-timestampTolerance {
-			out, saveErr := saveWebPSample(ctx, canvas, width, sample, dir)
+			out, saveErr := saveWebPSample(ctx, canvas, p, sample, dir)
 			if saveErr != nil {
 				return nil, saveErr
 			}
@@ -205,7 +205,7 @@ func decodeWebPFrame(ctx context.Context, f mediaimage.WebPFrame, dir string) (i
 	return png.Decode(file)
 }
 
-func saveWebPSample(ctx context.Context, canvas image.Image, width, index int, dir string) (Output, error) {
+func saveWebPSample(ctx context.Context, canvas image.Image, p VideoOptions, index int, dir string) (Output, error) {
 	// Reuse FFmpeg's bounded aspect-preserving scaling for storyboard outputs.
 	input := filepath.Join(dir, "webp-canvas.png")
 	defer os.Remove(input)
@@ -221,26 +221,8 @@ func saveWebPSample(ctx context.Context, canvas image.Image, width, index int, d
 	if closeErr != nil {
 		return Output{}, closeErr
 	}
-	name := fmt.Sprintf("frame-%03d.jpg", index)
+	name := fmt.Sprintf("frame-%03d.webp", index)
 	path := filepath.Join(dir, name)
-	_, err = command(
-		ctx,
-		"ffmpeg",
-		"-v",
-		"error",
-		"-nostdin",
-		"-y",
-		"-protocol_whitelist",
-		"file,pipe",
-		"-i",
-		input,
-		"-frames:v",
-		"1",
-		"-vf",
-		fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", width, width),
-		"-q:v",
-		"3",
-		path,
-	)
-	return Output{Name: name, MIME: "image/jpeg", Path: path}, err
+	err = encodeWebPFrame(ctx, input, path, p)
+	return Output{Name: name, MIME: webPMIME, Path: path}, err
 }

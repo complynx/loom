@@ -190,3 +190,30 @@ func readImage(t *testing.T, path string) image.Image {
 	require.NoError(t, err)
 	return picture
 }
+
+func TestPNGTransformsPreserveAlpha(t *testing.T) {
+	t.Parallel()
+	picture := image.NewNRGBA(image.Rect(0, 0, 4, 2))
+	for y := range 2 {
+		picture.SetNRGBA(2, y, color.NRGBA{R: 200, G: 100, B: 50, A: 128})
+		picture.SetNRGBA(3, y, color.NRGBA{A: 255})
+	}
+	input := filepath.Join(t.TempDir(), "alpha.png")
+	f, err := os.Create(input)
+	require.NoError(t, err)
+	require.NoError(t, png.Encode(f, picture))
+	require.NoError(t, f.Close())
+	for _, op := range []string{"image.resize", "image.crop"} {
+		_, outputs, _, _, processErr := fileimage.Process(t.Context(), op,
+			json.RawMessage(`{"width":4,"height":2,"max_edge":2}`), input, t.TempDir())
+		require.NoError(t, processErr)
+		require.Len(t, outputs, 1)
+		require.Equal(t, "image/png", outputs[0].MIME)
+		out := readImage(t, outputs[0].Path)
+		require.Equal(t, image.Rect(0, 0, 2, 1), out.Bounds())
+		_, _, _, transparent := out.At(0, 0).RGBA()
+		require.Zero(t, transparent)
+		_, _, _, mixed := out.At(1, 0).RGBA()
+		require.InDelta(t, 192*257, mixed, 257)
+	}
+}

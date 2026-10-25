@@ -256,20 +256,26 @@ func nativeAnimationResult(ctx context.Context, req Request, kind, input, dir st
 		if at >= info.Duration {
 			return Result{}, errors.New("frame timestamp exceeds duration")
 		}
-		name := fmt.Sprintf("frame-%03d.png", index)
+		name := fmt.Sprintf("frame-%03d.webp", index)
 		path := filepath.Join(dir, name)
+		raster := filepath.Join(dir, fmt.Sprintf("raster-%03d.png", index))
 		if _, err = command(
 			ctx,
 			"loom-animation",
 			kind,
 			input,
-			path,
+			raster,
 			strconv.FormatFloat(at, 'f', -1, 64),
 			strconv.Itoa(p.Width),
 		); err != nil {
 			return Result{}, err
 		}
-		r.Outputs = append(r.Outputs, Output{Name: name, MIME: pngMIME, Path: path})
+		err = encodeWebPFrame(ctx, raster, path, p)
+		_ = os.Remove(raster)
+		if err != nil {
+			return Result{}, err
+		}
+		r.Outputs = append(r.Outputs, Output{Name: name, MIME: webPMIME, Path: path})
 	}
 	r.Partial = partial
 	if partial {
