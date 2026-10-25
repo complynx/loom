@@ -1,5 +1,16 @@
 [
   {
+    "module": "golang.org/x/image",
+    "version": "v0.47.0",
+    "license_files": [
+      {
+        "path": "LICENSE",
+        "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+        "licenses": ["BSD-3-Clause"]
+      }
+    ]
+  },
+  {
     "module": "cel.dev/expr",
     "version": "v0.25.2",
     "license_files": [

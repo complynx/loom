@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -140,7 +141,7 @@ func TestNativeFilesTGSRunWithUnavailableBusiness(t *testing.T) {
 	w := gzip.NewWriter(&compressed)
 	_, err = io.WriteString(
 		w,
-		`{"v":"5.7.4","fr":1,"ip":0,"op":2,"w":64,"h":64,"ddd":0,"assets":[],"layers":[{"ddd":0,"ind":1,"ty":4,"sr":1,"ks":{"o":{"a":0,"k":100},"r":{"a":0,"k":0},"p":{"a":0,"k":[0,0,0]},"a":{"a":0,"k":[0,0,0]},"s":{"a":0,"k":[100,100,100]}},"shapes":[{"ty":"rc","d":1,"s":{"a":0,"k":[64,64]},"p":{"a":0,"k":[32,32]},"r":{"a":0,"k":0}},{"ty":"fl","c":{"a":1,"k":[{"t":0,"s":[1,0,0,1],"h":1},{"t":1,"s":[0,0,1,1]}]},"o":{"a":0,"k":100},"r":1}],"ip":0,"op":2,"st":0,"bm":0}]}`,
+		`{"v":"5.7.4","fr":1,"ip":0,"op":2,"w":64,"h":64,"ddd":0,"assets":[],"layers":[{"ddd":0,"ind":1,"ty":4,"sr":1,"ks":{"o":{"a":0,"k":100},"r":{"a":0,"k":0},"p":{"a":0,"k":[0,0,0]},"a":{"a":0,"k":[0,0,0]},"s":{"a":0,"k":[100,100,100]}},"shapes":[{"ty":"rc","d":1,"s":{"a":0,"k":[32,64]},"p":{"a":0,"k":[32,32]},"r":{"a":0,"k":0}},{"ty":"fl","c":{"a":1,"k":[{"t":0,"s":[1,0,0,1],"h":1},{"t":1,"s":[0,0,1,1]}]},"o":{"a":0,"k":100},"r":1}],"ip":0,"op":2,"st":0,"bm":0}]}`,
 	)
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
@@ -197,6 +198,8 @@ func TestNativeFilesTGSRunWithUnavailableBusiness(t *testing.T) {
 	encoded, err := json.Marshal(model.requests[2].Input)
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), "input_image")
+	require.Equal(t, 2, strings.Count(string(encoded), `"type":"input_image"`))
+	require.Contains(t, string(encoded), "Alpha mask for the preceding original image")
 	require.Positive(t, model.counts)
 	for _, request := range model.requests {
 		require.NotContains(t, request.Instructions, "PRIVATE_MEMORY_MARKER")

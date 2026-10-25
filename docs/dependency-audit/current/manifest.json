@@ -2,6 +2,11 @@
   "go": "go1.27.2",
   "modules": [
     {
+      "module": "golang.org/x/image",
+      "version": "v0.47.0",
+      "commit": "c437a9130dcb43e6df402a034160826e29fd29b8"
+    },
+    {
       "module": "cel.dev/expr",
       "version": "v0.25.2",
       "commit": "cb51b4176013ad19bd00df94be273c322916a620"
@@ -1184,16 +1189,20 @@
   ],
   "files": [
     {
+      "path": "notices/golang.org/x/image/LICENSE",
+      "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    {
       "path": "licenses-linux-tests.csv",
-      "sha256": "ede82908849d82ce5bb74e8358400eb9963bba2606f45d9aab7dccb92b99c9f8"
+      "sha256": "d380b485b5a0ab3d098d572f3a39c0745a9baeee03b69a23db53a1935568862e"
     },
     {
       "path": "licenses-linux.csv",
-      "sha256": "4d67d2c5bd5c198270979c239f8de93e758589eb24f269c3cae458b14429ccc5"
+      "sha256": "7f0bde64d89203975633a23b413896ab662c8478be5e1ac02edb59c342e6da37"
     },
     {
       "path": "module-root-licenses.json",
-      "sha256": "8f230c07cc979e90e7f22434ea21e3ec826bd71bce4bdb04e64c1d656f398395"
+      "sha256": "9f62483c0d11140cb52ffcd0a711d36ebdd2fab17aece0b8f6d3c7aac7790d86"
     },
     {
       "path": "notices/github.com/cenkalti/backoff/v5/LICENSE",

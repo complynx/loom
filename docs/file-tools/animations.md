@@ -4,7 +4,7 @@
 
 Use `video_info`, `video_storyboard` and `video_frame` for animation files. These
 methods return the same metadata, temporary frame handles and cursors as video
-processing. Send selected output frames with standalone `artifact_attach`.
+processing. Send selected output frames with standalone `artifact_attach`; transparent frames include a separate labeled alpha mask alongside the unchanged frame bytes.
 Do not send an animated original as an `input_image`: a still-image decoder can
 hide motion or display a separate cover image.
 
@@ -31,7 +31,7 @@ SVG, dotLottie archives and interactive animation engines are not supported.
 
 All sampled frames use still WebP. The default `quality:90` compresses color while preserving alpha losslessly. Set `quality` from 1 to 100, or `lossless:true` for lossless decoded color and alpha. The agent can repeat `video_frame` or `video_storyboard` with different encoding options; use the original source handle and the same timestamp or range. Lossless encoding cannot restore detail already lost in the input.
 
-APNG and JPEG XL decode alpha directly. AVIF/HEIF can store alpha in a separate auxiliary track; the worker identifies its alpha type and color-track reference and merges the planes before scaling. MNG/WebP preserve composition and disposal; TGS/Lottie renders RGBA. No output background is added.
+APNG and JPEG XL decode alpha directly. AVIF/HEIF can store alpha in a separate auxiliary track; the worker identifies its alpha type and color-track reference and merges the planes before scaling. MNG/WebP preserve composition and disposal; TGS/Lottie renders RGBA. No background is added by default. Set `background` to `"white"`, `"black"`, `"#RRGGBB"` or `"checkerboard"` to obtain an opaque inspection view. The background is applied after scaling. See [method options](methods.md#images-and-video).
 
 For vector TGS/Lottie, `width` selects the render size as a maximum edge, with aspect ratio preserved. The default is 1280 and the maximum is 2048. Set a larger `width` when fine vector details need inspection; encoding options apply independently.
 

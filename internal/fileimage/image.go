@@ -42,6 +42,7 @@ type parameters struct {
 	AllowUpscale bool   `json:"allow_upscale"`
 	Format       string `json:"format"`
 	Quality      int    `json:"quality"`
+	Background   string `json:"background"`
 }
 
 type result struct {
@@ -168,6 +169,9 @@ func parseParameters(raw json.RawMessage) (parameters, error) {
 	if p.Format != "png" && p.Format != "jpeg" {
 		return p, errors.New("output format must be png or jpeg")
 	}
+	if _, err := mediaimage.ParseBackground(p.Background); err != nil {
+		return p, err
+	}
 	return p, nil
 }
 
@@ -274,6 +278,11 @@ func writeImage(ctx context.Context, picture image.Image, directory string, p pa
 
 func encodeImage(ctx context.Context, writer io.Writer, picture image.Image, p parameters) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var err error
+	picture, err = mediaimage.Composite(ctx, picture, p.Background)
+	if err != nil {
 		return err
 	}
 	if p.Format == "jpeg" {

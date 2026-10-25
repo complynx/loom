@@ -389,6 +389,30 @@ func TestModelImageRequiresDisclosureAndCapability(t *testing.T) {
 	if err != nil || !bytes.Equal(image.Bytes, content.Bytes()) {
 		t.Fatalf("forward image: %v", err)
 	}
+	mask, err := png.Decode(bytes.NewReader(image.AlphaPNG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for x, expected := range []uint32{0, 128 * 257} {
+		gray, _, _, opaque := mask.At(x, 0).RGBA()
+		if gray != expected || opaque != 65535 {
+			t.Fatalf("mask pixel %d: gray=%d alpha=%d", x, gray, opaque)
+		}
+	}
+	if _, budgetErr := s.ForModel(
+		t.Context(),
+		testOwner(),
+		a.ID,
+		"openai",
+		[]string{"openai"},
+		true,
+		int64(content.Len()),
+	); !errors.Is(
+		budgetErr,
+		artifacts.ErrTooLarge,
+	) {
+		t.Fatalf("mask budget: %v", budgetErr)
+	}
 	if _, forModelErr := s.ForModel(
 		context.Background(),
 		testOwner(),

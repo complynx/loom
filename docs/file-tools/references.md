@@ -17,6 +17,10 @@ File operations require `artifacts.read` and `chat.read`, ownership and organiza
 
 Use standalone `artifact_attach({handle_id})` to send a still image to a model that supports images. Animated GIF, WebP and PNG originals are rejected: use `files.video_storyboard`, then attach selected output frame handles. This is a model function outside JS. Authorized HTTP clients can stream artifact content through the [artifact API](../api/files-recovery.md). Raw base64 reads through `modules.artifacts.read` are unavailable. Binary payloads and filesystem paths do not enter JS.
 
+For a transparent still image, initial attachments and `artifact_attach` send the original bytes first, then a labeled grayscale PNG containing its alpha plane at the same dimensions. Black means fully transparent, white means opaque, and gray means partial transparency. The mask itself is opaque. It preserves 16-bit alpha when present. Opaque images need no companion. The mask is request-local, does not modify the original or create another stored artifact, and stays outside JavaScript. Normal ownership, disclosure, capability and expiry checks run before mask preparation and again on attachment replay.
+
+Mask preparation uses bounded Go raster decoders and accepts at most 16 million pixels. Original and mask bytes together must fit the existing per-attachment and 5 MiB aggregate model-attachment limits; exceeding them fails the attachment. Both images enter normal model input accounting. This transport does not guarantee that a model understands transparency. Use `image_resize`/`image_crop` or repeat frame sampling with an explicit `background` when a composited view is needed.
+
 ## Temporary files and external IDs
 
 ### Expiry
