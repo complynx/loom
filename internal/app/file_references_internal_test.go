@@ -75,7 +75,7 @@ func referenceFixture(t *testing.T) *fileReferenceFixture {
 	fixture, err := acceptance.New(filepath.Join(t.TempDir(), "state.json"), "read-token", "write-token")
 	require.NoError(t, err)
 	image, err := base64.StdEncoding.DecodeString(
-		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfWQAAAAASUVORK5CYII=",
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=",
 	)
 	require.NoError(t, err)
 	server := httptest.NewServer(f.referenceHandler(t, fixture.Handler(), image))

@@ -45,7 +45,7 @@ func (p videoProbe) alphaStream(selected int) int {
 	color := p.Streams[selected]
 	colorID, _ := strconv.ParseUint(color.ID, 0, 32)
 	for i, s := range p.Streams {
-		linked := s.AlphaFor == uint32(colorID) || s.AlphaFor == 0 && color.Tags["title"] == "Color"
+		linked := s.AlphaFor != 0 && s.AlphaFor == uint32(colorID)
 		if s.Alpha && linked && s.Width == color.Width && s.Height == color.Height &&
 			s.Frames == color.Frames && s.Duration == color.Duration {
 			return i
@@ -87,7 +87,7 @@ func identifyAlphaTracks(input string, probe videoProbe) (videoProbe, error) {
 		s := &probe.Streams[i]
 		id, _ := strconv.ParseUint(s.ID, 0, 32)
 		s.AlphaFor = alphaIDs[uint32(id)]
-		s.Alpha = s.AlphaFor != 0 || s.Tags["title"] == "Alpha"
+		s.Alpha = s.AlphaFor != 0
 	}
 	return probe, nil
 }

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -100,7 +99,7 @@ func (t runtimeTools) tools(
 			provider.Tool{
 				Type:        toolFunctionType,
 				Name:        "artifact_attach",
-				Description: "Attach a supported still image from temporary handle directly to model, outside JS. Get handle with modules.artifacts.open. Animations (GIF/WebP/APNG/AVIF/HEIF/JXL/WebM/MNG/TGS/Lottie) must use files.video_info and files.video_storyboard first; attach selected output frames. Current model/disclosure policy checked; bytes never returned to JS.",
+				Description: "Attach a supported still image from temporary handle directly to model, outside JS. Get handle with modules.artifacts.open. Animations (GIF/WebP/APNG/AVIF/HEIF/JXL/WebM/MNG/TGS/Lottie) must use files.video_info and files.video_storyboard first; attach selected output frames. Transparent images send original bytes plus a labeled alpha mask. Use image_resize/image_crop or frame sampling with background for opaque inspection views. Current model/disclosure policy checked; bytes never returned to JS.",
 				Strict:      true,
 				Parameters: json.RawMessage(
 					`{"type":"object","properties":{"handle_id":{"type":"string"}},"required":["handle_id"],"additionalProperties":false}`,
@@ -280,19 +279,13 @@ func (t runtimeTools) modelArtifacts(ctx context.Context, r domain.Run) ([]provi
 		if e != nil {
 			return nil, e
 		}
-		content = append(
-			content,
-			map[string]string{
-				"type": "input_image",
-				"image_url": "data:" + strings.ToLower(
-					image.Metadata.MIME,
-				) + ";base64," + base64.StdEncoding.EncodeToString(
-					image.Bytes,
-				),
-			},
-		)
+		totalBytes += int64(len(image.AlphaPNG))
+		if totalBytes > 5<<20 {
+			return nil, artifacts.ErrTooLarge
+		}
+		content = append(content, modelImageContent(image)...)
 	}
-	item, err := json.Marshal(map[string]any{"type": "message", "role": "user", "content": content})
+	item, err := json.Marshal(map[string]any{modelContentTypeKey: "message", "role": "user", "content": content})
 	if err != nil {
 		return nil, err
 	}

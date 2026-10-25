@@ -164,7 +164,7 @@ func TestArtifactHandlesAndModelBytesBypassJS(t *testing.T) {
 	require.NoError(t, json.Unmarshal(reference, &handle))
 	require.NotEmpty(t, handle.ID)
 	png, _ := base64.StdEncoding.DecodeString(
-		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfWQAAAAASUVORK5CYII=",
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=",
 	)
 	image, err := files.Upload(
 		ctx,

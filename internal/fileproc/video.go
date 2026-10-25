@@ -8,17 +8,20 @@ import (
 	"math"
 	"path/filepath"
 	"strconv"
+
+	"github.com/complynx/loom/internal/mediaimage"
 )
 
 type VideoOptions struct {
-	Start     float64 `json:"start,omitempty"`
-	End       float64 `json:"end,omitempty"`
-	Timestamp float64 `json:"timestamp,omitempty"`
-	Interval  float64 `json:"interval,omitempty"`
-	Width     int     `json:"width,omitempty"`
-	MaxFrames int     `json:"max_frames,omitempty"`
-	Quality   int     `json:"quality,omitempty"`
-	Lossless  bool    `json:"lossless,omitempty"`
+	Start      float64 `json:"start,omitempty"`
+	End        float64 `json:"end,omitempty"`
+	Timestamp  float64 `json:"timestamp,omitempty"`
+	Interval   float64 `json:"interval,omitempty"`
+	Width      int     `json:"width,omitempty"`
+	MaxFrames  int     `json:"max_frames,omitempty"`
+	Quality    int     `json:"quality,omitempty"`
+	Lossless   bool    `json:"lossless,omitempty"`
+	Background string  `json:"background,omitempty"`
 }
 
 func processVideo(ctx context.Context, req Request, input, dir string) (Result, error) {
@@ -91,6 +94,9 @@ func processVideo(ctx context.Context, req Request, input, dir string) (Result, 
 }
 
 func videoOptions(p VideoOptions) (VideoOptions, error) {
+	if _, err := mediaimage.ParseBackground(p.Background); err != nil {
+		return p, err
+	}
 	if p.Quality == 0 {
 		p.Quality = 90
 	}
@@ -236,7 +242,7 @@ func videoFrames(
 		}
 		args = append(args, probe.decoderOptions()...)
 		args = append(args, "-protocol_whitelist", "file,pipe", "-i", input)
-		args = append(args, videoFrameFilterOptions(p.Width, at, frameTimes, stream, probe)...)
+		args = append(args, videoFrameFilterOptions(p.Width, at, frameTimes, stream, probe, p.Background)...)
 		args = append(args,
 			"-frames:v",
 			"1",
@@ -291,8 +297,15 @@ func preciseSeconds(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-func videoFrameFilterOptions(width int, at float64, frameTimes []float64, stream int, probe videoProbe) []string {
-	filter := videoFrameFilter(width, at, frameTimes)
+func videoFrameFilterOptions(
+	width int,
+	at float64,
+	frameTimes []float64,
+	stream int,
+	probe videoProbe,
+	background string,
+) []string {
+	filter := videoFrameFilter(width, at, frameTimes) + frameBackgroundFilter(background)
 	if probe.AlphaStream >= 0 {
 		return []string{"-filter_complex", fmt.Sprintf("[0:%d][0:%d]alphamerge,%s[out]",
 			stream, probe.Streams[probe.AlphaStream].Index, filter), "-map", "[out]"}

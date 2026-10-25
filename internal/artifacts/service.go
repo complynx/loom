@@ -445,6 +445,7 @@ func (s *Service) reconcileEntry(ctx context.Context, entry os.DirEntry, minAge 
 type ModelArtifact struct {
 	Metadata domain.Artifact
 	Bytes    []byte
+	AlphaPNG []byte
 }
 
 func (s *Service) ForModel(
@@ -501,7 +502,14 @@ func (s *Service) ForModel(
 	if animated {
 		return ModelArtifact{}, mediaimage.ErrAnimated
 	}
-	return ModelArtifact{Metadata: a, Bytes: data}, nil
+	alpha, err := mediaimage.AlphaPNG(ctx, data, maxBytes-int64(len(data)))
+	if errors.Is(err, mediaimage.ErrAlphaTooLarge) {
+		return ModelArtifact{}, ErrTooLarge
+	}
+	if err != nil {
+		return ModelArtifact{}, fmt.Errorf("prepare image alpha: %w", err)
+	}
+	return ModelArtifact{Metadata: a, Bytes: data, AlphaPNG: alpha}, nil
 }
 
 func (s *Service) syncDirectory() error {

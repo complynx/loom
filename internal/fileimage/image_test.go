@@ -217,3 +217,49 @@ func TestPNGTransformsPreserveAlpha(t *testing.T) {
 		require.InDelta(t, 192*257, mixed, 257)
 	}
 }
+
+func TestImageBackgroundChoices(t *testing.T) {
+	t.Parallel()
+	picture := image.NewNRGBA(image.Rect(0, 0, 16, 2))
+	picture.SetNRGBA(0, 1, color.NRGBA{R: 255, A: 128})
+	input := filepath.Join(t.TempDir(), "input.png")
+	f, err := os.Create(input)
+	require.NoError(t, err)
+	require.NoError(t, png.Encode(f, picture))
+	require.NoError(t, f.Close())
+	for _, operation := range []string{"image.resize", "image.crop"} {
+		for _, background := range []string{"", "transparent", "white", "black", "#123456", "checkerboard"} {
+			params, marshalErr := json.Marshal(map[string]any{"width": 16, "height": 2, "background": background})
+			require.NoError(t, marshalErr)
+			_, outputs, _, _, processErr := fileimage.Process(t.Context(), operation, params, input, t.TempDir())
+			require.NoError(t, processErr)
+			out := readImage(t, outputs[0].Path)
+			expected := color.RGBA{}
+			switch background {
+			case "white":
+				expected = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+			case "black":
+				expected = color.RGBA{A: 255}
+			case "#123456":
+				expected = color.RGBA{R: 18, G: 52, B: 86, A: 255}
+			case "checkerboard":
+				expected = color.RGBA{R: 204, G: 204, B: 204, A: 255}
+			}
+			require.Equal(t, expected, color.RGBAModel.Convert(out.At(0, 0)))
+			if background == "checkerboard" {
+				require.Equal(t, color.RGBA{R: 153, G: 153, B: 153, A: 255}, color.RGBAModel.Convert(out.At(8, 0)))
+			}
+			if background == "white" {
+				require.Equal(t, color.RGBA{R: 255, G: 127, B: 127, A: 255}, color.RGBAModel.Convert(out.At(0, 1)))
+			}
+		}
+	}
+	_, _, _, _, err = fileimage.Process(
+		t.Context(),
+		"image.resize",
+		json.RawMessage(`{"background":"#gg0000"}`),
+		input,
+		t.TempDir(),
+	)
+	require.Error(t, err)
+}

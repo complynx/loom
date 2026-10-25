@@ -3,7 +3,7 @@
 The API streams source files to a private Unix socket. The worker returns bounded
 JSON and streams derived files back to the API. JavaScript receives handles and
 bounded excerpts. Provider calls and user credentials stay in the API process.
-See [File tools](file-tools.md) for the agent-facing interface.
+See [File tools](file-tools.md) for the agent-facing interface. Model attachment preparation can decode a bounded still raster in the API with pure Go codecs to create an alpha mask. Native media decoders, transforms and composited inspection views remain in the worker; the API links no native media libraries.
 
 ## Build and connect
 

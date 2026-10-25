@@ -48,7 +48,7 @@ func (s *Service) fetchFile(w http.ResponseWriter, r *http.Request) {
 func fixtureFile(id string) ([]byte, string, string) {
 	if id == "fixture-image" {
 		data, _ := base64.StdEncoding.DecodeString(
-			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfWQAAAAASUVORK5CYII=",
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=",
 		)
 		return data, "/fixture-image", "image/png"
 	}

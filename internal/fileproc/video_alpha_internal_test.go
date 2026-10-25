@@ -24,12 +24,29 @@ func TestAuxiliaryAlphaRequiresTypeAndColorReference(t *testing.T) {
 		input := filepath.Join(t.TempDir(), "input")
 		require.NoError(t, os.WriteFile(input, content, 0600))
 		probe, identifyErr := identifyAlphaTracks(input, videoProbe{ImageSequence: true, Streams: []videoStream{
-			{ID: "0x2", Index: 1, CodecType: videoCodecType, Frames: "2", Width: 32, Height: 16},
-			{ID: "0x1", Index: 0, CodecType: videoCodecType, Frames: "2", Width: 32, Height: 16},
+			{
+				ID:        "0x2",
+				Index:     1,
+				CodecType: videoCodecType,
+				Frames:    "2",
+				Width:     32,
+				Height:    16,
+				Tags:      map[string]string{"title": "Alpha"},
+			},
+			{
+				ID:        "0x1",
+				Index:     0,
+				CodecType: videoCodecType,
+				Frames:    "2",
+				Width:     32,
+				Height:    16,
+				Tags:      map[string]string{"title": "Color"},
+			},
 		}})
 		require.NoError(t, identifyErr)
 		require.Equal(t, alpha, probe.Streams[0].Alpha)
 		if !alpha {
+			require.Equal(t, -1, probe.alphaStream(1))
 			continue
 		}
 		selected, selectErr := probe.visualStream()

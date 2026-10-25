@@ -8,7 +8,7 @@ JSON graph to synchronize. Do not add an unreviewed `replace` directive.
 ## Dependency scopes
 
 The runtime uses pgx, Goose, River core, Huma/ServeMux, JSON Schema, Goja, go-jose,
-YAML and the OpenTelemetry SDK. The Responses adapter uses standard HTTP. Tests
+YAML and the OpenTelemetry SDK. The Responses adapter uses standard HTTP. `golang.org/x/image/webp` supplies bounded pure Go still-WebP decoding for image transforms and alpha-mask preparation (BSD-3-Clause); its notice is distributed with both images. Tests
 use Testify and standard Go test facilities. Check imports and the selected module
 graph when assessing an update; a module in the graph is not necessarily linked
 into the shipped executable.
