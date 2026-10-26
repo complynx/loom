@@ -92,6 +92,7 @@ type Delivery struct {
 	WaitMS int    `json:"wait_ms"`
 }
 type CreateRun struct {
+	Skills           []SkillDefinition `json:"skills,omitempty"`
 	ExecutionProfile ExecutionProfile  `json:"execution_profile,omitempty"`
 	OutputPolicy     *OutputPolicy     `json:"output_policy,omitempty"`
 	Discovery        *DiscoveryOptions `json:"discovery,omitempty"`
@@ -107,6 +108,7 @@ type CreateRun struct {
 	BillingAccountID string            `json:"billing_account_id,omitempty"`
 }
 type Run struct {
+	Skills               []SkillDefinition `json:"skills,omitempty"`
 	ExecutionProfile     ExecutionProfile  `json:"execution_profile,omitempty"`
 	OutputPolicy         OutputPolicy      `json:"output_policy,omitzero"`
 	Discovery            *DiscoveryOptions `json:"discovery,omitempty"`

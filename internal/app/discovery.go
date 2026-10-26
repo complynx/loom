@@ -28,6 +28,8 @@ type helpGroup struct {
 
 func builtinCategorySummary(module string) string {
 	switch module {
+	case skillsModule:
+		return "Discover and load reusable organization procedures; editing requires skills.write."
 	case historyModule:
 		return "Find earlier conversation facts, decisions and activity; read bounded event pages."
 	case memoryModule:
@@ -46,6 +48,9 @@ func builtinCategorySummary(module string) string {
 }
 
 func helpMatches(entry helpEntry, input helpRequest, query string) bool {
+	if entry.Visibility == "hidden" || (entry.Visibility == "search" && query == "") {
+		return false
+	}
 	if (input.Service != "" && entry.Service != input.Service) || (input.Module != "" && entry.Module != input.Module) {
 		return false
 	}
@@ -142,6 +147,10 @@ func helpIndexPage[T any](
 
 // environmentOverview has two independently paged levels; method details stay on demand.
 func environmentOverview(entries []helpEntry, options *domain.DiscoveryOptions) (json.RawMessage, error) {
+	entries = slices.DeleteFunc(
+		slices.Clone(entries),
+		func(entry helpEntry) bool { return entry.Visibility != "" && entry.Visibility != "default" },
+	)
 	const serviceBytes, categoryBytes = 3072, 4096
 	services, err := helpGroups(
 		entries,

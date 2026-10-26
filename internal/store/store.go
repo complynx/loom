@@ -372,6 +372,12 @@ func (s *Store) CreateRun(
 	if !p.Has("runs.create") || !p.Has("chat.read") {
 		return r, domain.Forbidden()
 	}
+	if err := domain.ValidateSkills(in.Skills); err != nil {
+		return r, err
+	}
+	if in.ExecutionProfile == domain.ProfileNativeFiles && len(in.Skills) > 0 {
+		return r, domain.Forbidden()
+	}
 	if err := domain.ValidateDiscovery(in.Discovery); err != nil {
 		return r, err
 	}
@@ -695,6 +701,7 @@ func buildRun(
 		OrgID:            p.OrgID,
 		State:            domain.Queued,
 		Input:            in.Input,
+		Skills:           in.Skills,
 		Discovery:        in.Discovery,
 		ModelID:          prefs.ModelID,
 		Effort:           prefs.Effort,

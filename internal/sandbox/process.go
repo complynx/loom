@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/complynx/loom/internal/domain"
 )
 
 const (
@@ -29,15 +31,16 @@ const (
 )
 
 type frame struct {
-	Type      string          `json:"type"`
-	ID        uint64          `json:"id,omitempty"`
-	Source    string          `json:"source,omitempty"`
-	Bindings  []Binding       `json:"bindings,omitempty"`
-	Module    string          `json:"module,omitempty"`
-	Method    string          `json:"method,omitempty"`
-	Data      json.RawMessage `json:"data,omitempty"`
-	Error     string          `json:"error,omitempty"`
-	TimeoutMS int64           `json:"timeout_ms,omitempty"`
+	Type      string            `json:"type"`
+	ID        uint64            `json:"id,omitempty"`
+	Source    string            `json:"source,omitempty"`
+	Bindings  []Binding         `json:"bindings,omitempty"`
+	Module    string            `json:"module,omitempty"`
+	Method    string            `json:"method,omitempty"`
+	Data      json.RawMessage   `json:"data,omitempty"`
+	Error     string            `json:"error,omitempty"`
+	Failure   *domain.ToolError `json:"failure,omitempty"`
+	TimeoutMS int64             `json:"timeout_ms,omitempty"`
 }
 type wire struct {
 	r  *bufio.Scanner
@@ -159,6 +162,9 @@ func (c Client) Execute(
 		case frameResult:
 			return f.Data, nil
 		case frameError:
+			if f.Failure != nil {
+				return nil, f.Failure
+			}
 			return nil, errors.New(f.Error)
 		default:
 			return nil, errors.New("invalid worker message")
@@ -187,7 +193,7 @@ func WorkerMain(ctx context.Context, in io.Reader, out io.Writer) error {
 	broker := BrokerFunc(transport.call)
 	result, err := (Inline{}).Execute(ctx, request.Source, request.Bindings, broker)
 	if err != nil {
-		return w.send(frame{Type: frameError, Error: err.Error()})
+		return w.send(frame{Type: frameError, Error: "script failed", Failure: SafeFailure(err)})
 	}
 	return w.send(frame{Type: frameResult, Data: result})
 }
@@ -338,11 +344,12 @@ func respondToCall(ctx context.Context, broker Broker, w *wire, slots chan struc
 	data, err := broker.Call(ctx, f.Module, f.Method, f.Data)
 	if len(data) > MaxValueBytes {
 		data = nil
-		err = errors.New("module result too large")
+		err = failure("module_result_too_large", "Request a smaller page or fewer fields.")
 	}
 	reply := frame{Type: frameReply, ID: f.ID, Data: data}
 	if err != nil {
-		reply.Error = err.Error()
+		reply.Error = SafeFailure(err).Code
+		reply.Failure = SafeFailure(err)
 		reply.Data = nil
 	}
 	if sendErr := w.send(reply); sendErr != nil {
@@ -389,6 +396,9 @@ func (t *workerTransport) call(ctx context.Context, m, n string, a json.RawMessa
 	}
 	select {
 	case f := <-ch:
+		if f.Failure != nil {
+			return nil, f.Failure
+		}
 		if f.Error != "" {
 			return nil, errors.New(f.Error)
 		}

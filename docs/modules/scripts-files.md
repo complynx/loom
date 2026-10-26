@@ -40,3 +40,32 @@ Use these entry points:
 There is no `modules.artifacts.read` method. Use bounded methods from `modules.files` for text, document and media processing; inspect their help for supported formats and continuation fields. The client content route `/v1/artifact-handles/{id}/content` streams bytes after checking credentials, ownership and expiry.
 
 Artifact metadata and the chat link are committed together. Imported files remain subject to TTL and storage quotas. Blob collection is bounded; quota is freed after unlink, directory sync and the collected marker are recorded. Service artifact policy does not override the user's broader external-disclosure policy.
+
+## Script failures
+
+Uncaught classified failures return model-safe JSON with `error` and `recovery`.
+Module failures also identify `module` and `method`. Argument validation can
+include bounded declared top-level `fields`; raw values and backend messages
+are excluded. JavaScript failures can include a standard `exception` name.
+The same classification survives the worker IPC boundary.
+
+A rejected module promise can be caught in JavaScript:
+
+```js
+try {
+  return await modules.example.read({limit: 10});
+} catch (error) {
+  return {error: error.error, recovery: error.recovery};
+}
+```
+
+Codes include `script_syntax_error`, `script_error`, `script_too_large`,
+`script_result_too_large`, `script_call_limit`, `script_parallel_limit`,
+`invalid_arguments`, `permission_denied`, `method_unavailable`,
+`module_result_too_large`, `invalid_module_result` and `tool_failed`.
+A live-run script deadline can return `script_timeout`; run cancellation and
+lease/auth suspensions retain their existing control flow. Unknown failures use
+`tool_failed` without exposing private error text. Limits do not automatically
+retry work. An error does not prove that earlier memory/skill writes or other
+completed calls were rolled back. Inspect current state before repeating an
+effect. External writes still require the durable `module_call` path.

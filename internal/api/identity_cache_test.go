@@ -83,7 +83,7 @@ func TestCachePurgeBypassesWarmAuthority(t *testing.T) {
 			ClientSecret:               "secret",
 			JWKSCacheTTLSeconds:        60,
 			PermissionsCacheTTLSeconds: 120,
-			RolePermissions:            map[string][]string{"admin": {"settings.write"}},
+			RolePermissions:            map[string][]string{"admin": {"settings.write", "chat.read", "skills.write"}},
 		},
 		iam.Client(),
 		nil,
@@ -114,4 +114,16 @@ func TestCachePurgeBypassesWarmAuthority(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	require.Contains(t, w.Body.String(), `"retryable":true`)
 	require.False(t, called)
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		down.Store(false)
+		revoked.Store(false)
+		edit := httptest.NewRequest(method, "/v1/skills/example", nil)
+		edit.Header.Set("Authorization", "Bearer token")
+		_, warmErr := auth.Authenticate(t.Context(), edit)
+		require.NoError(t, warmErr)
+		revoked.Store(true)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, edit)
+		require.Equal(t, http.StatusUnauthorized, response.Code)
+	}
 }

@@ -106,6 +106,7 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 	s.registerRoutes(mux)
 	s.registerDiagnostics(mux)
 	s.registerMemory(mux)
+	s.registerSkills(mux)
 	return mux
 }
 

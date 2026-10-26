@@ -26,7 +26,7 @@ identity:
   # operations.reconcile for administrators. No destructive right is enabled here.
   role_permissions:
     harness-user: [chat.read, runs.create, runs.control, preferences.self.write, artifacts.read, artifacts.write]
-    harness-admin: [diagnostics.read, chat.read, runs.create, runs.control, settings.read, settings.write, users.policy.write, preferences.other.write, billing.adjust, artifacts.read, artifacts.write]
+    harness-admin: [skills.write, diagnostics.read, chat.read, runs.create, runs.control, settings.read, settings.write, users.policy.write, preferences.other.write, billing.adjust, artifacts.read, artifacts.write]
   refreshable_exchange_enabled: false # Enable only after the installed-version gate.
   encryption_key_file: "/run/secrets/clx-auth-key"
   encryption_key_id: "key-v1"

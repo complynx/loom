@@ -23,6 +23,23 @@ func (t runtimeTools) runReadCatalog(
 	return t.diagnosticReadCatalog(ctx, modulePrincipal(p, token, r.SettingsSnapshot.Version), p)
 }
 
+// Diagnostic operators retain builtin procedures when remote action discovery fails.
+func (t runtimeTools) runActionCatalog(
+	ctx context.Context,
+	r domain.Run,
+	p domain.Principal,
+	token string,
+) ([]modules.Tool, error) {
+	if r.NativeFilesOnly() {
+		return nil, nil
+	}
+	actions, err := t.registry.ListActions(ctx, modulePrincipal(p, token, r.SettingsSnapshot.Version))
+	if err != nil && p.Has(diagnosticsPermission) && ctx.Err() == nil {
+		return nil, nil
+	}
+	return actions, err
+}
+
 func nativeFileMethod(module, method string) bool {
 	switch module {
 	case filesModule:

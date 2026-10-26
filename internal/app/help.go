@@ -25,11 +25,13 @@ const (
 var helpCardsJSON []byte
 
 type helpCard struct {
-	Summary string `json:"summary"`
-	Text    string `json:"text"`
+	Visibility string `json:"visibility,omitempty"`
+	Summary    string `json:"summary"`
+	Text       string `json:"text"`
 }
 
 type helpEntry struct {
+	Visibility     string `json:"-"`
 	Service        string `json:"service"`
 	ServiceSummary string `json:"-"`
 	ModuleSummary  string `json:"-"`
@@ -55,6 +57,8 @@ type helpRequest struct {
 
 func (t runtimeTools) builtinHelpAvailable(p domain.Principal, module string) bool {
 	switch module {
+	case skillsModule:
+		return p.Has("chat.read")
 	case memoryModule:
 		return !p.ServiceAccount
 	case filesModule:
@@ -110,15 +114,12 @@ func (t runtimeTools) helpEntries(
 		if r.NativeFilesOnly() && !nativeFileMethod(module, method) {
 			continue
 		}
-		if !t.builtinHelpAvailable(p, module) || (id == "history.semantic" && !t.cfg.Search.SemanticEnabled) ||
-			(id == "$tools.message_react" && (!r.Interaction.Reactions.Enabled() || !p.Has("chat.read"))) ||
-			(id == "$tools.interaction_resolve" && r.Interaction.ReplyMode != domain.ReplyModeAgent) ||
-			(id == "$tools.artifact_attach" && !p.Has("artifacts.read")) ||
-			(id == "$tools.audio_transcribe" && (!t.cfg.Transcription.Enabled || !p.Has("artifacts.read") || !p.Has("chat.read"))) {
+		if !t.builtinHelpMethodAvailable(r, p, id, module, method) {
 			continue
 		}
 		effect := builtinHelpEffect(module, method)
 		entries = append(entries, helpEntry{
+			Visibility:     card.Visibility,
 			ID:             id,
 			Service:        loomHelpService,
 			Module:         module,
@@ -137,6 +138,7 @@ func (t runtimeTools) helpEntries(
 		entries = append(
 			entries,
 			helpEntry{
+				Visibility:     tool.Visibility,
 				ID:             tool.Module + "." + tool.Method,
 				Service:        tool.ServiceID,
 				Module:         tool.Module,
@@ -272,6 +274,9 @@ func helpPage(id, text string, input helpRequest) (json.RawMessage, error) {
 }
 
 func builtinHelpEffect(module, method string) string {
+	if module == skillsModule && (method == builtinPutMethod || method == builtinDeleteMethod) {
+		return "write"
+	}
 	if module == memoryModule &&
 		!slices.Contains([]string{memoryStateMethod, helpListMethod, builtinReadMethod}, method) {
 		return "write"
@@ -289,4 +294,19 @@ func builtinHelpEffect(module, method string) string {
 	default:
 		return "model_function"
 	}
+}
+
+func (t runtimeTools) builtinHelpMethodAvailable(r domain.Run, p domain.Principal, id, module, method string) bool {
+	if !t.builtinHelpAvailable(p, module) || (id == "history.semantic" && !t.cfg.Search.SemanticEnabled) ||
+		(id == "$tools.message_react" && (!r.Interaction.Reactions.Enabled() || !p.Has("chat.read"))) ||
+		(id == "$tools.interaction_resolve" && r.Interaction.ReplyMode != domain.ReplyModeAgent) ||
+		(id == "$tools.artifact_attach" && !p.Has("artifacts.read")) ||
+		(id == "$tools.audio_transcribe" && (!t.cfg.Transcription.Enabled || !p.Has("artifacts.read") || !p.Has("chat.read"))) {
+		return false
+	}
+	if module == skillsModule && !slices.Contains(skillMethods(p), method) {
+		return false
+	}
+
+	return true
 }

@@ -73,7 +73,7 @@ func TestScriptCannotAccessHostAndStops(t *testing.T) {
 func TestScriptRejectsLargeResult(t *testing.T) {
 	t.Parallel()
 	_, err := (sandbox.Inline{}).Execute(context.Background(), "return 'a'.repeat(1048577);", nil, nil)
-	require.ErrorContains(t, err, "result too large")
+	require.EqualError(t, err, "script_result_too_large")
 }
 func TestScriptCallLimit(t *testing.T) {
 	t.Parallel()
@@ -86,7 +86,7 @@ func TestScriptCallLimit(t *testing.T) {
 		[]sandbox.Binding{{Module: "example", Methods: []string{"echo"}}},
 		broker,
 	)
-	require.ErrorContains(t, err, "call limit")
+	require.EqualError(t, err, "script_call_limit")
 }
 
 // This test binary also acts as the sandbox child for the real process boundary test.
@@ -162,7 +162,7 @@ func TestSupervisorRunsCredentialFreeChildAndCancels(t *testing.T) {
 func TestScriptSizeLimit(t *testing.T) {
 	t.Parallel()
 	_, err := (sandbox.Inline{}).Execute(context.Background(), strings.Repeat(" ", 65537), nil, nil)
-	require.ErrorContains(t, err, "script exceeds")
+	require.EqualError(t, err, "script_too_large")
 }
 
 func TestSupervisorKillsUnresponsiveChild(t *testing.T) {

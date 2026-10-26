@@ -19,7 +19,16 @@ func memoryMethods(p domain.Principal) []string {
 	if p.ServiceAccount {
 		return nil
 	}
-	return []string{memoryStateMethod, "list", "read", memorySetMicro, "set_index", "put", "delete", "clear"}
+	return []string{
+		memoryStateMethod,
+		"list",
+		"read",
+		memorySetMicro,
+		"set_index",
+		builtinPutMethod,
+		builtinDeleteMethod,
+		"clear",
+	}
 }
 
 func (t runtimeTools) memory(ctx context.Context, run domain.Run, p domain.Principal,
@@ -82,7 +91,7 @@ func (t runtimeTools) callMemory(ctx context.Context, p domain.Principal,
 			return nil, err
 		}
 		return t.repository.ReadMemoryEntry(ctx, p, input.Key, input.MemoryReadRequest)
-	case "put":
+	case builtinPutMethod:
 		var input struct {
 			domain.MemoryEntryWrite
 
@@ -92,7 +101,7 @@ func (t runtimeTools) callMemory(ctx context.Context, p domain.Principal,
 			return nil, err
 		}
 		return t.repository.PutMemoryEntry(ctx, p, input.Key, input.MemoryEntryWrite)
-	case "delete":
+	case builtinDeleteMethod:
 		var input struct {
 			Key     string `json:"key"`
 			Version int64  `json:"version"`

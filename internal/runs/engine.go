@@ -1125,7 +1125,7 @@ func (e *Engine) executePending(
 			saveCancel()
 			return true, checkpointed(markErr)
 		}
-		output, _ = json.Marshal(map[string]string{"error": "tool_failed"})
+		output = toolFailureOutput(callErr)
 	}
 	if !json.Valid(output) {
 		output = json.RawMessage(`{"error":"invalid_tool_result"}`)

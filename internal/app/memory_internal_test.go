@@ -59,7 +59,16 @@ func TestPersonalMemorySandboxWritesReadsAndIsolates(t *testing.T) {
 	require.Contains(t, string(encoded), "lasting facts and preferences")
 	page, err := tools.help(t.Context(), run, p, helpListMethod, json.RawMessage(`{"module":"memory"}`))
 	require.NoError(t, err)
-	require.Contains(t, string(page), `"method":"put"`)
+	require.NotContains(t, string(page), `"method":"put"`)
+	card, err := tools.help(
+		t.Context(),
+		run,
+		p,
+		builtinReadMethod,
+		json.RawMessage(`{"module":"memory","method":"put"}`),
+	)
+	require.NoError(t, err)
+	require.Contains(t, string(card), "memory.put")
 	p.Subject = "other-user"
 	_, err = tools.builtin(t.Context(), run, memoryModule, "state", json.RawMessage(`{}`))
 	require.EqualError(t, err, "forbidden")

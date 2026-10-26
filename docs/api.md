@@ -63,3 +63,5 @@ Read [Errors and retries](api/files-recovery.md#errors).
 ## Prepare a restored run
 
 Read [Recovery preparation](api/files-recovery.md#prepare-a-restored-run).
+
+See [Skills](skills.md) for organization library endpoints and the optional run `skills` field.

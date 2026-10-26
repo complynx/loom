@@ -6,7 +6,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"fmt"
+
+	"github.com/complynx/loom/internal/domain"
 
 	"github.com/dop251/goja"
 )
@@ -44,7 +45,7 @@ type Inline struct{}
 
 func (Inline) Execute(ctx context.Context, source string, bindings []Binding, broker Broker) (json.RawMessage, error) {
 	if len(source) > maxScriptBytes {
-		return nil, errors.New("script exceeds 65536 bytes")
+		return nil, failure("script_too_large", "Keep script source within 65536 bytes.")
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -62,28 +63,44 @@ func (Inline) Execute(ctx context.Context, source string, bindings []Binding, br
 	var result json.RawMessage
 	var scriptErr error
 	finished := false
+	rejections := map[*goja.Object]*domain.ToolError{}
 	_ = vm.Set("__finish", func(call goja.FunctionCall) goja.Value {
 		result = json.RawMessage(call.Argument(0).String())
 		finished = true
 		return goja.Undefined()
 	})
 	_ = vm.Set("__fail", func(call goja.FunctionCall) goja.Value {
-		scriptErr = fmt.Errorf("script: %s", call.Argument(0).String())
+		value := call.Argument(0)
+		if object, ok := value.(*goja.Object); ok && rejections[object] != nil {
+			scriptErr = rejections[object]
+		} else {
+			scriptErr = javascriptFailure(vm, value)
+		}
 		finished = true
 		return goja.Undefined()
 	})
-	installBindings(ctx, vm, bindings, broker, tasks)
+	broker = safeBroker(broker)
+	installBindingsWithFailures(ctx, vm, bindings, broker, tasks, rejections)
 	if _, err := vm.RunString(fileHelper); err != nil {
 		return nil, err
 	}
-	_, err := vm.RunString(
-		"(async function(){\n" + source + "\n})().then(v=>__finish(JSON.stringify(v===undefined?null:v)),e=>__fail(String(e)));",
+	program, err := goja.Compile(
+		"",
+		"(async function(){\n"+source+"\n})().then(v=>__finish(JSON.stringify(v===undefined?null:v)),e=>__fail(e));",
+		false,
 	)
+	if err != nil {
+		return nil, failure("script_syntax_error", "Correct the JavaScript syntax before executing again.")
+	}
+	_, err = vm.RunProgram(program)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, err
+		if _, ok := errors.AsType[*goja.CompilerSyntaxError](err); ok {
+			return nil, failure("script_syntax_error", "Correct the JavaScript syntax before executing again.")
+		}
+		return nil, failure("script_error", "Correct the JavaScript before executing again.")
 	}
 	for !finished {
 		select {
@@ -97,12 +114,22 @@ func (Inline) Execute(ctx context.Context, source string, bindings []Binding, br
 		return nil, scriptErr
 	}
 	if len(result) > MaxValueBytes {
-		return nil, errors.New("script result too large")
+		return nil, failure(
+			"script_result_too_large",
+			"Return selected fields or a smaller page; keep the result below 1044480 UTF-8 bytes.",
+		)
 	}
 	return result, nil
 }
 
-func installBindings(ctx context.Context, vm *goja.Runtime, bindings []Binding, broker Broker, tasks chan<- func()) {
+func installBindingsWithFailures(
+	ctx context.Context,
+	vm *goja.Runtime,
+	bindings []Binding,
+	broker Broker,
+	tasks chan<- func(),
+	rejections map[*goja.Object]*domain.ToolError,
+) {
 	modules := vm.NewObject()
 	calls := 0
 	parallel := make(chan struct{}, maxParallelCalls)
@@ -110,7 +137,10 @@ func installBindings(ctx context.Context, vm *goja.Runtime, bindings []Binding, 
 		obj := vm.NewObject()
 		for _, method := range binding.Methods {
 			moduleName, methodName := binding.Module, method
-			_ = obj.Set(methodName, boundMethod(ctx, vm, broker, tasks, parallel, &calls, moduleName, methodName))
+			_ = obj.Set(
+				methodName,
+				boundMethod(ctx, vm, broker, tasks, parallel, &calls, moduleName, methodName, rejections),
+			)
 		}
 		_ = modules.Set(binding.Module, obj)
 	}
@@ -125,12 +155,20 @@ func boundMethod(
 	parallel chan struct{},
 	calls *int,
 	moduleName, methodName string,
+	rejections map[*goja.Object]*domain.ToolError,
 ) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		promise, resolve, reject := vm.NewPromise()
 		(*calls)++
 		if *calls > maxCalls {
-			_ = reject("script call limit exceeded")
+			settlePromise(
+				vm,
+				nil,
+				failure("script_call_limit", "Use at most 128 module calls per script."),
+				resolve,
+				reject,
+				rejections,
+			)
 			return vm.ToValue(promise)
 		}
 		argument := call.Argument(0).Export()
@@ -139,19 +177,36 @@ func boundMethod(
 		}
 		arg, err := json.Marshal(argument)
 		if err != nil {
-			_ = reject("arguments must be JSON")
+			settlePromise(
+				vm,
+				nil,
+				failure("invalid_arguments", "Supply JSON-compatible arguments."),
+				resolve,
+				reject,
+				rejections,
+			)
 			return vm.ToValue(promise)
 		}
 		select {
 		case parallel <- struct{}{}:
 		default:
-			_ = reject("parallel call limit exceeded")
+			settlePromise(
+				vm,
+				nil,
+				failure(
+					"script_parallel_limit",
+					"Use at most 8 concurrent calls; await each batch before starting another.",
+				),
+				resolve,
+				reject,
+				rejections,
+			)
 			return vm.ToValue(promise)
 		}
 		go func() {
 			defer func() { <-parallel }()
 			value, callErr := broker.Call(ctx, moduleName, methodName, arg)
-			task := func() { settlePromise(value, callErr, resolve, reject) }
+			task := func() { settlePromise(vm, value, callErr, resolve, reject, rejections) }
 			select {
 			case tasks <- task:
 			case <-ctx.Done():
@@ -161,18 +216,47 @@ func boundMethod(
 	}
 }
 
-func settlePromise(value json.RawMessage, callErr error, resolve, reject func(any) error) {
+func settlePromise(
+	vm *goja.Runtime,
+	value json.RawMessage,
+	callErr error,
+	resolve, reject func(any) error,
+	rejections map[*goja.Object]*domain.ToolError,
+) {
 	if callErr != nil {
-		_ = reject(callErr.Error())
+		f := SafeFailure(callErr)
+		raw, _ := json.Marshal(f)
+		var data map[string]any
+		_ = json.Unmarshal(raw, &data)
+		object := vm.ToValue(data).ToObject(vm)
+		rejections[object] = f
+		_ = reject(object)
 		return
 	}
 	if len(value) > MaxValueBytes {
-		_ = reject("module result too large")
+		settlePromise(
+			vm,
+			nil,
+			failure("module_result_too_large", "Request a smaller page or fewer fields."),
+			resolve,
+			reject,
+			rejections,
+		)
 		return
 	}
 	var decoded any
 	if err := json.Unmarshal(value, &decoded); err != nil {
-		_ = reject("module returned invalid JSON")
+		settlePromise(
+			vm,
+			nil,
+			failure(
+				"invalid_module_result",
+				"The module returned invalid JSON. Report the failure; do not assume a write failed.",
+			),
+			resolve,
+			reject,
+			rejections,
+		)
 		return
 	}
 	_ = resolve(decoded)
