@@ -93,3 +93,5 @@ reject these fields. Remove them from static and dynamic documents before
 rolling back to an older reader.
 
 Builtin help cards use the same visibility modes. [Builtin procedures](../skills.md#builtin-procedures-and-discovery) describe the default grouping.
+
+For skill definitions, `usecase` is only a short activation trigger; procedures and examples belong in `body`. Follow [skill authoring](../skills.md#authoring).

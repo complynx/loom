@@ -8,7 +8,7 @@ existing `script` tool. Loading a skill does not execute code or grant authority
 ```json
 {
   "name": "inspect-document",
-  "usecase": "Inspect document evidence and cite the relevant pages.",
+  "usecase": "Document evidence needed.",
   "require": ["files.pdf_text", "files.pdf_render"],
   "body": "Read the relevant pages. Render pages when layout matters. Cite the evidence. Put examples and expected output here."
 }
@@ -18,6 +18,23 @@ existing `script` tool. Loading a skill does not execute code or grant authority
 by single hyphens. `usecase` is nonblank and has at most 1,024 Unicode characters.
 `body` is nonblank Markdown with at most 16,000 Unicode characters. Examples,
 expected output and other guidance belong in `body`.
+
+## Authoring
+
+`usecase` is the activation trigger: **when to use this skill**, nothing else.
+Use one short, dense condition. No procedure, capability list, benefits or
+expected result. The 1,024-character limit is a validation ceiling, not a target.
+Examples: `CRUD of skills requested.`; `Document evidence needed.`
+
+`body` explains how. Prefer concise caveman style: remove filler, retain facts.
+Keep exact method names, required arguments, units, limits, negation, conditions,
+version/consent rules, continuation and recovery. Examples and expected output
+belong here. Do not trade fewer words for ambiguity.
+
+Author check: given only this text and the base prompt, can the model choose the
+skill, find its tools, make valid calls, handle partial results/errors and verify
+completion? Name executable help/read paths for any deferred contract. Never
+rely on source code, hidden conventions or earlier chat.
 
 `require` is optional. It contains at most 50 unique `module.method` IDs. Every
 required method must be authorized before the skill appears in model context,
@@ -32,7 +49,7 @@ Loom combines four sources without allowing one to overwrite another:
 
 | Source | Publication | Lifetime |
 | --- | --- | --- |
-| `builtin` | Procedures bundled with Loom | Installed binary, version 1. |
+| `builtin` | Procedures bundled with Loom | Installed binary, version 2. |
 | `organization` | Skills HTTP API or `modules.skills.put` | Persistent organization library. |
 | `caller` | Optional `skills` array in `POST /v1/runs` | Immutable run snapshot, restored after restart. |
 | `tool:<module>/<method>` | Optional `skills` array on a method descriptor | Current authorized static manifest or dynamic discovery. |
@@ -66,7 +83,7 @@ return await modules.skills.read({name: "inspect-document", source: "caller"});
 ```
 
 `read` defaults `source` to `organization`. Copy the source from the catalog for
-caller or tool skills. The result includes the full body. Names can repeat across
+builtin, caller or tool skills. The result includes the full body. Names can repeat across
 sources; they never override each other.
 
 `modules.skills.list({query, after_name, limit})` refreshes or searches metadata.
@@ -92,19 +109,27 @@ the bundled version when changing their instructions.
 | Skill | Procedure | Method discovery |
 | --- | --- | --- |
 | `manage-skills` | Authorized organization-library edits, version conflicts and verification. | `skills.put/delete` are hidden. `skills.list/read` remain visible. |
-| `manage-memory` | Explicit personal-memory maintenance, bounded reads and versioned edits. | Memory editing methods are hidden; state/list/read remain visible. |
 | `inspect-documents` | Evidence-based PDF, Office, text, EPUB and archive inspection. | Specialized file methods appear in normal lists but not the initial overview. |
 | `inspect-media` | Still images, animation/video frames and optional audio evidence. | Specialized file methods appear in normal lists but not the initial overview. |
 | `diagnose-run` | Read-only diagnosis of waits, errors and unknown effects. | Diagnostic methods require explicit search or a known ID. |
 
 The management skill requires `skills.put` and `skills.delete`, so users without
-`skills.write` do not see it. Service accounts never see personal-memory
-management. File skills require enabled file tools and artifact-read rights;
+`skills.write` do not see it. File skills require enabled file tools and artifact-read rights;
 diagnostics require diagnostic authority. Skills do not acquire missing rights.
 
 These builtin visibility values are part of their help cards. Hidden contracts
 remain readable through direct authorized `modules.help.read({module,method})`.
 All methods retain the same dispatch, authorization and recovery rules.
+Personal memory stays outside skills: compact guidance is always advertised
+for ordinary user runs, and all memory methods remain in normal discovery.
+Memory is core agent loop: recall relevant context, maintain verified useful
+facts, replace confirmed stale facts with verified current values, otherwise
+delete stale facts. No separate maintenance request needed. Preserve valid facts
+and provenance in mixed notes; repair pointers. Uncertain data needs source
+verification first. Full clear still needs an explicit ALL-memory deletion
+request. Service accounts and `native_files` receive no personal-memory guidance
+or capabilities.
+
 `files.info`, artifact opening, history search, help and skill reading remain
 easy to discover. Native model tools for attachments, questions, consent,
 external writes and paid transcription retain their existing execution paths.

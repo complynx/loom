@@ -14,6 +14,7 @@ import (
 
 const organizationSkillSource = "organization"
 const builtinSkillSource = "builtin"
+const builtinSkillVersion = 2
 
 //go:embed builtin_skills.json
 var builtinSkillsJSON []byte
@@ -82,7 +83,7 @@ func (t runtimeTools) skillCatalog(
 	if err = json.Unmarshal(builtinSkillsJSON, &builtins); err != nil {
 		return nil, err
 	}
-	appendDefinitions(builtinSkillSource, builtins, 1)
+	appendDefinitions(builtinSkillSource, builtins, builtinSkillVersion)
 	appendDefinitions("caller", run.Skills, 0)
 	for _, tool := range append(append([]modules.Tool{}, reads...), actions...) {
 		appendDefinitions("tool:"+tool.Module+"/"+tool.Method, tool.Skills, 0)

@@ -166,28 +166,23 @@
   },
   "memory.set_micro": {
     "summary": "Manage private user memory: set_micro",
-    "text": "# memory.set_micro\n\nManage private user memory: set_micro\n\nParameters: text <=500 Unicode chars; version\n\nExample:\n```js\nreturn await modules.memory.set_micro({text:\"Prefers concise replies\",version:0});\n```\n\nResult: new micro/version\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization.",
-    "visibility": "hidden"
+    "text": "# memory.set_micro\n\nManage private user memory: set_micro\n\nParameters: text <=500 Unicode chars; version\n\nExample:\n```js\nreturn await modules.memory.set_micro({text:\"Prefers concise replies\",version:0});\n```\n\nResult: new micro/version\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization."
   },
   "memory.set_index": {
     "summary": "Manage private user memory: set_index",
-    "text": "# memory.set_index\n\nManage private user memory: set_index\n\nParameters: text; version\n\nExample:\n```js\nreturn await modules.memory.set_index({text:\"profile: user facts\",version:0});\n```\n\nResult: new index/version\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization.",
-    "visibility": "hidden"
+    "text": "# memory.set_index\n\nManage private user memory: set_index\n\nParameters: text; version\n\nExample:\n```js\nreturn await modules.memory.set_index({text:\"profile: user facts\",version:0});\n```\n\nResult: new index/version\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization."
   },
   "memory.put": {
     "summary": "Manage private user memory: put",
-    "text": "# memory.put\n\nManage private user memory: put\n\nParameters: key; kind note/source; parent_key; title,summary,body; version\n\nExample:\n```js\nreturn await modules.memory.put({key:\"profile\",kind:\"note\",title:\"Profile\",summary:\"User facts\",body:\"Confirmed preference\",version:0});\n```\n\nResult: new entry/version\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization.",
-    "visibility": "hidden"
+    "text": "# memory.put\n\nManage private user memory: put\n\nParameters: key; kind note/source; parent_key; title,summary,body; version\n\nExample:\n```js\nreturn await modules.memory.put({key:\"profile\",kind:\"note\",title:\"Profile\",summary:\"User facts\",body:\"Confirmed preference\",version:0});\n```\n\nResult: new entry/version\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization."
   },
   "memory.delete": {
     "summary": "Manage private user memory: delete",
-    "text": "# memory.delete\n\nManage private user memory: delete\n\nParameters: key; version\n\nExample:\n```js\nreturn await modules.memory.delete({key:\"profile\",version:1});\n```\n\nResult: deletion receipt\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization.",
-    "visibility": "hidden"
+    "text": "# memory.delete\n\nManage private user memory: delete\n\nParameters: key; version\n\nExample:\n```js\nreturn await modules.memory.delete({key:\"profile\",version:1});\n```\n\nResult: deletion receipt\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization."
   },
   "memory.clear": {
     "summary": "Manage private user memory: clear",
-    "text": "# memory.clear\n\nManage private user memory: clear\n\nParameters: revision\n\nExample:\n```js\nreturn await modules.memory.clear({revision:1});\n```\n\nResult: deletion receipt\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization.",
-    "visibility": "hidden"
+    "text": "# memory.clear\n\nManage private user memory: clear\n\nParameters: revision\n\nExample:\n```js\nreturn await modules.memory.clear({revision:1});\n```\n\nResult: deletion receipt\n\nLimits and recovery: Shared across own chats. Use current version (0 for creation); reread on conflict. clear removes all personal memory. Micro is included each inference. Never store credentials; memory is not authorization."
   },
   "diagnostics.health": {
     "summary": "Inspect organization-scoped runtime health",
@@ -260,7 +255,7 @@
   },
   "skills.put": {
     "summary": "Create or update an organization skill with separate edit permission",
-    "text": "# skills.put\n\nRequires chat.read and skills.write, checked with fresh authorization on every call. Organization library only. Arguments: name (lowercase letters/digits separated by single hyphens, <=64 ASCII characters), usecase (nonblank, <=1024 Unicode characters), body (nonblank Markdown, <=16000 Unicode characters), require (optional array of up to 50 unique module.method IDs), version (0 for creation/recreation, current positive version for update). Example: return await modules.skills.put({name:\"inspect-document\",usecase:\"Inspect document evidence\",body:\"Read relevant pages and cite sources.\",require:[\"files.pdf_text\"],version:0}); Returns full skill and new version. skill_version_conflict: read current version and resolve edits before retrying. At most 100 active library skills per organization. Only edit when the user authorizes skill maintenance; having permission does not supply user intent. Caller and tool skills are edited at their source.",
+    "text": "# skills.put\n\nRequires chat.read and skills.write, checked with fresh authorization on every call. Organization library only. Arguments: name (lowercase letters/digits separated by single hyphens, <=64 ASCII characters), usecase (short WHEN trigger only; nonblank, <=1024 Unicode characters), body (nonblank Markdown, <=16000 Unicode characters), require (optional array of up to 50 unique module.method IDs), version (0 for creation/recreation, current positive version for update). Example: return await modules.skills.put({name:\"inspect-document\",usecase:\"Document evidence needed.\",body:\"Read relevant pages and cite sources.\",require:[\"files.pdf_text\"],version:0}); Returns full skill and new version. skill_version_conflict: read current version and resolve edits before retrying. At most 100 active library skills per organization. Only edit when the user authorizes skill maintenance; having permission does not supply user intent. Caller and tool skills are edited at their source.",
     "visibility": "hidden"
   },
   "skills.delete": {

@@ -35,7 +35,7 @@ func TestBuiltinSkillsGuideHiddenMethodsWithoutGrantingRights(t *testing.T) {
 	run := domain.Run{OrgID: "org"}
 	catalog, err := tools.skillCatalog(t.Context(), run, p, nil, nil)
 	require.NoError(t, err)
-	require.Len(t, catalog, 5)
+	require.Len(t, catalog, 4)
 	var definitions []domain.SkillDefinition
 	require.NoError(t, json.Unmarshal(builtinSkillsJSON, &definitions))
 	require.NoError(t, domain.ValidateSkills(definitions))
@@ -43,7 +43,7 @@ func TestBuiltinSkillsGuideHiddenMethodsWithoutGrantingRights(t *testing.T) {
 	require.NoError(t, err)
 	manager, err := tools.readCatalogSkill(t.Context(), p, catalog, entries, "manage-skills", builtinSkillSource)
 	require.NoError(t, err)
-	require.EqualValues(t, 1, manager.Version)
+	require.EqualValues(t, 2, manager.Version)
 	require.Contains(t, manager.Body, "modules.skills.put")
 	page, err := tools.help(t.Context(), run, p, helpListMethod, json.RawMessage(`{"module":"skills","query":"put"}`))
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestBuiltinSkillsGuideHiddenMethodsWithoutGrantingRights(t *testing.T) {
 	overview, err := environmentOverview(entries, &domain.DiscoveryOptions{ExpandServices: []string{"$loom"}})
 	require.NoError(t, err)
 	require.NotContains(t, string(overview), "diagnostics")
-	require.NotContains(t, string(overview), "set_micro")
+	require.Contains(t, string(overview), "set_micro")
 	files, err := tools.help(t.Context(), run, p, helpListMethod, json.RawMessage(`{"module":"files"}`))
 	require.NoError(t, err)
 	require.Contains(t, string(files), "pdf_text")
@@ -72,12 +72,6 @@ func TestBuiltinSkillsGuideHiddenMethodsWithoutGrantingRights(t *testing.T) {
 	}
 	_, err = tools.skills(t.Context(), run, "put", json.RawMessage(`{}`))
 	require.EqualError(t, err, "forbidden")
-	p.ServiceAccount = true
-	catalog, err = tools.skillCatalog(t.Context(), run, p, nil, nil)
-	require.NoError(t, err)
-	for _, skill := range catalog {
-		require.NotEqual(t, "manage-memory", skill.Name)
-	}
 }
 
 func TestBuiltinSkillReadSurvivesRemoteDiscoveryFailure(t *testing.T) {
@@ -148,7 +142,10 @@ func TestBuiltinSkillReadSurvivesRemoteDiscoveryFailure(t *testing.T) {
 		json.RawMessage(`{"name":"diagnose-run","source":"builtin"}`),
 	)
 	require.NoError(t, err)
-	require.Contains(t, string(result), "read-only")
+	var loaded domain.Skill
+	require.NoError(t, json.Unmarshal(result, &loaded))
+	require.Equal(t, "diagnose-run", loaded.Name)
+	require.NotEmpty(t, loaded.Body)
 	page, err := tools.skills(t.Context(), run, helpListMethod, json.RawMessage(`{}`))
 	require.NoError(t, err)
 	require.Contains(t, string(page), "diagnose-run")

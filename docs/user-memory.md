@@ -61,7 +61,16 @@ Each callback rechecks authorization and the run lease before it acts. This can 
 
 Memory is user-provided data. It cannot grant rights, change system instructions, approve service writes, or override the current user request. The model receives a reminder of this boundary with the micro profile. All personal memory tools are available to the authenticated run user. Each tool call rechecks authorization and execution ownership.
 
-Users and authorized agents curate memory explicitly. There is no automatic fact extraction, background model call, embedding call, semantic index, or automatic promotion of chat history into memory. History remains a separate source. Memory tool use costs no model tokens beyond the text sent to inference and the ordinary agent calls that request it.
+Memory is core agent loop. Compact guidance stays in model context whenever
+personal memory is available; no skill activation needed. Authorized agents
+recall and maintain useful verified facts during work without separate user
+requests. Replace confirmed stale facts with verified current values; without
+reliable replacement, delete stale facts. Preserve valid facts and provenance
+in mixed notes; repair index/source pointers. Uncertain data: verify source
+first. Full clear requires an explicit request to delete ALL personal memory.
+Keep routine maintenance quiet; report requested changes or blockers.
+
+Memory edits are explicit tool/API calls during active work. No background extraction worker, separate memory model call, embedding call, semantic index or bulk promotion of chat history. History stays separate. Memory tool use adds only ordinary inference/tool-context cost.
 
 Memory is retained until explicitly changed or deleted. Chat deletion and history retention do not clear personal memory. Full clear removes the stored text and entries, but cannot erase copies already present in previous provider inputs, logs, backups, or retained run context. Avoid putting credentials or access tokens in memory.
 

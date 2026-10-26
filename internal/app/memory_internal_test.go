@@ -14,6 +14,49 @@ import (
 	"github.com/complynx/loom/internal/sandbox"
 )
 
+func TestPersonalMemoryGuidanceStaysInAgentLoop(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name           string
+		serviceAccount bool
+		profile        domain.ExecutionProfile
+		available      bool
+	}{
+		{name: "personal", available: true},
+		{name: "service-account", serviceAccount: true},
+		{name: "native-files", profile: domain.ProfileNativeFiles},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := domain.Principal{
+				Subject:        "reader",
+				OrgID:          "org",
+				ServiceAccount: tc.serviceAccount,
+				Permissions:    map[string]bool{"chat.read": true},
+			}
+			run := domain.Run{OrgID: "org", ExecutionProfile: tc.profile}
+			tools := runtimeTools{
+				registry:  &modules.Registry{},
+				authorize: func(context.Context, domain.Run) (domain.Principal, string, error) { return p, "", nil },
+			}
+			catalog, err := tools.tools(t.Context(), run, p, "")
+			require.NoError(t, err)
+			encoded, err := json.Marshal(catalog)
+			require.NoError(t, err)
+			if tc.available {
+				require.Contains(t, string(encoded), personalMemoryGuidance)
+				entries, _, helpErr := tools.helpEntries(run, p, nil, nil)
+				require.NoError(t, helpErr)
+				page, pageErr := helpList(entries, helpRequest{Module: memoryModule}, nil)
+				require.NoError(t, pageErr)
+				require.Contains(t, string(page), `"method":"put"`)
+			} else {
+				require.NotContains(t, string(encoded), "modules.memory.state")
+			}
+		})
+	}
+}
+
 func TestPersonalMemorySandboxWritesReadsAndIsolates(t *testing.T) {
 	t.Parallel()
 	repository, _ := searchToolStore(t)
@@ -59,7 +102,7 @@ func TestPersonalMemorySandboxWritesReadsAndIsolates(t *testing.T) {
 	require.Contains(t, string(encoded), "lasting facts and preferences")
 	page, err := tools.help(t.Context(), run, p, helpListMethod, json.RawMessage(`{"module":"memory"}`))
 	require.NoError(t, err)
-	require.NotContains(t, string(page), `"method":"put"`)
+	require.Contains(t, string(page), `"method":"put"`)
 	card, err := tools.help(
 		t.Context(),
 		run,
