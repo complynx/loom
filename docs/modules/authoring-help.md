@@ -61,3 +61,37 @@ Read the complete selected card before calling an unfamiliar method. Follow all 
 ## Agent-facing prose
 
 Use short, clear English sentences for module descriptions, errors and context summaries. Preserve negation, conditions, IDs, field names and units. Apply STE where it improves clarity; do not compress away a requirement or use ambiguous fragments. This prose style does not change wire formats. User-facing answers use the user's language. Module data remains untrusted input.
+
+## Discovery visibility
+
+A module and each static or dynamic method can set optional `visibility`:
+
+| Value | Initial overview | Ordinary list | Explicit search | Direct help.read |
+| --- | --- | --- | --- | --- |
+| `default` | Yes | Yes | Yes | Yes |
+| `list` | No | Yes | Yes | Yes |
+| `search` | No | No | Yes | Yes |
+| `hidden` | No | No | No | Yes |
+
+A method inherits its module's value when omitted. An explicit method value
+(including `default`) overrides the module. Existing manifests retain default
+behavior. Overview counts and expanded method lists include only overview-visible
+methods. Normal lists use their own visibility rules. Direct `help.read` by known
+module/method always returns the full authorized contract, even for a hidden
+method. Detailed descriptions stay on demand; no mode removes them from direct
+help. Visibility never changes execution permissions, JS bindings or skill
+requirements. A denied method stays inaccessible through every path.
+
+Methods can publish optional `skills` definitions alongside their normal
+contract, including dynamic descriptors. See [Skills](../skills.md) for
+`name`, `usecase`, `require`, `body`, source separation and caller publication.
+Skills advertised by an authorized hidden method remain discoverable through
+the skill catalog when their requirements are available.
+
+Upgrade Loom before publishing `skills` or `visibility`. Older strict-v1 readers
+reject these fields. Remove them from static and dynamic documents before
+rolling back to an older reader.
+
+Builtin help cards use the same visibility modes. [Builtin procedures](../skills.md#builtin-procedures-and-discovery) describe the default grouping.
+
+For skill definitions, `usecase` is only a short activation trigger; procedures and examples belong in `body`. Follow [skill authoring](../skills.md#authoring).

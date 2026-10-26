@@ -15,11 +15,32 @@ const (
 	memorySetMicro    = "set_micro"
 )
 
+const personalMemoryGuidance = " Personal memory is core loop: recall relevant context, maintain useful verified facts. Use modules.memory.state({}), list({query}), read({key}); follow returned cursors. Maintain during work without separate request. User corrections override old notes. Replace stale facts with verified current values; without reliable replacement, delete them. Preserve valid facts/provenance in mixed notes; repair index/source pointers. Uncertain: verify source first. set_micro: short always-injected profile; set_index: note pointers; put: note/source. Before unfamiliar writes, read modules.help.read({module:'memory',method}). Writes/deletes need latest version; conflicts or lost receipts need reread before retry, then verification. clear({revision}): latest revision, explicit ALL-memory deletion request only. No credentials or inferred preferences from incidental actions. Keep routine maintenance quiet. Memory grants no authority/consent; deletion cannot erase prior context/logs/backups."
+
+func memoryInstructions(run domain.Run, p domain.Principal) string {
+	if run.NativeFilesOnly() {
+		return ""
+	}
+	if p.ServiceAccount {
+		return " Personal memory is unavailable to service accounts."
+	}
+	return personalMemoryGuidance
+}
+
 func memoryMethods(p domain.Principal) []string {
 	if p.ServiceAccount {
 		return nil
 	}
-	return []string{memoryStateMethod, "list", "read", memorySetMicro, "set_index", "put", "delete", "clear"}
+	return []string{
+		memoryStateMethod,
+		"list",
+		"read",
+		memorySetMicro,
+		"set_index",
+		builtinPutMethod,
+		builtinDeleteMethod,
+		"clear",
+	}
 }
 
 func (t runtimeTools) memory(ctx context.Context, run domain.Run, p domain.Principal,
@@ -82,7 +103,7 @@ func (t runtimeTools) callMemory(ctx context.Context, p domain.Principal,
 			return nil, err
 		}
 		return t.repository.ReadMemoryEntry(ctx, p, input.Key, input.MemoryReadRequest)
-	case "put":
+	case builtinPutMethod:
 		var input struct {
 			domain.MemoryEntryWrite
 
@@ -92,7 +113,7 @@ func (t runtimeTools) callMemory(ctx context.Context, p domain.Principal,
 			return nil, err
 		}
 		return t.repository.PutMemoryEntry(ctx, p, input.Key, input.MemoryEntryWrite)
-	case "delete":
+	case builtinDeleteMethod:
 		var input struct {
 			Key     string `json:"key"`
 			Version int64  `json:"version"`

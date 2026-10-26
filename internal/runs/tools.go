@@ -276,3 +276,13 @@ const (
 	maxQuestionChoices            = 20
 	defaultQuestionTimeoutSeconds = 86400
 )
+
+func toolFailureOutput(err error) json.RawMessage {
+	if failure, ok := errors.AsType[*domain.ToolError](err); ok {
+		out, _ := json.Marshal(failure)
+		return out
+	}
+	return json.RawMessage(
+		`{"error":"tool_failed","recovery":"Inspect the selected contract and current state. Do not repeat writes with an unknown outcome."}`,
+	)
+}

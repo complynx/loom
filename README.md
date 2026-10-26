@@ -46,6 +46,7 @@ Use the [development Compose](compose.yaml) and [configuration template](deploy/
 - [Architecture](docs/architecture.md), [trust boundaries](docs/security.md), [data and accounting](docs/data.md).
 - [Startup and migrations](docs/startup.md), [configuration rules](docs/implementation.md), [supported fields](internal/config/SUPPORT.md).
 - [Manifest example](examples/manifest.json) and [manifest schema](schemas/manifest.schema.json).
+- [Skills and procedural context](docs/skills.md).
 - [User memory](docs/user-memory.md), [file tools](docs/file-tools.md), [file worker](docs/file-worker.md).
 - [OpenAI settings and cost](docs/openai.md), [context compaction](docs/active-compaction.md), [test providers](docs/test-providers.md).
 - [Failures](docs/failures.md), [retry policy](docs/hybrid-retry.md), [caller recovery](docs/caller-recovery.md).

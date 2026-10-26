@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/sandbox"
 )
 
@@ -68,18 +69,20 @@ type Principal struct {
 	Token                                                        string
 }
 type Tool struct {
-	Summary                   string          `json:"Summary,omitempty"`
-	ModuleSummary             string          `json:"ModuleSummary,omitempty"`
-	ServiceSummary            string          `json:"ServiceSummary,omitempty"`
-	SupportsOperationAdoption bool            `json:"SupportsOperationAdoption,omitempty"`
-	ServiceID                 string          `json:"ServiceID"`
-	Module                    string          `json:"Module"`
-	Method                    string          `json:"Method"`
-	Description               string          `json:"Description"`
-	Effect                    string          `json:"Effect"`
-	ConfirmationReplyMode     string          `json:"ConfirmationReplyMode,omitempty"`
-	ConfirmationMode          string          `json:"ConfirmationMode"`
-	InputSchema               json.RawMessage `json:"InputSchema"`
+	Visibility                string                   `json:"Visibility,omitempty"`
+	Skills                    []domain.SkillDefinition `json:"Skills,omitempty"`
+	Summary                   string                   `json:"Summary,omitempty"`
+	ModuleSummary             string                   `json:"ModuleSummary,omitempty"`
+	ServiceSummary            string                   `json:"ServiceSummary,omitempty"`
+	SupportsOperationAdoption bool                     `json:"SupportsOperationAdoption,omitempty"`
+	ServiceID                 string                   `json:"ServiceID"`
+	Module                    string                   `json:"Module"`
+	Method                    string                   `json:"Method"`
+	Description               string                   `json:"Description"`
+	Effect                    string                   `json:"Effect"`
+	ConfirmationReplyMode     string                   `json:"ConfirmationReplyMode,omitempty"`
+	ConfirmationMode          string                   `json:"ConfirmationMode"`
+	InputSchema               json.RawMessage          `json:"InputSchema"`
 }
 type Confirmation struct {
 	ReplyMode   string `json:"reply_mode,omitempty"`
@@ -87,25 +90,28 @@ type Confirmation struct {
 	PreparePath string `json:"prepare_path,omitempty"`
 }
 type Method struct {
-	Summary                    string          `json:"summary,omitempty"`
-	ID                         string          `json:"id"`
-	Description                string          `json:"description"`
-	Permissions                []string        `json:"permissions"`
-	Path                       string          `json:"path"`
-	Effect                     string          `json:"effect"`
-	TimeoutMS                  int             `json:"timeout_ms"`
-	MaxResultBytes             int64           `json:"max_result_bytes"`
-	InputSchema                json.RawMessage `json:"input_schema"`
-	OutputSchema               json.RawMessage `json:"output_schema"`
-	Idempotency                bool            `json:"idempotency"`
-	StatusPath                 string          `json:"status_path,omitempty"`
-	CancelPath                 string          `json:"cancel_path,omitempty"`
-	DeduplicationWindowSeconds int64           `json:"deduplication_window_seconds,omitempty"`
-	Confirmation               Confirmation    `json:"confirmation"`
-	ArtifactMIMETypes          []string        `json:"artifact_mime_types"`
-	ExternalDisclosure         bool            `json:"external_disclosure"`
+	Visibility                 string                   `json:"visibility,omitempty"`
+	Skills                     []domain.SkillDefinition `json:"skills,omitempty"`
+	Summary                    string                   `json:"summary,omitempty"`
+	ID                         string                   `json:"id"`
+	Description                string                   `json:"description"`
+	Permissions                []string                 `json:"permissions"`
+	Path                       string                   `json:"path"`
+	Effect                     string                   `json:"effect"`
+	TimeoutMS                  int                      `json:"timeout_ms"`
+	MaxResultBytes             int64                    `json:"max_result_bytes"`
+	InputSchema                json.RawMessage          `json:"input_schema"`
+	OutputSchema               json.RawMessage          `json:"output_schema"`
+	Idempotency                bool                     `json:"idempotency"`
+	StatusPath                 string                   `json:"status_path,omitempty"`
+	CancelPath                 string                   `json:"cancel_path,omitempty"`
+	DeduplicationWindowSeconds int64                    `json:"deduplication_window_seconds,omitempty"`
+	Confirmation               Confirmation             `json:"confirmation"`
+	ArtifactMIMETypes          []string                 `json:"artifact_mime_types"`
+	ExternalDisclosure         bool                     `json:"external_disclosure"`
 }
 type Module struct {
+	Visibility      string   `json:"visibility,omitempty"`
 	Summary         string   `json:"summary,omitempty"`
 	ID              string   `json:"id"`
 	Description     string   `json:"description"`
@@ -358,7 +364,7 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	seen := map[string]bool{}
 	for _, module := range m.Modules {
 		if seen[module.ID] || reserved(module.ID) || module.ID == "history" || module.ID == fieldArtifacts ||
-			module.ID == "diagnostics" || module.ID == "memory" || module.ID == "files" {
+			module.ID == "skills" || module.ID == "diagnostics" || module.ID == "memory" || module.ID == "files" {
 			return m, errors.New("duplicate or reserved module id")
 		}
 		seen[module.ID] = true
@@ -388,7 +394,31 @@ func validateMethods(methods []Method) error {
 	return nil
 }
 
+func validVisibility(value string) bool {
+	switch value {
+	case "", "default", "list", "search", "hidden":
+		return true
+	default:
+		return false
+	}
+}
+func methodVisibility(module Module, method Method) string {
+	if method.Visibility != "" {
+		return method.Visibility
+	}
+	return module.Visibility
+}
+
+func validateMethodMetadata(method Method) error {
+	if !validVisibility(method.Visibility) {
+		return errors.New("invalid method visibility")
+	}
+	return domain.ValidateSkills(method.Skills)
+}
 func validateMethod(method Method) error {
+	if err := validateMethodMetadata(method); err != nil {
+		return err
+	}
 	if method.Confirmation.ReplyMode == "protocol" &&
 		(method.Confirmation.Mode == "none" || method.Effect == effectRead) {
 		return errors.New("protocol confirmation requires a confirmed write")
@@ -628,6 +658,8 @@ func (r *Registry) List(ctx context.Context, p Principal) ([]Tool, error) {
 					tools = append(
 						tools,
 						Tool{
+							Visibility:     methodVisibility(module, method),
+							Skills:         method.Skills,
 							Summary:        DiscoverySummary(method.Summary, method.Description),
 							ModuleSummary:  DiscoverySummary(module.Summary, module.Description),
 							ServiceSummary: DiscoverySummary(s.manifest.Summary, s.manifest.Description),
@@ -916,6 +948,8 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 					tools = append(
 						tools,
 						Tool{
+							Visibility:                methodVisibility(module, method),
+							Skills:                    method.Skills,
 							Summary:                   DiscoverySummary(method.Summary, method.Description),
 							ModuleSummary:             DiscoverySummary(module.Summary, module.Description),
 							ServiceSummary:            DiscoverySummary(s.manifest.Summary, s.manifest.Description),

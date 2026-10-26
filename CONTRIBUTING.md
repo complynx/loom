@@ -80,6 +80,11 @@ Keep instructions separate from run reports. Document supported behavior and how
 
 Use one authoritative document per contract. Link to it instead of repeating defaults and endpoint details. Use English headings and ASCII anchor IDs so links stay readable and portable. Keep README as the entry point. Keep each page focused on one task or boundary. Split a long guide into named topics and provide a short index; do not make readers scan a full API or QA manual for one operation. Update built-in module/tool help and schemas with the implementation; models must be able to find the same usable method documentation as developers.
 
+For model-facing help and skill bodies, prefer concise caveman style. Preserve
+all facts, conditions, negation, parameters, limits and recovery. Check that the
+model could use the tool from this text and its base prompt alone. Skill
+`usecase` is only a short **when-to-use** trigger; see [skill authoring](docs/skills.md#authoring).
+
 Before review, check that links resolve, commands/flags exist, examples match their schemas, and implementation status is accurate. Distinguish implemented behavior, fixture coverage, live-provider checks and installation acceptance. Do not convert a historical PASS into a promise about every deployment.
 
 ## Tests and pull requests

@@ -43,7 +43,7 @@ func (b *ModuleBridge) moduleCallFailure(
 	code := moduleFailureCode(failure)
 	invalid, invalidArguments := errors.AsType[*modules.InvalidArgumentsError](failure)
 	response := map[string]any{moduleFailureKey: code}
-	if invalidArguments && code == "invalid_arguments" {
+	if invalidArguments && code == invalidArgumentsCode {
 		response["validation"] = invalid
 	}
 	if found {
@@ -88,7 +88,7 @@ func moduleFailureCode(failure error) string {
 	_, invalidArguments := errors.AsType[*modules.InvalidArgumentsError](failure)
 	switch {
 	case invalidArguments:
-		return "invalid_arguments"
+		return invalidArgumentsCode
 	case errors.Is(failure, operations.ErrAdoptionUnsupported):
 		return "operation_adoption_unsupported"
 	case errors.Is(failure, identity.ErrUnauthorized), errors.Is(failure, modules.ErrForbidden):

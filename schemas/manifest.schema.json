@@ -19,34 +19,43 @@
     "path": {"type": "string", "pattern": "^/[^?#]*$", "maxLength": 1024},
     "permissions": {"type": "array", "uniqueItems": true, "maxItems": 100, "items": {"$ref": "#/$defs/identifier"}},
     "caller": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": ["permissions", "auth"],
       "properties": {
         "permissions": {
-          "type": "array", "uniqueItems": true,
-          "items": {"enum": ["runs.create", "runs.control", "chat.read", "chat.events.append", "artifacts.read", "artifacts.write"]}
-        },
-        "auth": {"oneOf": [
-          {
-            "type": "object", "additionalProperties": false,
-            "required": ["type", "issuer", "subject", "audience"],
-            "properties": {
-              "type": {"const": "zitadel"},
-              "issuer": {"type": "string", "format": "uri"},
-              "subject": {"type": "string", "minLength": 1},
-              "audience": {"type": "string", "minLength": 1}
-            }
-          },
-          {
-            "type": "object", "additionalProperties": false,
-            "required": ["type", "secret_ref"],
-            "properties": {"type": {"const": "secret"}, "secret_ref": {"$ref": "#/$defs/identifier"}}
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["runs.create", "runs.control", "chat.read", "chat.events.append", "artifacts.read", "artifacts.write"]
           }
-        ]}
+        },
+        "auth": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "issuer", "subject", "audience"],
+              "properties": {
+                "type": {"const": "zitadel"},
+                "issuer": {"type": "string", "format": "uri"},
+                "subject": {"type": "string", "minLength": 1},
+                "audience": {"type": "string", "minLength": 1}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "secret_ref"],
+              "properties": {"type": {"const": "secret"}, "secret_ref": {"$ref": "#/$defs/identifier"}}
+            }
+          ]
+        }
       }
     },
     "module": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": ["id", "description", "permissions", "discovery"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
@@ -56,15 +65,26 @@
         "discovery": {"enum": ["static", "dynamic"]},
         "methods": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/method"}},
         "discovery_path": {"$ref": "#/$defs/path"},
-        "cache_ttl_seconds": {"type": "integer", "minimum": 0, "maximum": 300}
+        "cache_ttl_seconds": {"type": "integer", "minimum": 0, "maximum": 300},
+        "visibility": {"enum": ["default", "list", "search", "hidden"]}
       },
       "allOf": [
-        {"if": {"properties": {"discovery": {"const": "static"}}}, "then": {"required": ["methods"], "not": {"anyOf": [{"required": ["discovery_path"]}, {"required": ["cache_ttl_seconds"]}]}}},
-        {"if": {"properties": {"discovery": {"const": "dynamic"}}}, "then": {"required": ["discovery_path", "cache_ttl_seconds"], "not": {"required": ["methods"]}}}
+        {
+          "if": {"properties": {"discovery": {"const": "static"}}},
+          "then": {
+            "required": ["methods"],
+            "not": {"anyOf": [{"required": ["discovery_path"]}, {"required": ["cache_ttl_seconds"]}]}
+          }
+        },
+        {
+          "if": {"properties": {"discovery": {"const": "dynamic"}}},
+          "then": {"required": ["discovery_path", "cache_ttl_seconds"], "not": {"required": ["methods"]}}
+        }
       ]
     },
     "confirmation": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": ["mode"],
       "properties": {
         "mode": {"enum": ["none", "service_id", "exact_parameters"]},
@@ -72,12 +92,31 @@
         "reply_mode": {"enum": ["protocol"]}
       },
       "allOf": [
-        {"if": {"properties": {"mode": {"const": "none"}}}, "then": {"not": {"required": ["prepare_path"]}}, "else": {"required": ["prepare_path"]}}
+        {
+          "if": {"properties": {"mode": {"const": "none"}}},
+          "then": {"not": {"required": ["prepare_path"]}},
+          "else": {"required": ["prepare_path"]}
+        }
       ]
     },
     "method": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "description", "permissions", "path", "effect", "timeout_ms", "max_result_bytes", "input_schema", "output_schema", "idempotency", "confirmation", "artifact_mime_types", "external_disclosure"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "description",
+        "permissions",
+        "path",
+        "effect",
+        "timeout_ms",
+        "max_result_bytes",
+        "input_schema",
+        "output_schema",
+        "idempotency",
+        "confirmation",
+        "artifact_mime_types",
+        "external_disclosure"
+      ],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "description": {"type": "string", "maxLength": 4000},
@@ -95,11 +134,36 @@
         "deduplication_window_seconds": {"type": "integer", "minimum": 86400},
         "confirmation": {"$ref": "#/$defs/confirmation"},
         "artifact_mime_types": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
-        "external_disclosure": {"type": "boolean"}
+        "external_disclosure": {"type": "boolean"},
+        "skills": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/skill"}},
+        "visibility": {"enum": ["default", "list", "search", "hidden"]}
       },
       "allOf": [
-        {"if": {"properties": {"effect": {"enum": ["write", "delete"]}}}, "then": {"required": ["status_path", "deduplication_window_seconds"], "properties": {"idempotency": {"const": true}}}}
+        {
+          "if": {"properties": {"effect": {"enum": ["write", "delete"]}}},
+          "then": {"required": ["status_path", "deduplication_window_seconds"], "properties": {"idempotency": {"const": true}}}
+        }
       ]
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "usecase", "body"],
+      "properties": {
+        "name": {"type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+        "usecase": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "\\S"},
+        "body": {"type": "string", "minLength": 1, "maxLength": 16000, "pattern": "\\S"},
+        "require": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 257,
+            "pattern": "^([$]tools|[a-z][a-z0-9_.-]{0,127})\\.[a-z][a-z0-9_.-]{0,127}$"
+          }
+        }
+      }
     }
   }
 }

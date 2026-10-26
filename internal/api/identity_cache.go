@@ -26,7 +26,7 @@ func freshAuthorization(pattern string) bool {
 	if strings.HasPrefix(pattern, "GET ") || strings.HasPrefix(pattern, "DELETE /v1/auth/sessions/") {
 		return false
 	}
-	return strings.Contains(pattern, " /v1/admin/") ||
+	return strings.Contains(pattern, " /v1/skills/") || strings.Contains(pattern, " /v1/admin/") ||
 		strings.Contains(pattern, " /v1/auth/sessions") ||
 		strings.HasSuffix(pattern, "/input") || strings.HasSuffix(pattern, "/resume")
 }

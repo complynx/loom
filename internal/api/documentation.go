@@ -72,6 +72,7 @@ func documentOperation(api huma.API, pattern, permission string) {
 		op.Parameters = append(op.Parameters, diagnosticsQueryParameters()...)
 	}
 	op.Parameters = append(op.Parameters, historyAndStreamParameters(method, path)...)
+	op.Parameters = append(op.Parameters, skillParameters(path)...)
 	request, response, status := operationTypes(method, path)
 	schema := func(v any) *huma.Schema {
 		return huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.TypeOf(v))
@@ -163,6 +164,9 @@ func operationTypes(method, path string) (any, any, string) {
 }
 
 func sessionAndReadTypes(method, path string) (any, any, string, bool) {
+	if request, response, status, matched := skillOperationTypes(method, path); matched {
+		return request, response, status, matched
+	}
 	if strings.HasSuffix(path, "/reactions") {
 		return domain.SetReaction{}, domain.ChatEvent{}, "201", true
 	}

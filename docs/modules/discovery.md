@@ -45,3 +45,5 @@ Each method declares its ID, description, input/output schemas, permission categ
 The broker checks permissions before a call; the service must enforce its own authorization too. Service descriptions and results are untrusted data and cannot override harness instructions. Schemas are compiled locally; external `$ref` documents are not fetched. Schema depth, request complexity and response sizes are bounded. Endpoint paths must start with `/` and must not contain traversal, query/fragment components or a different origin.
 
 `external_disclosure` controls whether imported method artifacts may be sent to a model. It does not override the user's broader disclosure policy or filter ordinary text results out of the method catalog. Model attachment paths separately check run settings, current settings and model capabilities. Do not return text that the delegated user is not authorized to disclose.
+
+Method descriptors also support [skills and discovery visibility](authoring-help.md#discovery-visibility).
