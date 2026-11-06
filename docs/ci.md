@@ -50,7 +50,7 @@ the tags. CI publication sets them to the registry image name and full commit SH
 
 Worker source collection uses each installed package's exact aports commit.
 If the GitHub mirror cannot fetch that commit, collection switches to the
-official Alpine GitLab repository, including lazy blob fetches. Recipe selection
+official Alpine Git repository, including lazy blob fetches. Recipe selection
 and upstream source checksum verification remain unchanged; failure at both
 repositories stops the build.
 

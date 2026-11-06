@@ -47,7 +47,7 @@ while IFS='|' read -r name version origin commit license; do
     [ ! -d "$directory" ] || continue
     if ! git -C /tmp/aports fetch -q --filter=blob:none --depth=1 origin "$commit" </dev/null; then
         # The GitHub mirror can lag published packages. Keep the exact commit and source checks.
-        git -C /tmp/aports config remote.origin.url https://gitlab.alpinelinux.org/alpine/aports.git
+        git -C /tmp/aports config remote.origin.url https://git.alpinelinux.org/aports
         git -C /tmp/aports fetch -q --filter=blob:none --depth=1 origin "$commit" </dev/null
     fi
     recipe=
