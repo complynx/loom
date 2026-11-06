@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -396,7 +397,8 @@ func exerciseDeletedAudioSource(
 	require.NoError(t, err)
 	handle, err := tools.repository.CreateArtifactHandle(ctx, p, run.ID, original.ID)
 	require.NoError(t, err)
-	args, err := json.Marshal(map[string]any{"handle_id": handle.ID})
+	// This second operation deliberately probes revocation, so request explicit reprocessing.
+	args, err := json.Marshal(map[string]any{"handle_id": handle.ID, "reprocess_key": uuid.NewString()})
 	require.NoError(t, err)
 	tools.cfg.Transcription.CreditsPerSecond = 75
 	intent, reserve, err := tools.Prepare(
