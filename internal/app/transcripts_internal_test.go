@@ -350,6 +350,8 @@ func TestASRConcurrentAdmissionAndUnknownFence(t *testing.T) {
 	require.NoError(t, err)
 	otherCall := call
 	otherCall.ID = "second"
+	secondImport := repeatedTranscriptImport(t, f)
+	otherCall.Arguments = json.RawMessage(`{"artifact_id":"` + secondImport.ID + `","language":"en"}`)
 	otherIntent, _, err := f.tools.Prepare(ctx, other, f.p, "", otherCall)
 	require.NoError(t, err)
 	type admitted struct {
@@ -394,12 +396,12 @@ func TestASRConcurrentAdmissionAndUnknownFence(t *testing.T) {
 	require.False(t, found)
 	require.Error(t, f.tools.repository.ClaimTranscriptDispatch(ctx, f.run, sid))
 	require.EqualValues(t, 1, calls.Load())
-	// Explicitly different processing parameters have different identities; model changes do not.
+	// Hint drift cannot create another paid identity; explicit reprocessing uses a separate stable UUID.
 	_, one, err := f.tools.audioIdentity(ctx, f.run, f.p, audioArguments{ArtifactID: f.first.ID})
 	require.NoError(t, err)
 	_, two, err := f.tools.audioIdentity(ctx, f.run, f.p, audioArguments{ArtifactID: f.first.ID, Language: "ru"})
 	require.NoError(t, err)
-	require.NotEqual(t, one, two)
+	require.Equal(t, one, two)
 	call.Arguments = json.RawMessage(`{"artifact_id":"` + f.first.ID + `","reprocess_key":"` + uuid.NewString() + `"}`)
 	_, _, err = f.tools.Reuse(ctx, f.run, f.p, "", call)
 	require.NoError(t, err) // Admission, not lookup, fences another explicit attempt.

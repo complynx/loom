@@ -41,15 +41,18 @@ the source or WAV alive. Provider receipts and full stored results remain bounde
 
 ## Identity, permissions and billing
 
-The identity includes the owner, organization, canonical source artifact/version,
-requested language, prompt and requested start/end. Omitted start/end mean zero.
-A source refresh for that exact version retains its identity. A different upload
-or different explicit processing parameters is a different operation. Provider
-and model settings are provenance, not cache keys: changing either does not
-silently regenerate completed text.
+The identity includes the owner, organization, verified original content digest,
+byte size and requested start/end. Omitted start/end mean zero. Another import
+of the same bytes retains this identity; message and artifact IDs remain distinct.
+Language and prompt guide first processing. Changing these hints does not buy
+another transcription. Provider and model settings remain original provenance,
+not cache keys. Deliberately different requested ranges are separate operations.
 
 Every reuse and page read checks current owner/org, artifact/chat permissions,
 source-service authority where applicable, and current/run disclosure policy.
+Cross-import reuse checks both the current input and the retained original source.
+The result keeps the original source ID and paid receipt. A denied or deleted
+original source fails closed; it does not trigger another paid transcription.
 Expired bytes are not fetched to perform these checks. Source chat deletion and
 revoked rights deny access. Another owner cannot read text, processing state or
 provenance. Reuse is not an authorization grant.
@@ -68,8 +71,27 @@ Only an explicitly requested new processing operation may supply a new UUID
 `reprocess_key`. Keep that key unchanged for retries of that operation. Its result
 does not replace the default original transcript. A pending/unknown operation
 still blocks another paid admission, including one with a different reprocess key.
+Reusing a reprocess UUID for the same content/range with changed language or prompt
+is rejected without another paid dispatch. The agent sees the normal
+`transcription_rejected` tool result. Request a separate explicit operation if
+those parameters must change.
 
 ## Upgrade and rollback
+
+Content-based reuse needs no new schema. Existing source-keyed transcript records
+are found through their verified artifact metadata and original requested range.
+Their keys, result, receipt and source provenance are not rewritten. Compatibility
+lookups stay within one owner/org. Pre-durable paid work is also checked before
+new admission, including missing text and unknown outcomes.
+Historical explicit JSON-null bounds normalize to zero, as the original decoder
+accepted them; they do not create another paid identity.
+
+Before installing content-based reuse, stop ASR admission and drain all old ASR
+executors. Old binaries do not take the content/range lock; mixed old/new writers
+are unsafe. Retained pending/unknown work stays blocked for reconciliation.
+For rollback, stop ASR admission again and keep the newer reader/executor for
+retained content-keyed work. A source-keyed binary cannot safely deduplicate it.
+Keep all transcript records; do not rewrite keys or delete receipts for rollback.
 
 Migration `00006_audio_transcripts.sql` adds the text/provenance table without
 changing artifact deadlines or existing paid receipts. Drain old ASR executors

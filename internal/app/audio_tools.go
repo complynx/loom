@@ -49,10 +49,22 @@ type preparedAudio struct {
 
 func transcriptionTool() provider.Tool {
 	return provider.Tool{
-		Type:        "function",
-		Name:        "audio_transcribe",
-		Description: "Transcribe audio/video outside JS. Supply exactly one handle_id or artifact_id. First reuses an owned completed transcript for the same source, language, prompt and requested start/end, even after source bytes expire; model upgrades do not regenerate it. Set reuse_only:true for stored text only; a miss returns transcript_not_found without processing or billing. New processing is paid, durably reserved before dispatch, never automatically retried. Optional start/end choose a <=300-second chunk. Returns bounded text, durable transcript_id, source_artifact_id, original model/provider provenance, reused flag and next_cursor. Read complete text with modules.files.transcript_read({transcript_id,offset?,limit?}); start at offset 0 and copy next_offset until partial is false. next_cursor is for source-audio chunks, not text pages. Only explicitly requested reprocessing may set a new UUID reprocess_key; do not use it to bypass an unknown outcome. Use files.video_storyboard separately for visual frames.",
-		Strict:      false,
+		Type: "function",
+		Name: "audio_transcribe",
+		Description: "Transcribe audio/video outside JS. Supply exactly one handle_id or artifact_id. " +
+			"First reuses owned completed text for the same verified content and requested start/end, " +
+			"including another import, hint drift, expired bytes or model upgrade. Original provenance stays. " +
+			"Language/prompt apply to first processing; changing hints alone never buys another transcription. " +
+			"Set reuse_only:true for stored text only; a miss returns transcript_not_found without processing/billing. " +
+			"New processing is paid, durably reserved before dispatch, never automatically retried. " +
+			"Optional start/end choose a <=300-second chunk. Returns bounded text, durable transcript_id, " +
+			"source_artifact_id, original model/provider provenance, reused flag and next_cursor. " +
+			"Read complete text with modules.files.transcript_read({transcript_id,offset?,limit?}); " +
+			"start at offset 0 and copy next_offset until partial is false. " +
+			"next_cursor selects source-audio chunks, not text pages. Only explicitly requested reprocessing " +
+			"may set a new UUID reprocess_key; keep its hints unchanged on retry. Never bypass an unknown outcome. " +
+			"Use files.video_storyboard separately for visual frames.",
+		Strict: false,
 		Parameters: json.RawMessage(
 			`{"type":"object","properties":{"reuse_only":{"type":"boolean"},"handle_id":{"type":"string"},"artifact_id":{"type":"string"},"reprocess_key":{"type":"string","format":"uuid"},"language":{"type":"string"},"prompt":{"type":"string"},"start":{"type":"number"},"end":{"type":"number"}},"additionalProperties":false}`,
 		),

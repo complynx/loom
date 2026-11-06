@@ -64,14 +64,8 @@ func bindTranscriptStep(ctx context.Context, tx pgx.Tx, r domain.Run, step domai
 	if err != nil {
 		return err
 	}
-	var busy bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM audio_transcripts a JOIN steps s ON s.id=a.id WHERE a.owner_id=$1 AND a.org_id=$2 AND a.processing_key=$3 AND s.state IN ('pending','unknown'))`, r.OwnerID, r.OrgID, intent.TranscriptKey).
-		Scan(&busy)
-	if err != nil {
+	if err = guardTranscriptContent(ctx, tx, r, step, intent); err != nil {
 		return err
-	}
-	if busy {
-		return domain.Conflict("transcription_in_progress")
 	}
 	tag, err := tx.Exec(
 		ctx,
