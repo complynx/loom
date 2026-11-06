@@ -45,7 +45,11 @@ while IFS='|' read -r name version origin commit license; do
     printf '%s\n' "$name=$version" "$origin" "$commit" "$license" >"$destination/packages/$name.txt"
     directory="$destination/recipes/$origin-$commit"
     [ ! -d "$directory" ] || continue
-    git -C /tmp/aports fetch -q --filter=blob:none --depth=1 origin "$commit" </dev/null
+    if ! git -C /tmp/aports fetch -q --filter=blob:none --depth=1 origin "$commit" </dev/null; then
+        # The GitHub mirror can lag published packages. Keep the exact commit and source checks.
+        git -C /tmp/aports config remote.origin.url https://git.alpinelinux.org/aports
+        git -C /tmp/aports fetch -q --filter=blob:none --depth=1 origin "$commit" </dev/null
+    fi
     recipe=
     for repository in main community testing; do
         if git -C /tmp/aports cat-file -e "$commit:$repository/$origin/APKBUILD" 2>/dev/null; then

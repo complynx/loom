@@ -34,6 +34,9 @@ func (t runtimeTools) archiveLegacyTranscript(
 	if err != nil {
 		return err
 	}
+	if _, err = t.authorizeTranscriptSource(ctx, r, p, record.SourceArtifactID); err != nil {
+		return err
+	}
 	retained, err := t.legacyTranscriptBody(ctx, r, record)
 	if err != nil {
 		return err

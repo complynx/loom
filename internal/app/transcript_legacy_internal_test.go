@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/complynx/loom/internal/domain"
@@ -18,9 +20,10 @@ func TestLegacyTranscriptUpgradeNeverRegenerates(t *testing.T) {
 			t.Parallel()
 			f := referenceFixture(t)
 			ctx := t.Context()
+			second := repeatedTranscriptImport(t, f)
 			handle, err := f.tools.repository.CreateArtifactHandle(ctx, f.p, f.run.ID, f.first.ID)
 			require.NoError(t, err)
-			args := json.RawMessage(`{"handle_id":"` + handle.ID + `","language":"en"}`)
+			args := json.RawMessage(`{"handle_id":"` + handle.ID + `","language":"en","start":null,"end":null}`)
 			prepared, _ := json.Marshal(preparedAudio{SourceArtifactID: f.first.ID, Language: "en", Start: 0, End: 1})
 			intent := domain.PaidToolIntent{
 				Call:     domain.ToolCall{ID: "legacy", Name: "audio_transcribe", Arguments: args},
@@ -91,7 +94,17 @@ func TestLegacyTranscriptUpgradeNeverRegenerates(t *testing.T) {
 					require.NoError(t, err)
 				}
 			}
-			call := provider.Call{ID: "new-call", Name: "audio_transcribe", Arguments: args}
+			if mode == "unknown" {
+				chat, createErr := f.tools.repository.CreateChat(ctx, f.p)
+				require.NoError(t, createErr)
+				next, createErr := f.tools.repository.CreateRun(ctx, f.p, "new-import",
+					domain.CreateRun{ChatID: chat.ID, Input: domain.Input{Text: "Reuse the audio"}})
+				require.NoError(t, createErr)
+				f.run, createErr = f.tools.repository.ClaimRun(ctx, next.ID, "worker", time.Minute)
+				require.NoError(t, createErr)
+			}
+			newArgs := json.RawMessage(`{"artifact_id":"` + second.ID + `","language":"fr"}`)
+			call := provider.Call{ID: "new-call", Name: "audio_transcribe", Arguments: newArgs}
 			output, found, err := f.tools.Reuse(ctx, f.run, f.p, "", call)
 			if mode == "live" {
 				require.NoError(t, err)
@@ -104,10 +117,24 @@ func TestLegacyTranscriptUpgradeNeverRegenerates(t *testing.T) {
 				}
 				require.NoError(t, json.Unmarshal(record.Result, &complete))
 				require.Equal(t, text, complete.Text)
+				require.Equal(t, sourceUUID(t, f.first.ID), record.SourceArtifactID)
 			} else {
 				require.Error(t, err)
 				require.False(t, found)
 				require.Empty(t, output)
+			}
+			if mode == "unknown" {
+				_, key, identityErr := f.tools.audioIdentity(ctx, f.run, f.p,
+					audioArguments{ArtifactID: second.ID})
+				require.NoError(t, identityErr)
+				intent.Call.Arguments = newArgs
+				intent.TranscriptSourceID, intent.TranscriptKey = second.ID, key
+				intent.ReprocessKey = uuid.NewString()
+				input, err = json.Marshal(intent)
+				require.NoError(t, err)
+				_, err = f.tools.repository.BeginStep(ctx, f.run.ID, f.run.LeaseOwner, f.run.Fence,
+					"transcription", input, 75)
+				require.ErrorContains(t, err, "transcription_in_progress")
 			}
 			var count int
 			require.NoError(

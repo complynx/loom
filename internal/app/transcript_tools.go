@@ -84,13 +84,22 @@ func (t runtimeTools) audioIdentity(
 			return source, "", artifacts.ErrInvalid
 		}
 	}
+	// Hashes are verified at upload/import; tombstones retain them after byte collection.
+	if digest, decodeErr := hex.DecodeString(source.SHA256); decodeErr != nil || len(digest) != sha256.Size {
+		return source, "", artifacts.ErrInvalid
+	}
+	if args.Start == 0 {
+		args.Start = 0 // Canonicalize negative zero before hashing a numeric range.
+	}
+	if args.End == 0 {
+		args.End = 0
+	}
 	raw, _ := json.Marshal(struct {
-		Source   string  `json:"source"`
-		Language string  `json:"language"`
-		Prompt   string  `json:"prompt"`
-		Start    float64 `json:"start"`
-		End      float64 `json:"end"`
-	}{source.ID, args.Language, args.Prompt, args.Start, args.End})
+		Content string  `json:"content_sha256"`
+		Size    int64   `json:"size"`
+		Start   float64 `json:"start"`
+		End     float64 `json:"end"`
+	}{source.SHA256, source.Size, args.Start, args.End})
 	hash := sha256.Sum256(raw)
 	return source, hex.EncodeToString(hash[:]), nil
 }
@@ -144,12 +153,13 @@ func (t runtimeTools) Reuse(
 	if err != nil {
 		return nil, false, err
 	}
-	record, err := t.repository.FindTranscript(ctx, p, key, args.ReprocessKey)
+	requestedRange, _ := json.Marshal(map[string]float64{"start": args.Start, "end": args.End})
+	record, err := t.repository.FindContentTranscript(ctx, p, key, args.ReprocessKey, source.ID, requestedRange)
 	if errors.Is(err, domain.ErrNotFound) {
 		if err = t.archiveLegacyTranscript(ctx, r, p, source.ID, key, args); err != nil {
 			return nil, false, err
 		}
-		record, err = t.repository.FindTranscript(ctx, p, key, args.ReprocessKey)
+		record, err = t.repository.FindContentTranscript(ctx, p, key, args.ReprocessKey, source.ID, requestedRange)
 		if errors.Is(err, domain.ErrNotFound) {
 			if args.ReuseOnly {
 				return json.RawMessage(`{"error":"transcript_not_found"}`), true, nil
@@ -160,6 +170,13 @@ func (t runtimeTools) Reuse(
 	if err != nil {
 		return nil, false, err
 	}
+	// A new import does not inherit the retained original's service or chat authority.
+	if _, err = t.authorizeTranscriptSource(ctx, r, p, record.SourceArtifactID); err != nil {
+		return nil, false, err
+	}
+	if err = validateReprocessHints(record, args); err != nil {
+		return nil, false, err
+	}
 	if record.State != transcriptCompletedState {
 		return nil, false, &runs.Suspension{State: domain.Paused, Reason: "transcription_in_progress"}
 	}
@@ -168,6 +185,24 @@ func (t runtimeTools) Reuse(
 	}
 	output, err := durableTranscriptOutput(record, true)
 	return output, true, err
+}
+
+func validateReprocessHints(record store.Transcript, args audioArguments) error {
+	if args.ReprocessKey == "" {
+		return nil
+	}
+	var original domain.PaidToolIntent
+	var parameters audioArguments
+	if err := json.Unmarshal(record.Intent, &original); err != nil {
+		return err
+	}
+	if err := decodeAudio(original.Call.Arguments, &parameters); err != nil {
+		return err
+	}
+	if parameters.Language != args.Language || parameters.Prompt != args.Prompt {
+		return domain.Conflict("transcript_reprocess_parameters_changed")
+	}
+	return nil
 }
 
 func durableTranscriptOutput(record store.Transcript, reused bool) (json.RawMessage, error) {

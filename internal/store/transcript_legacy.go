@@ -18,11 +18,19 @@ func (s *Store) LegacyTranscript(
 	if !p.Has("artifacts.read") || !p.Has("chat.read") {
 		return out, domain.Forbidden()
 	}
-	err := s.pool.QueryRow(ctx, `SELECT s.id::text,$4::text,s.state,s.result,s.input FROM steps s JOIN runs r ON r.id=s.run_id JOIN artifacts a ON a.id=NULLIF(s.input#>>'{prepared,source_artifact_id}','')::uuid
- WHERE s.kind='transcription' AND r.owner_id=(SELECT id FROM users WHERE issuer=$1 AND subject=$2) AND r.org_id=$3 AND COALESCE(a.source_reference_id,a.id)=$4::uuid
+	err := s.pool.QueryRow(ctx, `SELECT s.id::text,original.id::text,s.state,s.result,s.input
+ FROM steps s JOIN runs r ON r.id=s.run_id
+ JOIN artifacts a ON a.id=NULLIF(s.input#>>'{prepared,source_artifact_id}','')::uuid
+ JOIN artifacts original ON original.id=COALESCE(a.source_reference_id,a.id)
+ JOIN artifacts wanted ON wanted.id=$4
+ WHERE s.kind='transcription' AND r.owner_id=(SELECT id FROM users WHERE issuer=$1 AND subject=$2)
+ AND r.org_id=$3 AND original.owner_id=r.owner_id AND original.org_id=r.org_id
+ AND wanted.owner_id=r.owner_id AND wanted.org_id=r.org_id
+ AND original.sha256=wanted.sha256 AND original.size=wanted.size
  AND COALESCE(s.input->>'transcript_key','')=''
  AND NOT COALESCE((s.state='completed' AND s.usage=$7::jsonb AND s.result->>'output'=$8),false)
- AND jsonb_build_object('language',COALESCE(s.input#>'{prepared,language}','""'::jsonb),'prompt',COALESCE(s.input#>'{prepared,prompt}','""'::jsonb),'start',COALESCE(s.input#>'{call,arguments,start}','0'::jsonb),'end',COALESCE(s.input#>'{call,arguments,end}','0'::jsonb))=$5::jsonb
+ AND COALESCE(NULLIF(s.input#>'{call,arguments,start}','null'::jsonb),'0'::jsonb)=$5::jsonb->'start'
+ AND COALESCE(NULLIF(s.input#>'{call,arguments,end}','null'::jsonb),'0'::jsonb)=$5::jsonb->'end'
  AND NOT EXISTS(SELECT 1 FROM audio_transcripts t WHERE t.owner_id=r.owner_id AND t.org_id=r.org_id AND t.processing_key=$6)
  ORDER BY s.created_at,s.id LIMIT 1`, p.Issuer, p.Subject, p.OrgID, sourceID, parameters, key, document(domain.Usage{}), `{"error":"transcription_rejected"}`).
 		Scan(&out.ID, &out.SourceArtifactID, &out.State, &out.Result, &out.Intent)

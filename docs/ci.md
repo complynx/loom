@@ -48,6 +48,12 @@ images locally, run `docker buildx bake --file docker-bake.hcl --load`. The defa
 image name is `loom` and revision is `local`; set `IMAGE` and `REVISION` to change
 the tags. CI publication sets them to the registry image name and full commit SHA.
 
+Worker source collection uses each installed package's exact aports commit.
+If the GitHub mirror cannot fetch that commit, collection switches to the
+official Alpine Git repository, including lazy blob fetches. Recipe selection
+and upstream source checksum verification remain unchanged; failure at both
+repositories stops the build.
+
 ## Maintainer publication workflow
 
 The [upstream workflow](../.github/workflows/ci.yml) is maintainer infrastructure, not a required installation step. It uses `DOCKER_HUB_ACCESS_TOKEN` for image publication and `SERVER_REPO_TOKEN` for a repository-dispatch hook after both images are published. Both secrets are checked before publication; credentials are not Docker build arguments. The workflow's GitHub token has `contents: read`. The registry and dispatch secrets have separate permissions configured by the maintainer.
