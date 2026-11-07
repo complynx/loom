@@ -136,6 +136,12 @@ func (s *Store) Bootstrap(ctx context.Context, settings domain.Settings) error {
 	if e := validateLifecycleSettings(settings); e != nil {
 		return e
 	}
+	if _, err := domain.FundingTarget(
+		domain.FundingDefaults(settings.MonthlyFunding),
+		domain.MonthlyFundingPolicy{},
+	); err != nil {
+		return err
+	}
 	settings.Version = 1
 	_, err := s.pool.Exec(
 		ctx,
@@ -173,7 +179,9 @@ func (s *Store) ensureUser(ctx context.Context, tx pgx.Tx, p domain.Principal) (
 		return "", err
 	}
 	var raw []byte
-	if err = tx.QueryRow(ctx, "SELECT doc FROM settings WHERE singleton").Scan(&raw); err != nil {
+	var settingsVersion int64
+	if err = tx.QueryRow(ctx, "SELECT doc,version FROM settings WHERE singleton").
+		Scan(&raw, &settingsVersion); err != nil {
 		return "", err
 	}
 	var settings domain.Settings
@@ -189,11 +197,21 @@ func (s *Store) ensureUser(ctx context.Context, tx pgx.Tx, p domain.Principal) (
 	if err != nil {
 		return "", err
 	}
+	settings.Version = settingsVersion
+	initial := settings.InitialCredits
+	if fundingEnabled(
+		domain.FundingDefaults(settings.MonthlyFunding),
+		domain.MonthlyFundingPolicy{},
+		&p.ServiceAccount,
+	) {
+		initial = 0
+	}
 	tag, err := tx.Exec(
 		ctx,
-		"INSERT INTO billing_accounts(owner_id,balance) VALUES($1,$2) ON CONFLICT DO NOTHING",
+		"INSERT INTO billing_accounts(owner_id,balance,monthly_service_account) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
 		uid,
-		settings.InitialCredits,
+		initial,
+		p.ServiceAccount,
 	)
 	if err != nil {
 		return uid, err
@@ -205,14 +223,45 @@ func (s *Store) ensureUser(ctx context.Context, tx pgx.Tx, p domain.Principal) (
 			id(),
 			uid,
 			"initial:"+uid,
-			settings.InitialCredits,
+			initial,
 		)
+	}
+	if err != nil {
+		return uid, err
+	}
+	// A newly inserted wallet cannot have existing runs or concurrent spenders.
+	// Existing wallets are refilled only in a separate transaction, never while holding run/chat locks.
+	if tag.RowsAffected() == 1 && domain.FundingDefaults(settings.MonthlyFunding).Enabled {
+		err = refillMonthlyTx(ctx, tx, uid, nil, settings)
 	}
 	return uid, err
 }
 func (s *Store) ResolveUser(ctx context.Context, p domain.Principal) (string, error) {
 	var uid string
 	err := s.tx(ctx, func(tx pgx.Tx) error { var err error; uid, err = s.ensureUser(ctx, tx, p); return err })
+	if err != nil {
+		return uid, err
+	}
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if e := lockFundingOwner(ctx, tx, uid); e != nil {
+			return e
+		}
+		settings, e := fundingSettings(ctx, tx)
+		if e != nil {
+			return e
+		}
+		_, e = tx.Exec(
+			ctx,
+			`UPDATE billing_accounts SET monthly_service_account=CASE WHEN $2 THEN true ELSE COALESCE(monthly_service_account,false) END
+ WHERE owner_id=$1 AND (monthly_service_account IS NULL OR ($2 AND NOT monthly_service_account))`,
+			uid,
+			p.ServiceAccount,
+		)
+		if e != nil {
+			return e
+		}
+		return refillMonthlyTx(ctx, tx, uid, nil, settings)
+	})
 	return uid, err
 }
 func (s *Store) defaultChat(ctx context.Context, tx pgx.Tx, uid, org string) (domain.Chat, error) {

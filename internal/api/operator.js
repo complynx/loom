@@ -5,19 +5,20 @@ function connected() { return proxyConnected || token !== ""; }
 let token = "", cursor = "", currentAfterID = "", busy = false, timer = null, expiry = null, generation = 0;
 function notice(text, error = false) { element("notice").textContent = text; element("notice").className = error ? "error" : ""; }
 function clearData() { for (const id of ["overview", "runs"]) element(id).tBodies[0].replaceChildren(); element("detail").hidden = true; element("more").disabled = true; cursor = ""; currentAfterID = ""; }
-function disconnect() { token = ""; proxyConnected = false; generation++; clearInterval(timer); timer = null; clearTimeout(expiry); expiry = null; element("refresh").disabled = true; element("state").disabled = false; clearData(); notice("Disconnected."); }
-async function api(path) {
+function disconnect() { clearFunding(); token = ""; proxyConnected = false; generation++; clearInterval(timer); timer = null; clearTimeout(expiry); expiry = null; element("refresh").disabled = true; element("state").disabled = false; clearData(); notice("Disconnected."); }
+async function api(path, options = {}) {
   const expected = generation;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const endpoint = proxyMode ? "/admin/api" + path.slice("/v1/admin".length) : path;
-    const response = await fetch(endpoint, {headers:proxyMode ? {} : {Authorization:"Bearer " + token}, cache:"no-store", credentials:proxyMode ? "same-origin" : "omit", redirect:"manual", signal:controller.signal});
+    const response = await fetch(endpoint, {...options, headers:{...(proxyMode ? {} : {Authorization:"Bearer " + token}), ...(options.body ? {"Content-Type":"application/json", "X-Loom-Admin-Request":"1"} : {})}, cache:"no-store", credentials:proxyMode ? "same-origin" : "omit", redirect:"manual", signal:controller.signal});
     if (expected !== generation) throw new Error("Session changed");
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) { const message = "SSO sign-in required. Reconnect to continue."; disconnect(); notice(message, true); throw new Error(message); }
+    if (response.status === 403 && options.funding) throw new Error("Funding permission denied; no change was applied.");
     if (response.status === 401 || response.status === 403) { const message = "Authorization denied. Sign in again with diagnostics.read."; disconnect(); notice(message, true); throw new Error(message); }
     if (!response.ok) throw new Error("Request failed: HTTP " + response.status + " · request " + (response.headers.get("X-Request-ID") || "unavailable"));
-    const value = await response.json();
+    const value = options.funding ? parseFundingJSON(await response.text()) : await response.json();
     if (expected !== generation) throw new Error("Session changed");
     return value;
   } finally { clearTimeout(timeout); }
@@ -81,6 +82,100 @@ async function initializeLogin() {
     await refresh(); if (token) timer = setInterval(() => refresh(), 15000);
   } catch (error) { if (expected !== generation) return; notice(error.name === "AbortError" ? "Sign-in timed out. Try again." : error.message, true); }
 }
+let fundingSettings = null, fundingOwner = "", fundingPolicyVersion = null, fundingDefaultsEpoch = 0, fundingOwnerEpoch = 0;
+function clearFunding() {
+ fundingDefaultsEpoch++; fundingOwnerEpoch++;
+ fundingSettings=null; fundingOwner=""; fundingPolicyVersion=null;
+ element("funding-save-defaults").disabled=true; element("funding-save-owner").disabled=true;
+ element("funding-status").tBodies[0].replaceChildren();
+}
+// Preserve integer tokens that exceed JavaScript's exact range for status/receipt display.
+function parseFundingJSON(text) {
+ return JSON.parse(text.replace(/"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, token => {
+  if(token.startsWith('"') || /[.eE]/.test(token) || Number.isSafeInteger(Number(token)))return token;
+  return JSON.stringify(token);
+ }));
+}
+function applyFundingDefaults(value) {
+ if(!Number.isSafeInteger(value.version))throw new Error("Settings version exceeds browser precision; use the API.");
+ fundingSettings=value;
+ element("funding-enabled").checked=value.defaults.enabled;
+ element("funding-base").value=value.defaults.base_microcredits;
+ element("funding-factor").value=value.defaults.factor_ppm;
+}
+function applyFundingPolicy(value) {
+ if(!Number.isSafeInteger(value.policy.version))throw new Error("Policy version exceeds browser precision; use the API.");
+ fundingPolicyVersion=value.policy.version;
+ element("funding-participation").value=value.policy.enabled===null ? "" : String(value.policy.enabled);
+ element("funding-user-base").value=value.policy.base_microcredits ?? "";
+ element("funding-user-factor").value=value.policy.factor_ppm ?? "";
+ renderFunding(value);
+}
+function fundingNotice(text) { element("funding-notice").textContent=text; }
+function fundingInteger(id, nullable=false) {
+ const text=element(id).value.trim();
+ if (nullable && text==="") return null;
+ const number=Number(text);
+ if (text==="" || !Number.isSafeInteger(number) || number<0) throw new Error("Enter nonnegative whole numbers within the browser's safe integer range.");
+ return number;
+}
+function renderFunding(value) {
+ const body=element("funding-status").tBodies[0]; body.replaceChildren();
+ row(body,["Participation",value.enabled ? "Enabled" : "Disabled"]);
+ row(body,["Owner type",value.classification]);
+ row(body,["Current target (microcredits)",value.target_microcredits]);
+ row(body,["Next refill (UTC)",value.next_refill_at || "None"]);
+ const receipt=value.last_receipt;
+ if (receipt) for (const [label,value] of [["Last period",receipt.period],["Recorded target",receipt.target_microcredits],["Balance used",receipt.balance_microcredits],["Credited",receipt.credited_microcredits],["Reason",receipt.reason],["Settings version",receipt.settings_version]]) row(body,[label,value]);
+}
+element("funding-load-defaults").addEventListener("click",async()=>{
+ const epoch=++fundingDefaultsEpoch;
+ fundingSettings=null;element("funding-save-defaults").disabled=true;
+ try {
+  const value=await api("/v1/admin/settings/monthly-funding",{funding:true});
+  if(epoch!==fundingDefaultsEpoch)return;
+  applyFundingDefaults(value);
+  element("funding-save-defaults").disabled=false; fundingNotice("Defaults loaded. Save uses settings version "+value.version+".");
+ } catch(error) {if(epoch===fundingDefaultsEpoch)fundingNotice(error.message);}
+});
+element("funding-defaults").addEventListener("submit",async event=>{
+ event.preventDefault(); if(!fundingSettings)return;
+ const epoch=++fundingDefaultsEpoch;
+ element("funding-save-defaults").disabled=true;
+ try {
+  const monthly_funding={enabled:element("funding-enabled").checked,base_microcredits:fundingInteger("funding-base"),factor_ppm:fundingInteger("funding-factor")};
+  const value=await api("/v1/admin/settings/monthly-funding",{funding:true,method:"PATCH",body:JSON.stringify({version:fundingSettings.version,defaults:monthly_funding})});
+  if(epoch!==fundingDefaultsEpoch)return;
+  applyFundingDefaults(value); fundingNotice("Defaults saved. Completed periods are unchanged.");
+  element("funding-save-defaults").disabled=false;
+ } catch(error) {if(epoch!==fundingDefaultsEpoch)return;fundingSettings=null;element("funding-save-defaults").disabled=true; fundingNotice(error.message+" Reload defaults before another save; verify state if the response was lost.");}
+});
+element("funding-load-owner").addEventListener("click",async()=>{
+ const epoch=++fundingOwnerEpoch;
+ element("funding-status").tBodies[0].replaceChildren();
+ element("funding-save-owner").disabled=true; fundingPolicyVersion=null; fundingOwner="";
+ try {
+  const owner=element("funding-owner").value.trim();
+  if(!owner)throw new Error("Enter an owner ID.");
+  const value=await api("/v1/admin/billing/"+encodeURIComponent(owner)+"/monthly-funding",{funding:true});
+  if(epoch!==fundingOwnerEpoch || element("funding-owner").value.trim()!==owner)return;
+  fundingOwner=owner;applyFundingPolicy(value);element("funding-save-owner").disabled=false;fundingNotice("Owner policy loaded.");
+ }catch(error){if(epoch===fundingOwnerEpoch)fundingNotice(error.message);}
+});
+element("funding-owner").addEventListener("input",()=>{fundingOwnerEpoch++;element("funding-status").tBodies[0].replaceChildren();fundingOwner="";fundingPolicyVersion=null;element("funding-save-owner").disabled=true;});
+element("funding-policy").addEventListener("submit",async event=>{
+ event.preventDefault();if(fundingPolicyVersion===null || !fundingOwner)return;
+ const owner=fundingOwner, epoch=++fundingOwnerEpoch;
+ element("funding-save-owner").disabled=true;
+ try {
+  const selected=element("funding-participation").value;
+  const policy={version:fundingPolicyVersion,enabled:selected==="" ? null : selected==="true",base_microcredits:fundingInteger("funding-user-base",true),factor_ppm:fundingInteger("funding-user-factor",true)};
+  const value=await api("/v1/admin/billing/"+encodeURIComponent(owner)+"/monthly-funding",{funding:true,method:"PATCH",body:JSON.stringify(policy)});
+  if(epoch!==fundingOwnerEpoch || fundingOwner!==owner)return;
+  applyFundingPolicy(value);element("funding-save-owner").disabled=false;
+  fundingNotice("Owner policy saved. Completed periods are unchanged; use billing adjustments for immediate funding.");
+ }catch(error){if(epoch!==fundingOwnerEpoch || fundingOwner!==owner)return;fundingPolicyVersion=null;element("funding-save-owner").disabled=true;fundingNotice(error.message+" Reload owner before another save; verify state if the response was lost.");}
+});
 initializeLogin();
 element("disconnect").addEventListener("click", disconnect);
 element("refresh").addEventListener("click", () => refresh());

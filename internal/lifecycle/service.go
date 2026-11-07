@@ -41,6 +41,16 @@ func (s *Service) Run(ctx context.Context) {
 				"dependency_unavailable",
 			)
 		}
+		if _, e := s.Store.RefillMonthly(ctx, s.Batch); e != nil && ctx.Err() == nil {
+			s.Logger.ErrorContext(
+				ctx,
+				"monthly funding sweep failed",
+				"component",
+				"billing",
+				"error_code",
+				"dependency_unavailable",
+			)
+		}
 		select {
 		case <-ctx.Done():
 			return

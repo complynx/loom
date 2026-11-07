@@ -228,6 +228,9 @@ func (s *Store) UpdateSettings(
 		if e := lockAdmission(ctx, tx); e != nil {
 			return e
 		}
+		if e := lockFundingSettingsUpdate(ctx, tx, v); e != nil {
+			return e
+		}
 		tag, e := tx.Exec(
 			ctx,
 			"UPDATE settings SET doc=$1,version=version+1 WHERE singleton AND version=$2",
@@ -257,13 +260,19 @@ func (s *Store) balance(ctx context.Context, uid string) (domain.Balance, error)
 		return domain.Balance{}, domain.NewError(http.StatusUnprocessableEntity, "invalid_id")
 	}
 	v, e := dbgen.New(s.pool).ReadBalance(ctx, id)
+	if e != nil {
+		return domain.Balance{}, mapError(e)
+	}
+	status, err := s.monthlyFundingStatus(ctx, uid)
+	if err != nil {
+		return domain.Balance{}, err
+	}
 	return domain.Balance{
 		AvailableMicrocredits: v.Available,
 		SpentMicrocredits:     v.Spent,
 		ReservedMicrocredits:  v.Reserved,
-	}, mapError(
-		e,
-	)
+		MonthlyFunding:        &status,
+	}, nil
 }
 
 func (s *Store) AdjustCredits(
