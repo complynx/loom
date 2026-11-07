@@ -7,4 +7,24 @@
 <h2>Overview</h2><table id="overview"><thead><tr><th>Measure</th><th>Value</th></tr></thead><tbody></tbody></table>
 <h2>Runs</h2><div class="scroll"><table id="runs"><thead><tr><th>Run</th><th>State</th><th>Created</th><th>Reserved</th><th>Spent</th><th>Control requested</th></tr></thead><tbody></tbody></table></div><button id="more" disabled>Next page</button>
 <section id="detail" hidden><h2>Run detail</h2><p id="detail-notice"></p><pre id="detail-json"></pre></section>
+<section aria-labelledby="funding-title"><h2 id="funding-title">Monthly funding</h2>
+<p>UTC calendar months. Changes apply to future grants; a completed month is never recalculated.</p>
+<form id="funding-defaults"><h3>Defaults</h3>
+<button type="button" id="funding-load-defaults">Load defaults</button>
+<label><input type="checkbox" id="funding-enabled"> Enable monthly funding</label>
+<label>Base amount (microcredits)<input id="funding-base" type="number" min="0" step="1" required value="1000000"></label>
+<label>Factor (millionths; 1000000 = 1×)<input id="funding-factor" type="number" min="0" step="1" required value="1000000"></label>
+<button id="funding-save-defaults" disabled>Save defaults</button>
+</form>
+<form id="funding-policy"><h3>Owner policy</h3>
+<label>Owner ID<input id="funding-owner" required autocomplete="off"></label>
+<button type="button" id="funding-load-owner">Load owner</button>
+<label>Participation<select id="funding-participation"><option value="">Default (known user only)</option><option value="true">Explicitly enabled</option><option value="false">Disabled</option></select></label>
+<label>Base override (microcredits; blank inherits)<input id="funding-user-base" type="number" min="0" step="1"></label>
+<label>Personal factor (millionths; blank = 1×)<input id="funding-user-factor" type="number" min="0" step="1"></label>
+<button id="funding-save-owner" disabled>Save owner policy</button>
+</form>
+<p id="funding-notice" role="status" aria-live="polite">Load defaults or an owner to administer funding. Requires settings.read/write or billing.adjust.</p>
+<table id="funding-status"><thead><tr><th>Funding</th><th>Value</th></tr></thead><tbody></tbody></table>
+</section>
 </main></body></html>

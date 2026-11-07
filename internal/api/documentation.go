@@ -164,6 +164,16 @@ func operationTypes(method, path string) (any, any, string) {
 }
 
 func sessionAndReadTypes(method, path string) (any, any, string, bool) {
+	if path == "/v1/admin/settings/monthly-funding" {
+		return patchRequest(
+			method,
+			domain.MonthlyFundingConfiguration{},
+		), domain.MonthlyFundingConfiguration{}, "200", true
+	}
+	if strings.HasSuffix(path, "/monthly-funding") {
+		return patchRequest(method, domain.MonthlyFundingPolicy{}), domain.MonthlyFundingStatus{}, "200", true
+	}
+
 	if request, response, status, matched := skillOperationTypes(method, path); matched {
 		return request, response, status, matched
 	}

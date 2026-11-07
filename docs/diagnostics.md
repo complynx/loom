@@ -34,7 +34,8 @@ Scripts can call `modules.diagnostics.health({})`, `.overview({})`,
 without current rights. Every call checks authorization and the run lease. Remote
 module discovery failure does not remove these builtins for authorized operators.
 
-The `/admin` panel is read-only and refreshes every 15 seconds. Its shell contains
+Diagnostics in the `/admin` panel are read-only and refresh every 15 seconds.
+Separate [monthly funding forms](monthly-funding.md) require their own privileged scopes. Its shell contains
 no operational data. Proxy SSO loads data after upstream login; direct PKCE offers
 a sign-in control. The login modes are mutually exclusive. In direct mode the
 token stays in page memory; proxy mode returns no access token to JavaScript.

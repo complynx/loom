@@ -69,6 +69,7 @@ organization, lifecycle and additional handler checks still apply.
 | POST | `/admin/identity/cache/clear` | Purge shared API/worker claims cache; `settings.write`, admin organization, fresh authorization |
 | GET/PATCH | `/admin/users/{id}/policy` | Read/update user limits; `users.policy.write` |
 | GET/PATCH | `/admin/users/{id}/preferences` | Read/update another user's model; `preferences.other.write` |
+| GET/PATCH | `/admin/billing/{id}/monthly-funding` | Read/update owner monthly funding; `billing.adjust` |
 | POST | `/admin/billing/{id}/adjustments` | Audited credit adjustment; `billing.adjust` |
 | POST | `/admin/runs/{id}/recovery/prepare` | Prepare uncertain restored work; `operations.reconcile`, recovery mode only |
 | POST | `/admin/runs/{id}/steps/{step}/reconcile` | Reconcile unknown inference billing; `operations.reconcile` |

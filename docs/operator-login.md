@@ -1,7 +1,7 @@
 # Operator login
 
 Choose one browser login mode: existing proxy SSO or a separate public PKCE client.
-Both authorize access to the read-only [diagnostics panel](diagnostics.md).
+Both authorize access to the [diagnostics panel](diagnostics.md) and scoped [monthly funding administration](monthly-funding.md).
 Direct `/v1` requests continue to require Bearer authorization.
 
 ## Existing OIDC reverse proxy
