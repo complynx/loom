@@ -51,6 +51,19 @@ in the repository and shipped images. An earlier audit does not certify a new gr
 
 ## Update procedure
 
+The selected Huma 2.40 release requires Go 1.26 or newer; Loom uses Go 1.27.3.
+Loom registers documentation with Huma but retains its own HTTP handlers and
+request-body limits. The release's generic raw-body defaults do not replace
+those limits.
+
+River 0.50 disallows nested resumable steps. Loom does not use River's resumable
+step API; its durable run checkpoints remain in Loom's store. The PostgreSQL
+migration set has the same executable SQL as River 0.49 (only comments changed).
+This dependency update therefore needs no schema down migration for rollback:
+restore the previous images and retain the database. Keep normal Loom migration
+compatibility checks. Matching River 0.50 source is supplied as the module
+archives described in the [current notice bundle](dependency-audit/current/README.md).
+
 1. Read the diff to `go.mod` and `go.sum`. Inspect changed direct dependencies and
    the selected transitive graph with `go list -m all`.
 2. Check upstream release notes, API changes and license changes. Review native

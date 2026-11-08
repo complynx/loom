@@ -275,6 +275,17 @@ func (s *Store) balance(ctx context.Context, uid string) (domain.Balance, error)
 	}, nil
 }
 
+// UserBalance reads another owner's wallet under the same authority as adjustments.
+func (s *Store) UserBalance(ctx context.Context, p domain.Principal, uid string) (domain.Balance, error) {
+	if !p.Has("billing.adjust") {
+		return domain.Balance{}, domain.Forbidden()
+	}
+	if err := s.targetUser(ctx, p, uid); err != nil {
+		return domain.Balance{}, err
+	}
+	return s.balance(ctx, uid)
+}
+
 func (s *Store) AdjustCredits(
 	ctx context.Context,
 	p domain.Principal,

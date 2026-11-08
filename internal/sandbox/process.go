@@ -245,12 +245,13 @@ func (s Supervisor) Serve(ctx context.Context, listener net.Listener) error {
 // client can receive a broken pipe while sending a health check.
 func (s Supervisor) rejectCapacity(ctx context.Context, conn net.Conn) {
 	defer closeOnCancel(ctx, conn)()
-	_ = conn.SetDeadline(time.Now().Add(cleanupWriteTimeout))
+	_ = conn.SetReadDeadline(time.Now().Add(requestTimeout))
 	client := newWire(conn, conn)
 	request, err := client.read()
 	if err != nil {
 		return
 	}
+	_ = conn.SetWriteDeadline(time.Now().Add(cleanupWriteTimeout))
 	if request.Type == framePing {
 		_ = client.send(frame{Type: framePong})
 		return

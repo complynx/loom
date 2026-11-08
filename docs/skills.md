@@ -78,6 +78,12 @@ Every inference advertises all currently available skill metadata in the
 Bodies stay out of this initial catalog. Existing context input limits apply;
 Loom does not silently drop skill metadata to fit a request.
 
+The built-in [administration skill](administration-tools.md) is generated from
+current permissions. Its body contains only authorized sections. Loading it
+bypasses the positive claims cache; every administrative call checks fresh
+authority separately. Its short trigger is available before loading, while
+administrative methods and full contracts stay out of the initial context.
+
 ```js
 return await modules.skills.read({name: "inspect-document", source: "caller"});
 ```

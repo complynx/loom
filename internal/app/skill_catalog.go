@@ -84,6 +84,9 @@ func (t runtimeTools) skillCatalog(
 		return nil, err
 	}
 	appendDefinitions(builtinSkillSource, builtins, builtinSkillVersion)
+	if skill, ok := t.adminSkill(p); ok {
+		appendDefinitions(builtinSkillSource, []domain.SkillDefinition{skill}, builtinSkillVersion)
+	}
 	appendDefinitions("caller", run.Skills, 0)
 	for _, tool := range append(append([]modules.Tool{}, reads...), actions...) {
 		appendDefinitions("tool:"+tool.Module+"/"+tool.Method, tool.Skills, 0)

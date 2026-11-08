@@ -49,6 +49,7 @@ Use the [development Compose](compose.yaml) and [configuration template](deploy/
 - [Skills and procedural context](docs/skills.md).
 - [User memory](docs/user-memory.md), [file tools](docs/file-tools.md), [file worker](docs/file-worker.md).
 - [Monthly wallet funding](docs/monthly-funding.md).
+- [Chat administration tools and generated skill](docs/administration-tools.md).
 - [OpenAI settings and cost](docs/openai.md), [context compaction](docs/active-compaction.md), [test providers](docs/test-providers.md).
 - [Failures](docs/failures.md), [retry policy](docs/hybrid-retry.md), [caller recovery](docs/caller-recovery.md).
 - [Operator login](docs/operator-login.md), [session-key rotation](docs/session-key-rotation.md), [restore barrier](docs/recovery-mode.md).

@@ -35,7 +35,12 @@ func (t runtimeTools) skills(
 	if run.NativeFilesOnly() {
 		return nil, domain.Forbidden()
 	}
-	if method == builtinPutMethod || method == builtinDeleteMethod {
+	var selected struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(raw, &selected)
+	if method == builtinPutMethod || method == builtinDeleteMethod ||
+		(method == builtinReadMethod && selected.Name == adminSkillName) {
 		ctx = identity.RequireFresh(ctx)
 	}
 	p, token, err := t.fresh(ctx, run)

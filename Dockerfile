@@ -1,4 +1,4 @@
-FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS build
+FROM golang:1.27.3-alpine3.24@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 WORKDIR /src
 ENV GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 COPY go.mod go.sum ./
@@ -6,7 +6,7 @@ RUN go mod download && go mod verify
 COPY . .
 RUN go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/loom ./cmd/loom
 RUN mkdir -p /out/run/clx-sandbox /out/data/artifacts && chmod 0770 /out/run/clx-sandbox /out/data/artifacts
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS file-runtime-base
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS file-runtime-base
 ENV XDG_CACHE_HOME=/tmp/loom-font-cache
 COPY examples/file-worker.packages /licenses/runtime/packages.requested
 RUN tr -d '\r' </licenses/runtime/packages.requested >/tmp/packages.requested \
@@ -40,7 +40,7 @@ RUN mkdir -p /tests/internal/fileproc /tests/internal/app /tests/integration
 CMD ["sh", "-ec", ": \"${CLX_TEST_DATABASE_DSN:?Set a disposable PostgreSQL DSN}\"; for cli in ffmpeg ffprobe pdfinfo pdftoppm pdftotext loom-animation; do command -v \"$cli\"; done; for package in internal/fileproc internal/app integration; do (cd /tests/$package && /tests/$(basename $package).test -test.v -test.parallel=4 -test.timeout=10m); done"]
 
 # Verified sources gate worker builds; the export target exposes the same bundle.
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS file-worker-source-build
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS file-worker-source-build
 COPY --from=file-runtime-base /licenses/runtime/ /licenses/runtime/
 COPY examples/file-worker-sources.sh /usr/local/bin/file-worker-sources
 RUN --mount=type=cache,target=/var/cache/loom-sources --mount=type=cache,target=/tmp/aports apk add --no-cache abuild git curl jq \

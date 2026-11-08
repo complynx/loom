@@ -243,7 +243,9 @@ func TestSupervisorHealthAtCapacityWaitsForRequest(t *testing.T) {
 	probe, err := net.Dial("unix", socket)
 	require.NoError(t, err)
 	defer func() { _ = probe.Close() }()
-	require.NoError(t, probe.SetReadDeadline(time.Now().Add(20*time.Millisecond)))
+	// A complete health request can arrive after the 100 ms cleanup-write budget.
+	// The request-read timeout must apply here, including when workers are full.
+	require.NoError(t, probe.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
 	var buffer [1]byte
 	_, err = probe.Read(buffer[:])
 	var timeout net.Error
