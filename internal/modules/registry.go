@@ -364,7 +364,7 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	seen := map[string]bool{}
 	for _, module := range m.Modules {
 		if seen[module.ID] || reserved(module.ID) || module.ID == "history" || module.ID == fieldArtifacts ||
-			module.ID == "skills" || module.ID == "diagnostics" || module.ID == "memory" || module.ID == "files" {
+			module.ID == "skills" || module.ID == "admin" || module.ID == "diagnostics" || module.ID == "memory" || module.ID == "files" {
 			return m, errors.New("duplicate or reserved module id")
 		}
 		seen[module.ID] = true

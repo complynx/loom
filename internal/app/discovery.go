@@ -30,6 +30,8 @@ func builtinCategorySummary(module string) string {
 	switch module {
 	case skillsModule:
 		return "Discover and load reusable organization procedures; editing requires skills.write."
+	case adminModule:
+		return "Administer Loom settings, user policies, models and wallet funding within current authority."
 	case historyModule:
 		return "Find earlier conversation facts, decisions and activity; read bounded event pages."
 	case memoryModule:
@@ -48,7 +50,7 @@ func builtinCategorySummary(module string) string {
 }
 
 func helpMatches(entry helpEntry, input helpRequest, query string) bool {
-	if entry.Visibility == "hidden" || (entry.Visibility == "search" && query == "") {
+	if entry.Visibility == "hidden" || (entry.Visibility == builtinSearchVisibility && query == "") {
 		return false
 	}
 	if (input.Service != "" && entry.Service != input.Service) || (input.Module != "" && entry.Module != input.Module) {

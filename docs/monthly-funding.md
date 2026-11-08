@@ -6,6 +6,10 @@ when settings.monthly_funding is absent or enabled is false.
 
 ## Amounts and administration
 
+Authorized chat administration uses the generated
+[administration skill and tools](administration-tools.md). A bot administrator
+role alone does not grant these Loom permissions.
+
 Settings use integer microcredits. The audited OpenAI preset uses 1 USD =
 1,000,000 microcredits; other tariff configurations need not use that conversion.
 Factors use integer millionths: 1000000 means 1, 1500000 means 1.5. Zero is allowed.

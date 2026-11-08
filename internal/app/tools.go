@@ -187,6 +187,7 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 		bindings[0].Methods = append(bindings[0].Methods, "semantic")
 	}
 	bindings = appendSkillBindings(bindings, fresh)
+	bindings = t.appendAdminBindings(bindings, fresh)
 	bindings = profileBindings(r, bindings)
 	remote := t.registry.BrokerLive(func(c context.Context) (modules.Principal, error) {
 		currentPrincipal, currentCredential, refreshErr := t.fresh(c, r)
@@ -211,7 +212,7 @@ func (t runtimeTools) executeScript(ctx context.Context, r domain.Run, code stri
 				return t.fetchExternal(c, r, remote, raw)
 			}
 			if module != historyModule && module != artifactsModule && module != diagnosticsModule &&
-				module != skillsModule && module != memoryModule && module != filesModule && module != helpModule {
+				module != skillsModule && module != adminModule && module != memoryModule && module != filesModule && module != helpModule {
 				rpcStarted := time.Now()
 				rpcResult, rpcErr := remote.Call(c, module, method, raw)
 				if t.observer != nil {
@@ -309,7 +310,7 @@ func scriptBindings(reads []modules.Tool, artifactAccess bool) ([]sandbox.Bindin
 	}
 	for _, tool := range reads {
 		if tool.Module == historyModule || tool.Module == artifactsModule || tool.Module == diagnosticsModule ||
-			tool.Module == skillsModule || tool.Module == memoryModule || tool.Module == filesModule || tool.Module == helpModule {
+			tool.Module == skillsModule || tool.Module == adminModule || tool.Module == memoryModule || tool.Module == filesModule || tool.Module == helpModule {
 			return nil, errors.New("reserved builtin module name collision")
 		}
 		index, ok := indexes[tool.Module]
@@ -347,6 +348,8 @@ func (t runtimeTools) builtin(
 		return t.processFile(c, r, fresh, method, raw)
 	case skillsModule:
 		return t.skills(c, r, method, raw)
+	case adminModule:
+		return t.admin(c, r, method, raw)
 	case memoryModule:
 		return t.memory(c, r, fresh, method, raw)
 	case diagnosticsModule:

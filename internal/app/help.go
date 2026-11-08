@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -12,13 +13,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
 	"github.com/complynx/loom/internal/modules"
 )
 
 const (
-	helpModule       = "help"
-	helpListMethod   = "list"
-	minHelpPageBytes = 256
+	builtinWriteEffect      = "write"
+	builtinSearchVisibility = "search"
+	helpModule              = "help"
+	helpListMethod          = "list"
+	minHelpPageBytes        = 256
 )
 
 //go:embed help_cards.json
@@ -59,6 +63,8 @@ func (t runtimeTools) builtinHelpAvailable(p domain.Principal, module string) bo
 	switch module {
 	case skillsModule:
 		return p.Has("chat.read")
+	case adminModule:
+		return len(t.adminMethods(p)) > 0
 	case memoryModule:
 		return !p.ServiceAccount
 	case filesModule:
@@ -108,6 +114,7 @@ func (t runtimeTools) helpEntries(
 	if err := json.Unmarshal(helpCardsJSON, &cards); err != nil {
 		return nil, nil, err
 	}
+	maps.Copy(cards, adminHelpCards())
 	entries := []helpEntry{}
 	for id, card := range cards {
 		module, method, _ := strings.Cut(id, ".")
@@ -180,6 +187,9 @@ func (t runtimeTools) help(
 	if input.Limit < 0 || input.Limit > maxHelpIndexItems || input.MaxBytes < 0 || input.MaxBytes > 32768 ||
 		(input.MaxBytes != 0 && input.MaxBytes < minHelpPageBytes) {
 		return nil, domain.NewError(http.StatusUnprocessableEntity, "invalid_help_bounds")
+	}
+	if input.Module == adminModule {
+		ctx = identity.RequireFresh(ctx)
 	}
 	current, token, err := t.fresh(ctx, r)
 	if err != nil {
@@ -274,12 +284,15 @@ func helpPage(id, text string, input helpRequest) (json.RawMessage, error) {
 }
 
 func builtinHelpEffect(module, method string) string {
+	if module == adminModule && adminWrite(method) {
+		return builtinWriteEffect
+	}
 	if module == skillsModule && (method == builtinPutMethod || method == builtinDeleteMethod) {
-		return "write"
+		return builtinWriteEffect
 	}
 	if module == memoryModule &&
 		!slices.Contains([]string{memoryStateMethod, helpListMethod, builtinReadMethod}, method) {
-		return "write"
+		return builtinWriteEffect
 	}
 	if module != "$tools" {
 		return builtinReadMethod
@@ -305,6 +318,9 @@ func (t runtimeTools) builtinHelpMethodAvailable(r domain.Run, p domain.Principa
 		return false
 	}
 	if module == skillsModule && !slices.Contains(skillMethods(p), method) {
+		return false
+	}
+	if module == adminModule && !slices.Contains(t.adminMethods(p), method) {
 		return false
 	}
 
