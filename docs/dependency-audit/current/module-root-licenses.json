@@ -6,7 +6,9 @@
       {
         "path": "LICENSE",
         "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
-        "licenses": ["BSD-3-Clause"]
+        "licenses": [
+          "BSD-3-Clause"
+        ]
       }
     ]
   },
@@ -233,7 +235,7 @@
   },
   {
     "module": "github.com/bytedance/sonic",
-    "version": "v1.15.2",
+    "version": "v1.15.4",
     "license_files": [
       {
         "path": "LICENSE",
@@ -246,7 +248,7 @@
   },
   {
     "module": "github.com/bytedance/sonic/loader",
-    "version": "v0.5.1",
+    "version": "v0.5.3",
     "license_files": [
       {
         "path": "LICENSE",
@@ -383,7 +385,7 @@
   },
   {
     "module": "github.com/danielgtaylor/huma/v2",
-    "version": "v2.39.1",
+    "version": "v2.40.0",
     "license_files": [
       {
         "path": "LICENSE.md",
@@ -643,7 +645,7 @@
   },
   {
     "module": "github.com/fxamacker/cbor/v2",
-    "version": "v2.9.2",
+    "version": "v2.9.6",
     "license_files": [
       {
         "path": "LICENSE",
@@ -656,7 +658,7 @@
   },
   {
     "module": "github.com/gabriel-vasile/mimetype",
-    "version": "v1.4.13",
+    "version": "v1.4.16",
     "license_files": [
       {
         "path": "LICENSE",
@@ -669,7 +671,7 @@
   },
   {
     "module": "github.com/gin-contrib/sse",
-    "version": "v1.1.1",
+    "version": "v1.1.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -695,7 +697,7 @@
   },
   {
     "module": "github.com/go-chi/chi/v5",
-    "version": "v5.3.2",
+    "version": "v5.5.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1059,7 +1061,7 @@
   },
   {
     "module": "github.com/go-playground/locales",
-    "version": "v0.14.1",
+    "version": "v0.14.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1072,7 +1074,7 @@
   },
   {
     "module": "github.com/go-playground/universal-translator",
-    "version": "v0.18.1",
+    "version": "v0.18.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1085,7 +1087,7 @@
   },
   {
     "module": "github.com/go-playground/validator/v10",
-    "version": "v10.30.3",
+    "version": "v10.30.5",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1137,7 +1139,7 @@
   },
   {
     "module": "github.com/goccy/go-json",
-    "version": "v0.10.6",
+    "version": "v0.11.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1163,7 +1165,7 @@
   },
   {
     "module": "github.com/gofiber/fiber/v2",
-    "version": "v2.52.14",
+    "version": "v2.52.16",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1176,7 +1178,7 @@
   },
   {
     "module": "github.com/gofiber/fiber/v3",
-    "version": "v3.4.0",
+    "version": "v3.6.1",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1189,7 +1191,7 @@
   },
   {
     "module": "github.com/gofiber/schema",
-    "version": "v1.8.2",
+    "version": "v1.9.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1202,7 +1204,7 @@
   },
   {
     "module": "github.com/gofiber/utils/v2",
-    "version": "v2.2.0",
+    "version": "v2.6.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1541,7 +1543,7 @@
   },
   {
     "module": "github.com/klauspost/compress",
-    "version": "v1.20.1",
+    "version": "v1.20.3",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1556,7 +1558,7 @@
   },
   {
     "module": "github.com/klauspost/cpuid/v2",
-    "version": "v2.4.0",
+    "version": "v2.4.1",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1595,7 +1597,7 @@
   },
   {
     "module": "github.com/labstack/echo/v4",
-    "version": "v4.15.4",
+    "version": "v4.16.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1608,7 +1610,7 @@
   },
   {
     "module": "github.com/labstack/echo/v5",
-    "version": "v5.3.0",
+    "version": "v5.4.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1634,7 +1636,7 @@
   },
   {
     "module": "github.com/leodido/go-urn",
-    "version": "v1.4.0",
+    "version": "v1.5.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1647,7 +1649,7 @@
   },
   {
     "module": "github.com/mattn/go-colorable",
-    "version": "v0.1.15",
+    "version": "v0.1.16",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1673,7 +1675,7 @@
   },
   {
     "module": "github.com/mattn/go-runewidth",
-    "version": "v0.0.24",
+    "version": "v0.0.31",
     "license_files": [
       {
         "path": "LICENSE",
@@ -1888,7 +1890,7 @@
   },
   {
     "module": "github.com/philhofer/fwd",
-    "version": "v1.2.0",
+    "version": "v1.2.1",
     "license_files": [
       {
         "path": "LICENSE.md",
@@ -1992,7 +1994,7 @@
   },
   {
     "module": "github.com/quic-go/quic-go",
-    "version": "v0.60.0",
+    "version": "v0.64.1",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2018,7 +2020,7 @@
   },
   {
     "module": "github.com/riverqueue/river",
-    "version": "v0.49.0",
+    "version": "v0.50.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2031,7 +2033,7 @@
   },
   {
     "module": "github.com/riverqueue/river/riverdriver",
-    "version": "v0.49.0",
+    "version": "v0.50.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2044,7 +2046,7 @@
   },
   {
     "module": "github.com/riverqueue/river/riverdriver/riverpgxv5",
-    "version": "v0.49.0",
+    "version": "v0.50.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2057,7 +2059,7 @@
   },
   {
     "module": "github.com/riverqueue/river/rivershared",
-    "version": "v0.49.0",
+    "version": "v0.50.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2070,7 +2072,7 @@
   },
   {
     "module": "github.com/riverqueue/river/rivertype",
-    "version": "v0.49.0",
+    "version": "v0.50.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2239,7 +2241,7 @@
   },
   {
     "module": "github.com/tidwall/gjson",
-    "version": "v1.19.0",
+    "version": "v1.20.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2291,7 +2293,7 @@
   },
   {
     "module": "github.com/tinylib/msgp",
-    "version": "v1.6.4",
+    "version": "v1.6.5",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2330,7 +2332,7 @@
   },
   {
     "module": "github.com/ugorji/go/codec",
-    "version": "v1.3.1",
+    "version": "v1.3.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2369,7 +2371,7 @@
   },
   {
     "module": "github.com/valyala/fasthttp",
-    "version": "v1.72.0",
+    "version": "v1.76.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2525,7 +2527,7 @@
   },
   {
     "module": "go.mongodb.org/mongo-driver/v2",
-    "version": "v2.8.0",
+    "version": "v2.9.2",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2786,7 +2788,7 @@
   },
   {
     "module": "go.yaml.in/yaml/v3",
-    "version": "v3.0.5",
+    "version": "v3.0.6",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2800,7 +2802,7 @@
   },
   {
     "module": "golang.org/x/arch",
-    "version": "v0.29.0",
+    "version": "v0.32.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2839,7 +2841,7 @@
   },
   {
     "module": "golang.org/x/mod",
-    "version": "v0.41.0",
+    "version": "v0.42.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -2852,7 +2854,7 @@
   },
   {
     "module": "golang.org/x/net",
-    "version": "v0.61.0",
+    "version": "v0.62.0",
     "license_files": [
       {
         "path": "LICENSE",
@@ -3157,6 +3159,32 @@
         "sha256": "6ce72bbe12d975bd5286e5ab0a064c069693300c47bccbc57bec18485f1621ea",
         "licenses": [
           "MIT"
+        ]
+      }
+    ]
+  },
+  {
+    "module": "github.com/molecule-man/go-brrr",
+    "version": "v1.3.1",
+    "license_files": [
+      {
+        "path": "LICENSE",
+        "sha256": "a12fbad03be79cbaf575982d5dfa5ba515d42ffa4c08a42da137fe938e28e851",
+        "licenses": [
+          "MIT"
+        ]
+      }
+    ]
+  },
+  {
+    "module": "golang.org/x/time",
+    "version": "v0.16.0",
+    "license_files": [
+      {
+        "path": "LICENSE",
+        "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+        "licenses": [
+          "BSD-3-Clause"
         ]
       }
     ]

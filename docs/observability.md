@@ -62,6 +62,10 @@ Dependency gauges cover PostgreSQL collection, current discovery trust, artifact
 volume, sandbox supervisor IPC and the file processor when enabled. The sandbox ping starts no child worker. A valid capacity response also proves
 supervisor IPC availability, so full worker utilization does not falsely mark it
 down. It does not prove arbitrary JS succeeds.
+At capacity, the supervisor allows the normal five-second request-read timeout
+before applying the separate 100 ms response-write deadline. A silent saturated
+connection can delay the accept loop by up to five seconds; cancellation closes
+that connection immediately.
 Application health/readiness retain their separate contracts. Execution operation
 histograms distinguish success/error/cancelled/timeout/unknown/denied when known.
 
