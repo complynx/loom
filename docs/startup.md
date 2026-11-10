@@ -5,6 +5,14 @@ starting workers. YAML `database.migrate_on_start` defaults to `true`. Set it to
 `false` when a separate migration job owns upgrades. `loom migrate` remains
 available and needs only `CLX_DATABASE_DSN`.
 
+For production rollouts, successful application and River migrations are a required
+gate before the new API accepts requests or workers start. Keep automatic startup
+migrations enabled, or run `loom migrate` from the selected release as a deployment
+job and require its success before starting `loom serve` with
+`database.migrate_on_start: false`. A failed migration must stop the rollout.
+Before release, complete the migration tests required by
+[Contributing](../CONTRIBUTING.md#change-rules).
+
 The database and a dedicated database owner must already exist. Automatic
 migrations require that owner's DDL privileges, confined to the Loom database;
 they do not require a PostgreSQL superuser. Stop older Loom workers before an
