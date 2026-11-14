@@ -9,6 +9,10 @@ use `GET /v1/chats/{id}/history?after=0&limit=50`. The response is `{events:[...
 use the last event's `seq` as the next `after`. The limit is 1–100. These chat
 sequence numbers are separate from run SSE sequence numbers.
 
+Actions of a user's [external agent](../external-agents.md#history-record) appear as
+passive `external_agent.action` events whose `source_actor` starts with
+`external_agent:`. Clients must ignore or render this type.
+
 Messages can include compact current `reactions`; changes are separate
 `message.reaction` events. See [Message reactions](reactions.md) for negotiation,
 actor IDs, replay and snapshot rules.

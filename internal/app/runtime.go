@@ -179,7 +179,6 @@ func Serve(ctx context.Context, cfg config.Config) error {
 	if err = resources.startBackground(runtimeCtx, cfg, logger); err != nil {
 		return err
 	}
-	queue := resources.queue
 	var draining atomic.Bool
 	ready := runtimeFileReadiness(
 		cfg,
@@ -201,6 +200,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		resources.cipher,
 		resources.authorize,
 		operatorLogin,
+		resources.external,
 	)
 	server, listener, metricsServer, err := runtimeServers(
 		ctx,
@@ -212,7 +212,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		resources.repository,
 		resources.registry,
 		resources.executor,
-		queue,
+		resources.queue,
 	)
 	if err != nil {
 		return err
@@ -241,7 +241,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		ctx,
 		cfg,
 		resources.engine,
-		queue,
+		resources.queue,
 		server,
 		metricsServer,
 		resources.files,
@@ -629,11 +629,24 @@ func runtimeHandler(
 	cipher *identity.SessionCipher,
 	authorize RunAuthorizer,
 	operatorLogin *api.OperatorLogin,
+	external *ExternalAgent,
 ) http.Handler {
+	measured := measuredAuth{auth: auth, observer: observer}
+	var externalOptions *api.ExternalAgentOptions
+	if external != nil {
+		externalOptions = &api.ExternalAgentOptions{
+			Service:      external,
+			Authenticate: measured.AuthenticateExternal,
+			Resource:     cfg.ExternalAgents.Resource,
+			Issuer:       cfg.Identity.Issuer,
+			Scopes:       cfg.ExternalAgents.Scopes,
+		}
+	}
 	return api.New(
 		repository,
-		measuredAuth{auth: auth, observer: observer},
+		measured,
 		api.Options{
+			ExternalAgent: externalOptions,
 			ClearIdentityCache: func(c context.Context) (int64, error) {
 				epoch, err := auth.ClearPermissionsCache(c)
 				if err == nil {
@@ -859,6 +872,8 @@ type runtimeComponents struct {
 	executor         sandbox.Client
 	queue            *river.Client[pgx.Tx]
 	maxWorkers       int
+	// external is nil when external agents are disabled or in recovery mode.
+	external *ExternalAgent
 }
 
 func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) error {
@@ -960,6 +975,15 @@ func (r *runtimeComponents) initAgent(
 	r.queue, r.maxWorkers, err = runtimeQueue(cfg, r.pool, r.engine, r.repository, observer, logger)
 	if err != nil {
 		return err
+	}
+	if cfg.ExternalAgents.Enabled {
+		r.external = newExternalAgent(runtimeTools{
+			cfg:        cfg,
+			registry:   r.registry,
+			repository: r.repository,
+			executor:   r.executor,
+			observer:   observer,
+		})
 	}
 
 	return nil

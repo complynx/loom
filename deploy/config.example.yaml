@@ -117,6 +117,14 @@ observability:
 search:
   semantic_enabled: false
 
+# Optional MCP endpoint for a user's own agent; see docs/external-agents.md.
+# The other fields are accepted only when enabled is true.
+external_agents:
+  enabled: false
+  # resource: "https://loom.example.com/mcp"
+  # scopes: ["openid"]
+  # calls_per_minute: 30
+
 # Choose proxy SSO or a separate public PKCE client; see docs/operator-login.md.
 operator:
   # proxy_origin: https://panel.example # Leave client_id/redirect_uri empty in proxy mode.

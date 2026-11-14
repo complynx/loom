@@ -34,7 +34,7 @@ configure a [service account](../api/service-accounts.md). An SA can call the
 service methods allowed by its own rights without registering as a business user
 in unrelated services.
 
-`caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read` and `artifacts.write`. These are caller permissions, not user delegation. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
+`caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read`, `artifacts.write` and `external_agent.profile.write`. The last permission publishes the service as a confirming client that writes [external agent profiles](../external-agents.md#user-profile). These are caller permissions, not user delegation. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
 
 The schema also accepts `auth.type: "secret"` with `secret_ref`. Incoming opaque-secret authentication is not implemented; do not use that branch for an active integration. Never place secret values in a manifest.
 
@@ -51,3 +51,5 @@ The broker checks permissions before a call; the service must enforce its own au
 `external_disclosure` controls whether imported method artifacts may be sent to a model. It does not override the user's broader disclosure policy or filter ordinary text results out of the method catalog. Model attachment paths separately check run settings, current settings and model capabilities. Do not return text that the delegated user is not authorized to disclose.
 
 Method descriptors also support [skills and discovery visibility](authoring-help.md#discovery-visibility).
+
+A method can set `external_agent: true` to let a user's own agent call it through the MCP endpoint. The default is false, and there is no module-level default. Read the [method mark](../external-agents.md#method-mark) rules before you set it.

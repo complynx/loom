@@ -205,6 +205,7 @@ type Search struct {
 }
 
 type Config struct {
+	ExternalAgents    ExternalAgents      `yaml:"external_agents"`
 	FileTools         FileTools           `yaml:"file_tools"`
 	Transcription     Transcription       `yaml:"transcription"`
 	Operator          Operator            `yaml:"operator"`
@@ -314,6 +315,9 @@ func (c Config) validateTrust() error {
 		return err
 	}
 	if err := c.validateOperator(); err != nil {
+		return err
+	}
+	if err := c.ExternalAgents.Validate(); err != nil {
 		return err
 	}
 	if c.Sandbox.EngineCandidate != "" && c.Sandbox.EngineCandidate != "goja" {

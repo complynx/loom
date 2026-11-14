@@ -9,6 +9,7 @@ This track separates implemented capabilities, missing acceptance and new work. 
 - [x] **B02 — Confirmed write, bounded local scope.** Prepare, restart before approval, real execution and repeated approval/status preserve one effect. A new business method still needs its own checks.
 - [x] **B03, basic client slice.** Delegated run, subsequent history, message delivery and recovery of the same run were checked on an isolated client stand. The new conversational protocol remains below.
 - [x] **D07/D11 — Live limits and user memory.** Safe limit reductions apply at the next boundary; micro-memory is reloaded before inference. Local behavior is checked.
+- [x] **G01 — External agents, read slice.** The MCP endpoint, user profile, method mark and history record exist with fixture and PostgreSQL tests. See [external agents](external-agents.md).
 - [x] **F01/F07/F08/F09 — Discovery, files and telemetry.** Polling is intentional. Temporary references, range/handle streams, media processing and OTel exist. Native file checks do not accept paid transcription or unattended model quality.
 
 ## Next acceptance work
@@ -19,6 +20,7 @@ This track separates implemented capabilities, missing acceptance and new work. 
 - [ ] **C01 — End-to-end telemetry.** Check ingestion, backend reads, rule evaluation and notification delivery separately. Exporter or collector configuration alone is insufficient.
 - [ ] **C02/D02 — Backup, restore and keys.** Agree RPO/RTO and off-host storage. Restore ledger/operations and keys behind the recovery barrier without repeated writes. Check historical backups during key rotation. Temporary blobs are not an archive.
 - [ ] **C03/E01/E02 — Faults and operating envelope.** On a disposable stand, test storage failures, dependency outages, signals, contention and OOM. Measure load, SSE, queue and shutdown behavior. Do not use a production disk for destructive QA.
+- [ ] **G02 — External agent acceptance.** Connect a real MCP client through the installed issuer. Check client registration and that the token carries the Loom audience, organization, roles and downstream audiences. Check that the chat client writes the profile and handles `external_agent.action` history events.
 - [ ] **C04 — Controlled pilot and rollback.** Check actual client read/write/reauthorize with small quotas. An older image requires compatible schema; startup has no automatic down migration.
 
 ## Later changes
@@ -28,6 +30,7 @@ This track separates implemented capabilities, missing acceptance and new work. 
 - [ ] **D04 — Model token deltas.** Add them above durable lifecycle events without duplicate final output or weaker billing/cancel guarantees.
 - [ ] **D05 — Dependency recovery.** Define common breaker/retry behavior beyond the existing provider policy. Never repeat an unknown write blindly.
 - [ ] **D08 — Data lifecycle.** Set audit/credential/recovery/ledger policy and a separate audited retention migration for existing data. Diagnostics APIs and agent functions already exist.
+- [ ] **G03 — External agent writes.** Add operations owned by an external session, standalone inline confirmations with source, and confirmed memory writes. The design is in [planned writes](external-agents.md#planned-writes).
 - [ ] **E04 — Multiple replicas.** Shared temporary files/keys, disconnect coordination and rolling-restart acceptance are needed. Current delivery does not promise HA.
 - [ ] **E01, queue-test diagnosis.** An intermittent recovered-row shortfall was previously observed in TestExhaustedQueueRecoveryPreservesUncertaintyAndLiveWork. Isolated repeats did not prove the cause. On recurrence, capture states, leases and locks; a green CI run does not explain it.
 - [ ] **E05 — Developer-tool supply chain.** Review native/tool licenses periodically and preserve notices. Go modules need no extra lock file.

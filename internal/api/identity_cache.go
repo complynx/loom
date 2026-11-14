@@ -27,6 +27,7 @@ func freshAuthorization(pattern string) bool {
 		return false
 	}
 	return strings.Contains(pattern, " /v1/skills/") || strings.Contains(pattern, " /v1/admin/") ||
+		strings.HasSuffix(pattern, " "+externalAgentProfilePath) ||
 		strings.Contains(pattern, " /v1/auth/sessions") ||
 		strings.HasSuffix(pattern, "/input") || strings.HasSuffix(pattern, "/resume")
 }
