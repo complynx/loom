@@ -8,7 +8,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -48,8 +47,6 @@ type ExternalAgentOptions struct {
 	// Resource is the public URL of the MCP endpoint. Issuer is its authorization server.
 	Resource, Issuer string
 	Scopes           []string
-	// AllowedOrigins lists the browser origins that may call the endpoint.
-	AllowedOrigins []string
 }
 
 // externalAgentCapability tells a registered client that it can offer external agents.
@@ -69,24 +66,44 @@ type rpcRequest struct {
 	Error   json.RawMessage `json:"error,omitempty"`
 }
 
-// reply reports whether the message is a request that needs a response.
-// Notifications and client responses need none.
-func (r rpcRequest) reply() bool {
-	return len(r.ID) > 0 && (r.Method != "" || (len(r.Result) == 0 && len(r.Error) == 0))
-}
+type rpcKind int
 
-// valid reports a well-formed request: version 2.0, a method and a string or number ID.
-func (r rpcRequest) valid() bool {
+const (
+	rpcInvalid rpcKind = iota
+	// rpcSilent is a valid notification or client response. It gets no reply.
+	rpcSilent
+	rpcCall
+)
+
+// kind classifies the message. A call has a method and a string or number ID.
+// A notification has a method and no ID. A client response has an ID and a
+// result or error, and no method. Every other shape is invalid.
+func (r rpcRequest) kind() rpcKind {
+	if r.JSONRPC != jsonRPCVersion {
+		return rpcInvalid
+	}
+	if len(r.ID) == 0 {
+		if r.Method == "" {
+			return rpcInvalid
+		}
+		return rpcSilent
+	}
 	var id any
-	if r.JSONRPC != jsonRPCVersion || r.Method == "" || json.Unmarshal(r.ID, &id) != nil {
-		return false
+	if json.Unmarshal(r.ID, &id) != nil {
+		return rpcInvalid
 	}
 	switch id.(type) {
 	case string, float64:
-		return true
 	default:
-		return false
+		return rpcInvalid
 	}
+	if r.Method != "" {
+		return rpcCall
+	}
+	if len(r.Result) > 0 || len(r.Error) > 0 {
+		return rpcSilent
+	}
+	return rpcInvalid
 }
 
 type rpcError struct {
@@ -266,10 +283,10 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST", false)
 		return
 	}
-	// A browser sends Origin. Only configured origins may use a user's token from a page.
-	origin := r.Header.Get("Origin")
-	if origin != "" && !slices.Contains(s.options.ExternalAgent.AllowedOrigins, origin) {
-		fail(w, http.StatusForbidden, "forbidden_origin", "Origin is not allowed", false)
+	// Only a browser sends Origin. Pages are not supported clients: Loom sends no
+	// CORS headers, and a page must not use a user's token against this endpoint.
+	if r.Header.Get("Origin") != "" {
+		fail(w, http.StatusForbidden, "forbidden_origin", "Browser origins are not allowed", false)
 		return
 	}
 	caller, ok := s.mcpCaller(w, r)
@@ -280,21 +297,20 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !request.reply() {
+	switch request.kind() {
+	case rpcSilent:
 		w.WriteHeader(http.StatusAccepted)
-		return
-	}
-	if !request.valid() {
+	case rpcCall:
+		response := rpcResponse{JSONRPC: jsonRPCVersion, ID: request.ID}
+		response.Result, response.Error = s.mcpCall(r.Context(), caller, request)
+		write(w, http.StatusOK, response)
+	case rpcInvalid:
 		write(w, http.StatusOK, rpcResponse{
 			JSONRPC: jsonRPCVersion,
 			ID:      json.RawMessage("null"),
 			Error:   &rpcError{rpcInvalidRequest, "Invalid JSON-RPC request"},
 		})
-		return
 	}
-	response := rpcResponse{JSONRPC: jsonRPCVersion, ID: request.ID}
-	response.Result, response.Error = s.mcpCall(r.Context(), caller, request)
-	write(w, http.StatusOK, response)
 }
 
 func (s *server) mcpCall(ctx context.Context, caller domain.ExternalCaller, request rpcRequest) (any, *rpcError) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,13 @@ import (
 func TestPassiveContextKeepsHistoryAndLatestActions(t *testing.T) {
 	t.Parallel()
 
-	for _, test := range []passiveContextCase{{"first dialogue", false, 5}, {"after dialogue", true, 5}, {"four actions", true, 4}, {"large stream", false, 1005}} {
+	for _, test := range []passiveContextCase{
+		{"first dialogue", false, 5, userAction},
+		{"after dialogue", true, 5, userAction},
+		{"four actions", true, 4, userAction},
+		{"large stream", false, 1005, userAction},
+		{"external agent", false, 5, domain.ExternalAgentActionEvent},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			checkPassiveContext(t, test)
@@ -23,10 +30,13 @@ func TestPassiveContextKeepsHistoryAndLatestActions(t *testing.T) {
 	}
 }
 
+const userAction = "user.action"
+
 type passiveContextCase struct {
 	name    string
 	dialog  bool
 	actions int
+	kind    string
 }
 
 func checkPassiveContext(t *testing.T, test passiveContextCase) {
@@ -48,16 +58,23 @@ func checkPassiveContext(t *testing.T, test passiveContextCase) {
 		)
 	}
 	for index := 1; index <= test.actions; index++ {
-		_, err = s.AppendEvent(
-			ctx,
-			p,
-			chat.ID,
-			domain.AppendEvent{
-				SourceEventID: fmt.Sprintf("action-%d", index),
-				Type:          "user.action",
-				Text:          fmt.Sprintf("action %d", index),
-			},
-		)
+		event := domain.AppendEvent{
+			SourceEventID: fmt.Sprintf("action-%d", index),
+			Type:          test.kind,
+			Text:          fmt.Sprintf("action %d", index),
+		}
+		if test.kind == userAction {
+			_, err = s.AppendEvent(ctx, p, chat.ID, event)
+		} else {
+			_, err = s.AppendEvent(ctx, p, chat.ID, event)
+			require.ErrorContains(t, err, "invalid_event", "only Loom writes external agent actions")
+			_, err = s.AppendExternalAction(
+				ctx,
+				p,
+				domain.ExternalAction{ID: event.SourceEventID, ClientID: "client", Tool: "script"},
+				event.Text,
+			)
+		}
 		require.NoError(t, err)
 	}
 	input := request()
@@ -76,7 +93,7 @@ func checkPassiveContext(t *testing.T, test passiveContextCase) {
 		require.NoError(t, checkpointErr)
 		var partialKept []string
 		for _, event := range partial {
-			if event.Type == "user.action" {
+			if event.Type == test.kind {
 				partialKept = append(partialKept, event.Text)
 			}
 		}
@@ -107,7 +124,7 @@ func checkPassiveContext(t *testing.T, test passiveContextCase) {
 		require.NoError(t, nextErr)
 		var nextKept []string
 		for _, event := range nextView {
-			if event.Type == "user.action" {
+			if event.Type == test.kind {
 				nextKept = append(nextKept, event.Text)
 			}
 		}
@@ -125,7 +142,7 @@ func assertPassiveContext(
 	var summary *domain.ChatEvent
 	for index := range events {
 		event := &events[index]
-		if event.Type == "user.action" {
+		if event.Type == test.kind {
 			kept = append(kept, event.Text)
 		}
 		if event.Type == "user.activity_summary" {
@@ -147,6 +164,7 @@ func assertPassiveContext(
 			require.Contains(t, summary.Text, "1 more actions")
 		} else {
 			require.Contains(t, summary.Text, fmt.Sprintf("%d actions before first request", test.actions))
+			require.Equal(t, test.kind != userAction, strings.Contains(summary.Text, "external agent"))
 		}
 		require.Equal(t, want, kept)
 	}

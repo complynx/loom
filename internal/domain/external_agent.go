@@ -51,11 +51,13 @@ type ExternalTool struct {
 }
 
 // ExternalActionCall counts calls of one method in an external agent action.
+// Unfinished counts calls that were still in flight when the action ended.
 type ExternalActionCall struct {
-	Module string `json:"module"`
-	Method string `json:"method"`
-	Count  int    `json:"count"`
-	Failed int    `json:"failed,omitempty"`
+	Module     string `json:"module"`
+	Method     string `json:"method"`
+	Count      int    `json:"count"`
+	Failed     int    `json:"failed,omitempty"`
+	Unfinished int    `json:"unfinished,omitempty"`
 }
 
 // ExternalAction is the record that Loom writes to chat history for one external agent action.

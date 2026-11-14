@@ -54,7 +54,6 @@ external_agents:
   resource: "https://loom.example.com/mcp"
   audience: "replace-with-mcp-audience"
   scopes: ["openid"]
-  allowed_origins: []
   calls_per_minute: 30
 ```
 
@@ -64,7 +63,6 @@ external_agents:
 | `resource` | Public URL of the MCP endpoint. HTTPS except loopback. It must contain a path without a trailing slash. Loom serves the endpoint at `/mcp` and the metadata at `/.well-known/oauth-protected-resource`; a proxy must map both public paths. |
 | `audience` | Audience that a token for the MCP endpoint must contain. Omission uses `identity.audience`. See [token audience](#token-audience). |
 | `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the audiences of downstream services, the organization and the roles into the access token. At most 32 entries. |
-| `allowed_origins` | Browser origins that can call the endpoint, for example `https://app.example.com`. At most 32 entries. A request with another `Origin` header returns `403 forbidden_origin`. A request without the header is accepted. |
 | `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit is local to one API process. |
 
 When `enabled` is false, the other fields must be absent. In recovery mode the
@@ -246,18 +244,22 @@ dynamic documents before a rollback.
 stateless: it issues no session ID and opens no server stream. `GET` and
 `DELETE` return `405`.
 
+Browser pages are not supported clients. A request with an `Origin` header
+returns `403 forbidden_origin`, and Loom sends no CORS headers. Native and
+server-side clients send no `Origin` header.
+
 | Method | Result |
 | --- | --- |
 | `initialize` | Protocol version, `tools` capability, server information and instructions. Loom answers with the requested revision when it is `2025-11-25`, `2025-06-18` or `2025-03-26`; otherwise with `2025-11-25`. |
 | `ping` | Empty result. |
 | `tools/list` | The `script` tool. |
 | `tools/call` | Tool result as one text content item with `isError`. |
-| Notification or client response | `202` without a body. |
+| Notification (method, no ID) or client response (ID with result or error, no method) | `202` without a body. |
 
 An `MCP-Protocol-Version` header with an unsupported revision returns `400`.
-A request ID must be a string or a number. Batches, other ID types and
-messages without a method return JSON-RPC error `-32600` with a null ID and
-start no tool. Unknown methods return `-32601`. A `tools/list` request above
+A request ID must be a string or a number. Batches, other ID types, another
+`jsonrpc` value and every other message shape return JSON-RPC error `-32600`
+with a null ID and start no tool. Unknown methods return `-32601`. A `tools/list` request above
 the rate limit returns `-32000` with the message `rate_limited`.
 
 ## The script tool
@@ -306,10 +308,14 @@ Private error text, backend bodies and credentials are not returned.
 
 Loom writes the record. The agent cannot omit or change it.
 
-One script that called at least one service, history or memory method creates
+One script that started at least one service, history or memory call creates
 one event in the user's default chat. A script that only read help creates no
 event. Loom stores the event before it returns the result. If the event cannot
 be stored, the agent receives `history_unavailable` instead of the result.
+
+A call is counted when it starts. When the script ends, Loom refuses new calls,
+takes the count and then cancels the calls that are still in flight. A call
+that the script did not wait for is therefore in the record as `unfinished`.
 
 ```json
 {
@@ -335,13 +341,18 @@ be stored, the agent receives `history_unavailable` instead of the result.
   identity. An absent value is recorded as `unknown`.
 - `outcome` is `succeeded` or `failed`. A failed script adds `error` with its
   classified code. Each call entry can add `failed` with the number of failed
-  calls.
+  calls and `unfinished` with the number of calls that were in flight when the
+  script ended.
+- Only Loom writes this event type. `POST /v1/chats/{id}/events` refuses it
+  with `422 invalid_event`.
 - `execution_id` is also the `run_id` value that services receive in the read
   envelope of this script.
 
 Clients that read chat history must ignore or render the new event type. The
-internal agent receives it as activity data, not as instructions. These events
-enter the context of later internal runs and count toward their input size.
+internal agent receives it as activity data, not as instructions. In the model
+view of a later internal run, these events are compressed together with passive
+user actions: the latest three stay, and one summary replaces the older ones.
+Stored history and search remain complete.
 
 ## Persistence and compatibility
 
@@ -403,6 +414,8 @@ record. They do not prove these installation properties:
 | Token rules and dropped operation rights | `TestExternalAuthenticationKeepsOnlyModulePermissions` in `internal/identity` |
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |
 | Profile switches, zero credits, history record, no run, withheld result, concurrency bound, revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
+| Profile right comes from the caller binding, not from the user's role | `TestProfilePermissionComesFromCallerBinding` in `internal/identity` |
+| Compression in run context, refused event type on the public route | `TestPassiveContextKeepsHistoryAndLatestActions` in `internal/store` |
 | Upgrade from the previous schema with existing data | `TestExternalAgentProfileMigrationKeepsExistingData` in `internal/store` |
 
-The last two tests need `CLX_TEST_DATABASE_DSN`. See [QA setup](qa/setup.md).
+The tests in `internal/app` and `internal/store` need `CLX_TEST_DATABASE_DSN`. See [QA setup](qa/setup.md).

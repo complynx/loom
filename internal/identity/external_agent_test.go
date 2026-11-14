@@ -11,8 +11,47 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/complynx/loom/internal/config"
+	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/identity"
 )
+
+// The right to write a profile must come from the confirming caller's binding.
+// A role of the user must not grant it in a delegated request.
+func TestProfilePermissionComesFromCallerBinding(t *testing.T) {
+	t.Parallel()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	var issuer string
+	server := authenticationServer(t, key, &issuer)
+	defer server.Close()
+	issuer = server.URL
+	bound := map[string]bool{"chat.read": true}
+	auth, err := identity.New(config.Identity{
+		Issuer:              issuer,
+		Audience:            "harness",
+		ClientID:            "client",
+		ClientSecret:        "secret",
+		JWKSCacheTTLSeconds: 60,
+		ServiceSubjects:     []string{"svc"},
+		RolePermissions:     map[string][]string{"member": {"chat.read", domain.ExternalAgentProfilePermission}},
+	}, server.Client(), func(context.Context, *http.Request, domain.Principal) (identity.Binding, error) {
+		return identity.Binding{Actor: "svc", Permissions: bound}, nil
+	})
+	require.NoError(t, err)
+	delegated := httptest.NewRequest(http.MethodPut, "http://harness/v1/users/me/external-agent", nil)
+	delegated.Header.Set("Authorization", "Bearer service")
+	delegated.Header.Set("X-Subject-Token", "opaque")
+
+	p, err := auth.Authenticate(context.Background(), delegated)
+	require.NoError(t, err)
+	require.False(t, p.Has(domain.ExternalAgentProfilePermission))
+	bound = map[string]bool{domain.ExternalAgentProfilePermission: true}
+	p, err = auth.Authenticate(context.Background(), delegated)
+	require.NoError(t, err)
+	require.True(t, p.Has(domain.ExternalAgentProfilePermission))
+	require.Equal(t, "user", p.Subject)
+	require.Equal(t, "svc", p.Actor)
+}
 
 func TestExternalAuthenticationKeepsOnlyModulePermissions(t *testing.T) {
 	t.Parallel()

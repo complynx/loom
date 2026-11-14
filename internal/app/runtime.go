@@ -915,12 +915,11 @@ func (r *runtimeComponents) externalAgentOptions(
 		return nil
 	}
 	return &api.ExternalAgentOptions{
-		Service:        r.external,
-		Authenticate:   measuredAuth{auth: r.externalAuth, observer: observer}.AuthenticateExternal,
-		Resource:       cfg.ExternalAgents.Resource,
-		Issuer:         cfg.Identity.Issuer,
-		Scopes:         cfg.ExternalAgents.Scopes,
-		AllowedOrigins: cfg.ExternalAgents.AllowedOrigins,
+		Service:      r.external,
+		Authenticate: measuredAuth{auth: r.externalAuth, observer: observer}.AuthenticateExternal,
+		Resource:     cfg.ExternalAgents.Resource,
+		Issuer:       cfg.Identity.Issuer,
+		Scopes:       cfg.ExternalAgents.Scopes,
 	}
 }
 

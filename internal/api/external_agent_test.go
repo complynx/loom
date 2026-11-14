@@ -53,8 +53,6 @@ func externalHandler(service *externalService, options api.Options) http.Handler
 		Resource: "https://loom.example.com/mcp",
 		Issuer:   "https://id.example.com",
 		Scopes:   []string{"openid", "urn:example:aud"},
-
-		AllowedOrigins: []string{"https://app.example.com"},
 	}
 	return api.New(nil, authFunc(allowed), options)
 }
@@ -157,7 +155,9 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 		"object request ID": {
 			`{"jsonrpc":"2.0","id":{},"method":"tools/call","params":{"name":"script"}}`, http.StatusOK, -32600,
 		},
-		"missing method": {`{"jsonrpc":"2.0","id":1}`, http.StatusOK, -32600},
+		"missing method":             {`{"jsonrpc":"2.0","id":1}`, http.StatusOK, -32600},
+		"empty object":               {`{}`, http.StatusOK, -32600},
+		"wrong version notification": {`{"jsonrpc":"1.0","method":"ping"}`, http.StatusOK, -32600},
 	} {
 		response := mcpRequest(handler, "user-token", tc.body)
 		require.Equal(t, tc.status, response.Code, name)
@@ -179,22 +179,17 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 	clientResponse := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","id":7,"result":{}}`)
 	require.Equal(t, http.StatusAccepted, clientResponse.Code)
 
-	for origin, status := range map[string]int{
-		"https://app.example.com":  http.StatusOK,
-		"https://evil.example.com": http.StatusForbidden,
-	} {
-		browser := httptest.NewRequest(
-			http.MethodPost,
-			"/mcp",
-			strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`),
-		)
-		browser.Header.Set("Content-Type", "application/json")
-		browser.Header.Set("Authorization", "Bearer user-token")
-		browser.Header.Set("Origin", origin)
-		w = httptest.NewRecorder()
-		handler.ServeHTTP(w, browser)
-		require.Equal(t, status, w.Code, origin)
-	}
+	browser := httptest.NewRequest(
+		http.MethodPost,
+		"/mcp",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"script"}}`),
+	)
+	browser.Header.Set("Content-Type", "application/json")
+	browser.Header.Set("Authorization", "Bearer user-token")
+	browser.Header.Set("Origin", "https://page.example.com")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, browser)
+	require.Equal(t, http.StatusForbidden, w.Code, "a browser page must not use the endpoint")
 	require.Empty(t, service.calls)
 
 	disabled := api.New(nil, authFunc(allowed), api.Options{})

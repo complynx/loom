@@ -10,7 +10,6 @@ const (
 	defaultExternalAgentCallsPerMinute = 30
 	maxExternalAgentCallsPerMinute     = 600
 	maxExternalAgentScopes             = 32
-	maxExternalAgentOrigins            = 32
 )
 
 // ExternalAgents configures the MCP endpoint for a user's own agent. It is disabled by default.
@@ -23,9 +22,6 @@ type ExternalAgents struct {
 	Audience string `yaml:"audience"`
 	// Scopes are advertised to clients as the scopes to request from the issuer.
 	Scopes []string `yaml:"scopes"`
-	// AllowedOrigins lists the browser origins that may call the endpoint.
-	// A request without an Origin header is not a browser request and is accepted.
-	AllowedOrigins []string `yaml:"allowed_origins"`
 	// CallsPerMinute limits tool calls of one user. Zero uses the default.
 	CallsPerMinute int `yaml:"calls_per_minute"`
 }
@@ -40,8 +36,7 @@ func (c ExternalAgents) CallLimit() int {
 
 func (c ExternalAgents) Validate() error {
 	if !c.Enabled {
-		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || len(c.AllowedOrigins) > 0 ||
-			c.CallsPerMinute != 0 {
+		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || c.CallsPerMinute != 0 {
 			return errors.New("external agent settings require external_agents.enabled")
 		}
 		return nil
@@ -61,15 +56,6 @@ func (c ExternalAgents) Validate() error {
 	for _, scope := range c.Scopes {
 		if scope == "" || len(scope) > 256 || strings.ContainsFunc(scope, invalidScopeCharacter) {
 			return errors.New("external_agents.scopes contains an invalid scope")
-		}
-	}
-	if len(c.AllowedOrigins) > maxExternalAgentOrigins {
-		return errors.New("external_agents.allowed_origins has too many entries")
-	}
-	for _, origin := range c.AllowedOrigins {
-		u, err := url.Parse(origin)
-		if validateURL(origin) != nil || err != nil || u.Path != "" || origin != u.Scheme+"://"+u.Host {
-			return errors.New("external_agents.allowed_origins must contain origins such as https://app.example.com")
 		}
 	}
 	return nil

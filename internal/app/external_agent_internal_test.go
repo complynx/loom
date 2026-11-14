@@ -23,34 +23,9 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	t.Parallel()
 	repository, pool := searchToolStore(t)
 	ctx := t.Context()
-	var reads atomic.Int32
-	var afterRead atomic.Pointer[func()]
-	manifest := externalAgentManifest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/manifest":
-			_ = json.NewEncoder(w).Encode(manifest)
-		case "/read":
-			assert.Equal(t, "Bearer user-token", r.Header.Get("Authorization"))
-			var input struct {
-				OperationID string `json:"operation_id"`
-			}
-			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&input)) {
-				return
-			}
-			reads.Add(1)
-			if hook := afterRead.Swap(nil); hook != nil {
-				(*hook)()
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"operation_id": input.OperationID, "status": "succeeded", "result": map[string]bool{"ok": true},
-			})
-		default:
-			t.Errorf("unexpected service call %s", r.URL.Path)
-			http.Error(w, "unexpected", http.StatusForbidden)
-		}
-	}))
+	service := &externalFixtureService{t: t}
+	reads, afterRead, held := &service.reads, &service.afterRead, &service.held
+	server := httptest.NewServer(service)
 	t.Cleanup(server.Close)
 	address, err := url.Parse(server.URL)
 	require.NoError(t, err)
@@ -117,7 +92,7 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.JSONEq(t, `["undefined","undefined","undefined"]`, result)
 	result, failed = script(`return (await modules.help.list({module: "business"})).items.map(item => item.id);`)
 	require.False(t, failed, result)
-	require.JSONEq(t, `["business.read"]`, result)
+	require.JSONEq(t, `["business.read","business.ready"]`, result)
 	result, failed = script(`return (await modules.help.read({module: "business", method: "secret"}));`)
 	require.True(t, failed)
 	require.Contains(t, result, "not_found")
@@ -181,6 +156,26 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 3, reads.Load())
 
+	hold := &heldRead{started: make(chan struct{}), release: make(chan struct{})}
+	held.Store(hold)
+	result, failed = script(`modules.business.read({}); await modules.business.ready({}); return "done";`)
+	close(hold.release)
+	held.Store(nil)
+	require.False(t, failed, result)
+	var unawaited string
+	require.NoError(
+		t,
+		pool.QueryRow(ctx, "SELECT text FROM chat_events WHERE chat_id=$1 ORDER BY seq DESC LIMIT 1", chat.ID).
+			Scan(&unawaited),
+	)
+	require.Equal(
+		t,
+		"External agent claude-desktop ran a read script. Calls: business.read x1 (1 unfinished), business.ready x1. Outcome: succeeded.",
+		unawaited,
+		"a call that the script did not wait for must enter the record",
+	)
+	require.EqualValues(t, 4, reads.Load())
+
 	revoke := func() {
 		_, revokeErr := repository.PutExternalAgentProfile(
 			ctx,
@@ -195,7 +190,7 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		catch (failure) { return {first, error: failure.error}; }`)
 	require.False(t, failed, result)
 	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
-	require.EqualValues(t, 4, reads.Load(), "a revoked profile must block the next call of a running script")
+	require.EqualValues(t, 5, reads.Load(), "a revoked profile must block the next call of a running script")
 }
 
 func TestExternalAgentLimiterBoundsOneUserPerMinute(t *testing.T) {
@@ -207,6 +202,63 @@ func TestExternalAgentLimiterBoundsOneUserPerMinute(t *testing.T) {
 	require.False(t, limiter.allow("alice", now.Add(2*time.Second)))
 	require.True(t, limiter.allow("bob", now.Add(2*time.Second)))
 	require.True(t, limiter.allow("alice", now.Add(time.Minute)))
+}
+
+// heldRead keeps one service read open until the test releases it.
+type heldRead struct{ started, release chan struct{} }
+
+// externalFixtureService is a business service with marked and unmarked reads.
+// afterRead runs once inside the next read. held keeps the next read open and
+// lets /ready return only after that read arrived.
+type externalFixtureService struct {
+	t         *testing.T
+	reads     atomic.Int32
+	afterRead atomic.Pointer[func()]
+	held      atomic.Pointer[heldRead]
+}
+
+func (s *externalFixtureService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.URL.Path == "/manifest" {
+		_ = json.NewEncoder(w).Encode(externalAgentManifest())
+		return
+	}
+	if r.URL.Path != "/read" && r.URL.Path != "/ready" {
+		s.t.Errorf("unexpected service call %s", r.URL.Path)
+		http.Error(w, "unexpected", http.StatusForbidden)
+		return
+	}
+	assert.Equal(s.t, "Bearer user-token", r.Header.Get("Authorization"))
+	var input struct {
+		OperationID string `json:"operation_id"`
+	}
+	if !assert.NoError(s.t, json.NewDecoder(r.Body).Decode(&input)) {
+		return
+	}
+	hold := s.held.Load()
+	if r.URL.Path == "/read" {
+		s.read(r, hold)
+	} else if hold != nil {
+		<-hold.started
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"operation_id": input.OperationID, "status": "succeeded", "result": map[string]bool{"ok": true},
+	})
+}
+
+func (s *externalFixtureService) read(r *http.Request, hold *heldRead) {
+	s.reads.Add(1)
+	if hook := s.afterRead.Swap(nil); hook != nil {
+		(*hook)()
+	}
+	if hold == nil {
+		return
+	}
+	close(hold.started)
+	select {
+	case <-hold.release:
+	case <-r.Context().Done():
+	}
 }
 
 func externalAgentManifest() modules.Manifest {
@@ -238,7 +290,7 @@ func externalAgentManifest() modules.Manifest {
 			Description: "Business reads",
 			Permissions: []string{"business.access"},
 			Discovery:   "static",
-			Methods:     []modules.Method{method("read", true), method("secret", false)},
+			Methods:     []modules.Method{method("read", true), method("ready", true), method("secret", false)},
 		}},
 	}
 }

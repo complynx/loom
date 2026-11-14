@@ -408,10 +408,15 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 			case <-c.Done():
 				return nil, c.Err()
 			}
-			result, callErr := a.dispatch(c, current, remote, module, method, raw)
-			if module != helpModule {
-				calls.add(module, method, callErr != nil)
+			if module == helpModule {
+				return a.dispatch(c, current, remote, module, method, raw)
 			}
+			finish := calls.start(module, method)
+			if finish == nil {
+				return nil, context.Canceled
+			}
+			result, callErr := a.dispatch(c, current, remote, module, method, raw)
+			finish(callErr != nil)
 			return result, callErr
 		},
 	)
@@ -423,7 +428,11 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 		bindings,
 		loggedScriptBroker(a.tools.observer, "", safeScriptBroker(broker)),
 	)
-	if recordErr := a.record(ctx, session, executionID, calls.list(), scriptErr); recordErr != nil {
+	// A script can end while a call that it did not wait for is still in flight.
+	// Close the count first, so the record contains that call, then stop the work.
+	started := calls.close()
+	cancel()
+	if recordErr := a.record(ctx, session, executionID, started, scriptErr); recordErr != nil {
 		return nil, domain.NewError(http.StatusServiceUnavailable, "history_unavailable")
 	}
 	if scriptErr != nil {
@@ -540,6 +549,9 @@ func externalActionText(action domain.ExternalAction) string {
 		if call.Failed > 0 {
 			part += fmt.Sprintf(" (%d failed)", call.Failed)
 		}
+		if call.Unfinished > 0 {
+			part += fmt.Sprintf(" (%d unfinished)", call.Unfinished)
+		}
 		parts = append(parts, part)
 	}
 	text := fmt.Sprintf(
@@ -555,14 +567,22 @@ func externalActionText(action domain.ExternalAction) string {
 }
 
 // externalCalls counts the module calls of one script. Scripts call in parallel.
+// A call is counted when it starts, so a call that the script did not wait for
+// still enters the record.
 type externalCalls struct {
 	mu     sync.Mutex
+	closed bool
 	counts map[string]*domain.ExternalActionCall
 }
 
-func (c *externalCalls) add(module, method string, failed bool) {
+// start counts one call and returns the function that reports its end. It returns
+// nil after close: the script has ended and the call must not be dispatched.
+func (c *externalCalls) start(module, method string) func(failed bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
 	if c.counts == nil {
 		c.counts = map[string]*domain.ExternalActionCall{}
 	}
@@ -573,14 +593,23 @@ func (c *externalCalls) add(module, method string, failed bool) {
 		c.counts[key] = entry
 	}
 	entry.Count++
-	if failed {
-		entry.Failed++
+	entry.Unfinished++
+	return func(failed bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		entry.Unfinished--
+		if failed {
+			entry.Failed++
+		}
 	}
 }
 
-func (c *externalCalls) list() []domain.ExternalActionCall {
+// close refuses later calls and returns the calls so far. A call that is still
+// in flight is reported as unfinished.
+func (c *externalCalls) close() []domain.ExternalActionCall {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.closed = true
 	out := make([]domain.ExternalActionCall, 0, len(c.counts))
 	for _, entry := range c.counts {
 		out = append(out, *entry)
