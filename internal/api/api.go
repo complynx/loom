@@ -100,11 +100,15 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 				"conversation_recovery": map[string]any{"version": 1, "text_only": true},
 			}
 			if options.ExternalAgent != nil {
+				tokenServices := []string{}
+				if options.ExternalAgent.TokenServices != nil {
+					tokenServices = options.ExternalAgent.TokenServices()
+				}
 				capabilities["external_agent"] = externalAgentCapability{
-					Version:  1,
-					Resource: options.ExternalAgent.Resource,
-					Access:   []string{"history", "memory"},
-					Services: options.ExternalAgent.Services,
+					Version:       1,
+					Resource:      options.ExternalAgent.Resource,
+					Access:        []string{"history", "memory"},
+					TokenServices: tokenServices,
 				}
 			}
 			write(w, http.StatusOK, capabilities)

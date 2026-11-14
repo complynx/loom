@@ -88,3 +88,75 @@ func TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts(t *testing.T) {
 		require.ErrorIs(t, err, modules.ErrUnavailable)
 	}
 }
+
+// Loom sends the agent's token only to a service that declared a token endpoint,
+// together with the secret that proves that the request comes from Loom.
+func TestExternalTokenServiceGetsSecretAndSubjectToken(t *testing.T) {
+	t.Parallel()
+	serve := func(manifest modules.Manifest, requests *atomic.Int32) *httptest.Server {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/manifest" {
+				_ = json.NewEncoder(w).Encode(manifest)
+				return
+			}
+			requests.Add(1)
+			var request struct {
+				Version int    `json:"protocol_version"`
+				Subject string `json:"subject_token"`
+			}
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			assert.Equal(t, "/external-agent/token", r.URL.Path)
+			assert.Equal(t, "Bearer loom-secret", r.Header.Get("Authorization"))
+			assert.Equal(t, 1, request.Version)
+			assert.Equal(t, "agent-token", request.Subject)
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "service-token", "expires_in": 600})
+		}))
+		t.Cleanup(server.Close)
+		return server
+	}
+	var requests, strayRequests atomic.Int32
+	issuing := example(t)
+	issuing.Summary = "Chat client."
+	issuing.Modules = []modules.Module{}
+	issuing.ExternalAgentTokens = &modules.ExternalAgentTokens{Path: "/external-agent/token"}
+	plain := example(t)
+	plain.ServiceID = "plain-service"
+	plain.Modules = []modules.Module{}
+	traversal := example(t)
+	traversal.ServiceID = "traversal-service"
+	traversal.Modules = []modules.Module{}
+	traversal.ExternalAgentTokens = &modules.ExternalAgentTokens{Path: "/tokens/../manifest"}
+	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
+		return []modules.Endpoint{
+			endpoint(t, serve(issuing, &requests).URL, "one"),
+			endpoint(t, serve(plain, &strayRequests).URL, "two"),
+			endpoint(t, serve(traversal, &strayRequests).URL, "three"),
+		}, nil
+	}), modules.Options{})
+	require.NoError(t, err)
+	require.Error(t, registry.Refresh(context.Background()), "a token path with traversal must be refused")
+	require.Equal(
+		t,
+		[]modules.TokenService{{ServiceID: issuing.ServiceID, Summary: "Chat client."}},
+		registry.ExternalTokenServices(),
+	)
+
+	token, expiresIn, err := registry.ExternalToken(
+		context.Background(),
+		issuing.ServiceID,
+		"loom-secret",
+		"agent-token",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "service-token", token)
+	require.EqualValues(t, 600, *expiresIn)
+	for _, refused := range [][2]string{
+		{"plain-service", "loom-secret"}, {"traversal-service", "loom-secret"}, {"unknown", "loom-secret"},
+		{issuing.ServiceID, ""},
+	} {
+		_, _, err = registry.ExternalToken(context.Background(), refused[0], refused[1], "agent-token")
+		require.ErrorIs(t, err, modules.ErrUnavailable, refused[0])
+	}
+	require.EqualValues(t, 1, requests.Load())
+	require.Zero(t, strayRequests.Load(), "the agent's token must not reach an undeclared service")
+}

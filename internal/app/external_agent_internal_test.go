@@ -56,12 +56,22 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600},
 		},
 	}
-	// The service must receive the exchanged token, never the agent's own token.
-	serviceToken := func(_ context.Context, held domain.ExternalCaller) (string, error) {
+	// The service must receive the token of the selected token service, never
+	// the agent's own token.
+	var selected atomic.Pointer[string]
+	serviceToken := func(_ context.Context, held domain.ExternalCaller, service string) (string, error) {
 		assert.Equal(t, "user-token", held.Token)
+		selected.Store(&service)
 		return "service-token", nil
 	}
-	agent := newExternalAgent(tools, verify, serviceToken)
+	var withdrawn atomic.Bool
+	one := func() []modules.TokenService {
+		if withdrawn.Load() {
+			return nil
+		}
+		return []modules.TokenService{{ServiceID: "chat", Summary: "Chat client."}}
+	}
+	agent := newExternalAgent(tools, verify, one, serviceToken)
 	script := func(code string) (string, bool) {
 		arguments, marshalErr := json.Marshal(map[string]string{"code": code})
 		require.NoError(t, marshalErr)
@@ -75,9 +85,15 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	offered, err := agent.Tools(ctx, caller)
 	require.NoError(t, err)
 	require.Equal(t, externalDisabledDescription, offered[0].Description)
+	require.NotContains(
+		t,
+		string(offered[0].InputSchema),
+		"token_service",
+		"a caller without access must not learn them",
+	)
 
 	tools.cfg.ExternalAgents.CallsPerMinute = 1
-	limited := newExternalAgent(tools, verify, serviceToken)
+	limited := newExternalAgent(tools, verify, one, serviceToken)
 	denied, _ := limited.Call(ctx, caller, externalScriptTool, json.RawMessage(`{"code":"return 1"}`))
 	require.Contains(t, string(denied), "external_agent_disabled")
 	denied, _ = limited.Call(ctx, caller, externalScriptTool, json.RawMessage(`{"code":"return 1"}`))
@@ -110,9 +126,12 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.Contains(t, offered[0].Description, `"id":"business"`)
 	require.Contains(t, offered[0].Description, `"id":"history"`)
 	require.NotContains(t, offered[0].Description, `"id":"memory"`)
+	require.Contains(t, offered[0].Description, `[{"id":"chat","summary":"Chat client."}]`)
+	require.Contains(t, string(offered[0].InputSchema), `"enum":["chat"]`)
+	require.Equal(t, "chat", *selected.Load(), "the only token service needs no selection")
 
 	tools.cfg.ExternalAgents.CallsPerMinute = 600
-	closed := newExternalAgent(tools, verify, nil)
+	closed := newExternalAgent(tools, verify, nil, nil)
 	withoutServices, closedFailed := closed.Call(
 		ctx,
 		caller,
@@ -120,10 +139,15 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		json.RawMessage(`{"code":"return [typeof modules.business, typeof modules.history];"}`),
 	)
 	require.False(t, closedFailed, string(withoutServices))
-	require.JSONEq(t, `["undefined","object"]`, string(withoutServices), "service methods need the token exchange")
-	refused := newExternalAgent(tools, verify, func(context.Context, domain.ExternalCaller) (string, error) {
-		return "", identity.ErrUnauthorized
-	})
+	require.JSONEq(t, `["undefined","object"]`, string(withoutServices), "service methods need a token service")
+	refused := newExternalAgent(
+		tools,
+		verify,
+		one,
+		func(context.Context, domain.ExternalCaller, string) (string, error) {
+			return "", identity.ErrUnauthorized
+		},
+	)
 	withoutExchange, refusedFailed := refused.Call(
 		ctx,
 		caller,
@@ -138,7 +162,7 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		"a failed exchange closes only service methods",
 	)
 	// A failed exchange is not the agent's fault: it must not read as a sign-in problem.
-	_, exchangeErr := refused.servicePrincipal(ctx, externalSession{})
+	_, exchangeErr := refused.servicePrincipal(ctx, externalSession{tokenService: "chat"})
 	require.ErrorIs(t, exchangeErr, modules.ErrUnavailable)
 	require.NotErrorIs(t, exchangeErr, identity.ErrUnauthorized)
 
@@ -182,6 +206,34 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	var runs int
 	require.NoError(t, pool.QueryRow(ctx, "SELECT count(*) FROM runs").Scan(&runs))
 	require.Zero(t, runs, "an external action must not create a run")
+
+	// With several token services the agent selects one in each call: each can
+	// give other rights, so Loom does not choose.
+	several := newExternalAgent(tools, verify, func() []modules.TokenService {
+		return append(one(), modules.TokenService{ServiceID: "other", Summary: "Other client."})
+	}, serviceToken)
+	offered, err = several.Tools(ctx, caller)
+	require.NoError(t, err)
+	require.Contains(t, string(offered[0].InputSchema), `"enum":["chat","other"]`)
+	require.Contains(t, offered[0].Description, `{"id":"other","summary":"Other client."}`)
+	require.NotContains(t, offered[0].Description, `"id":"business"`)
+	choose := func(arguments string) string {
+		result, _ := several.Call(ctx, caller, externalScriptTool, json.RawMessage(arguments))
+		return string(result)
+	}
+	require.JSONEq(
+		t,
+		`["undefined",["token_service_not_selected; pass token_service to the script tool to reach service methods"]]`,
+		choose(`{"code":"return [typeof modules.business, (await modules.help.list({})).warnings];"}`),
+	)
+	selected.Store(nil)
+	require.JSONEq(
+		t,
+		`{"ok":true}`,
+		choose(`{"code":"return await modules.business.read({});","token_service":"other"}`),
+	)
+	require.Equal(t, "other", *selected.Load())
+	require.Contains(t, choose(`{"code":"return 1","token_service":"unknown"}`), "unknown_token_service")
 
 	profile, err = repository.PutExternalAgentProfile(
 		ctx,
@@ -238,6 +290,16 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	const twoReads = `const first = await modules.business.read({});
 		try { await modules.business.read({}); return "second call was allowed"; }
 		catch (failure) { return {first, error: failure.error}; }`
+	// The token of a withdrawn token service is still held, but must not be used.
+	withdraw := func() { withdrawn.Store(true) }
+	afterRead.Store(&withdraw)
+	before = reads.Load()
+	result, failed = script(twoReads)
+	withdrawn.Store(false)
+	require.False(t, failed, result)
+	require.JSONEq(t, `{"first":{"ok":true},"error":"method_unavailable"}`, result)
+	require.Equal(t, before+1, reads.Load(), "a withdrawn token service must block the next call of a running script")
+
 	revokeToken := func() { tokenRevoked.Store(true) }
 	afterRead.Store(&revokeToken)
 	before = reads.Load()

@@ -50,10 +50,10 @@ func externalHandler(service *externalService, options api.Options) http.Handler
 				Token:     "user-token",
 			}, nil
 		},
-		Resource: "https://loom.example.com/mcp",
-		Issuer:   "https://id.example.com",
-		Scopes:   []string{"openid", "urn:example:aud"},
-		Services: true,
+		Resource:      "https://loom.example.com/mcp",
+		Issuer:        "https://id.example.com",
+		Scopes:        []string{"openid", "urn:example:aud"},
+		TokenServices: func() []string { return []string{"chat-client"} },
 	}
 	return api.New(nil, authFunc(allowed), options)
 }
@@ -217,13 +217,13 @@ func TestExternalAgentProfileRoutesRequireConfirmingPermission(t *testing.T) {
 	require.Equal(t, http.StatusOK, capabilities.Code)
 	var body struct {
 		ExternalAgent struct {
-			Resource string   `json:"resource"`
-			Access   []string `json:"access"`
-			Services bool     `json:"services"`
+			Resource      string   `json:"resource"`
+			Access        []string `json:"access"`
+			TokenServices []string `json:"token_services"`
 		} `json:"external_agent"`
 	}
 	require.NoError(t, json.Unmarshal(capabilities.Body.Bytes(), &body))
 	require.Equal(t, "https://loom.example.com/mcp", body.ExternalAgent.Resource)
 	require.Equal(t, []string{"history", "memory"}, body.ExternalAgent.Access)
-	require.True(t, body.ExternalAgent.Services)
+	require.Equal(t, []string{"chat-client"}, body.ExternalAgent.TokenServices)
 }

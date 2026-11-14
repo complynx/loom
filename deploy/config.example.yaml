@@ -124,11 +124,8 @@ external_agents:
   # resource: "https://loom.example.com/mcp"
   # audience: "replace-with-mcp-audience" # Required; must differ from identity.audience.
   # scopes: ["openid"]
-  # service_token: # Optional token exchange for marked service reads.
-  #   client_id: "replace-with-exchange-client"
-  #   client_secret: "${CLX_MCP_EXCHANGE_SECRET}"
-  #   audiences: ["replace-with-service-audience"]
-  #   scopes: ["openid"]
+  # token_services: # Optional. Approved token services for marked service reads: service ID -> secret.
+  #   replace-with-service-id: "${CLX_MCP_TOKEN_SERVICE_SECRET}"
   # calls_per_minute: 30
 
 # Choose proxy SSO or a separate public PKCE client; see docs/operator-login.md.

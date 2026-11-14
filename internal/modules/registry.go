@@ -135,13 +135,15 @@ type Caller struct {
 	Auth        CallerAuth `json:"auth"`
 }
 type Manifest struct {
-	Summary         string   `json:"summary,omitempty"`
-	ProtocolVersion int      `json:"protocol_version"`
-	ServiceID       string   `json:"service_id"`
-	Revision        string   `json:"revision"`
-	Description     string   `json:"description"`
-	Caller          *Caller  `json:"caller,omitempty"`
-	Modules         []Module `json:"modules"`
+	Summary         string  `json:"summary,omitempty"`
+	ProtocolVersion int     `json:"protocol_version"`
+	ServiceID       string  `json:"service_id"`
+	Revision        string  `json:"revision"`
+	Description     string  `json:"description"`
+	Caller          *Caller `json:"caller,omitempty"`
+	// ExternalAgentTokens publishes the service as a token service for external agents.
+	ExternalAgentTokens *ExternalAgentTokens `json:"external_agent_tokens,omitempty"`
+	Modules             []Module             `json:"modules"`
 }
 
 // Endpoint addresses come from trusted Docker metadata, never model input or DNS.
@@ -363,6 +365,11 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return m, err
+	}
+	if m.ExternalAgentTokens != nil {
+		if err := validPath(m.ExternalAgentTokens.Path); err != nil {
+			return m, err
+		}
 	}
 	seen := map[string]bool{}
 	for _, module := range m.Modules {

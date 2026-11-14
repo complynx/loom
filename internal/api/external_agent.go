@@ -47,16 +47,17 @@ type ExternalAgentOptions struct {
 	// Resource is the public URL of the MCP endpoint. Issuer is its authorization server.
 	Resource, Issuer string
 	Scopes           []string
-	// Services reports that external agents can call marked service methods.
-	Services bool
+	// TokenServices lists the IDs of the token services that are available now.
+	// External agents can call marked service methods only through one of them.
+	TokenServices func() []string
 }
 
 // externalAgentCapability tells a registered client that it can offer external agents.
 type externalAgentCapability struct {
-	Version  int      `json:"version"`
-	Resource string   `json:"resource"`
-	Access   []string `json:"access"`
-	Services bool     `json:"services"`
+	Version       int      `json:"version"`
+	Resource      string   `json:"resource"`
+	Access        []string `json:"access"`
+	TokenServices []string `json:"token_services"`
 }
 
 // rpcRequest is one incoming JSON-RPC message. Result and Error identify a client response.

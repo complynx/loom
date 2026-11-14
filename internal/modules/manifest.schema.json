@@ -11,6 +11,12 @@
     "description": {"type": "string", "maxLength": 4000},
     "summary": {"$ref": "#/$defs/summary"},
     "caller": {"$ref": "#/$defs/caller"},
+    "external_agent_tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {"path": {"$ref": "#/$defs/path"}}
+    },
     "modules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/module"}}
   },
   "$defs": {

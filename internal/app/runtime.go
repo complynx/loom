@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -443,11 +444,8 @@ func externalAuthenticator(
 ) (*identity.Authenticator, error) {
 	identityConfig := cfg.Identity
 	identityConfig.Audience = cfg.ExternalAgents.Audience
-	// An agent's token must open only the MCP endpoint. With a service audience it
-	// could call a service directly, past the method mark and the history record.
-	identityConfig.RejectAudiences = append(
-		[]string{cfg.Identity.Audience},
-		cfg.ExternalAgents.ServiceToken.Audiences...)
+	// An agent's token must open only the MCP endpoint, never the /v1 API.
+	identityConfig.RejectAudience = cfg.Identity.Audience
 	auth, err := identity.New(identityConfig, &http.Client{Transport: telemetry.TraceTransport{}}, nil)
 	if err != nil {
 		return nil, err
@@ -471,7 +469,7 @@ func runtimeAuthenticator(
 ) (*identity.Authenticator, error) {
 	identityConfig := cfg.Identity
 	if cfg.ExternalAgents.Enabled {
-		identityConfig.RejectAudiences = []string{cfg.ExternalAgents.Audience}
+		identityConfig.RejectAudience = cfg.ExternalAgents.Audience
 	}
 	auth, err := identity.New(
 		identityConfig,
@@ -910,22 +908,26 @@ type runtimeComponents struct {
 	externalAuth *identity.Authenticator
 }
 
-// externalServiceTokens returns the token exchange for downstream services, or
-// nil when the operator did not configure it.
+// externalTokenServices lists the token services that the operator approved
+// and that are discovered now.
+func externalTokenServices(cfg config.Config, registry *modules.Registry) []modules.TokenService {
+	return slices.DeleteFunc(registry.ExternalTokenServices(), func(service modules.TokenService) bool {
+		return cfg.ExternalAgents.TokenServices[service.ServiceID] == ""
+	})
+}
+
+// externalServiceTokens gets service tokens from the approved token services.
+// An unapproved service has no secret, so the registry refuses the request.
 func externalServiceTokens(
 	cfg config.Config,
 	auth *identity.Authenticator,
-) func(context.Context, domain.ExternalCaller) (string, error) {
-	exchange := cfg.ExternalAgents.ServiceToken
-	if !exchange.Enabled() {
-		return nil
-	}
-	return identity.NewServiceTokens(auth, identity.ServiceTokenExchange{
-		ClientID:     exchange.ClientID,
-		ClientSecret: exchange.ClientSecret,
-		Audiences:    exchange.Audiences,
-		Scopes:       exchange.Scopes,
-		Forbidden:    []string{cfg.Identity.Audience, cfg.ExternalAgents.Audience},
+	registry *modules.Registry,
+) func(context.Context, domain.ExternalCaller, string) (string, error) {
+	return identity.NewServiceTokens(auth, identity.ServiceTokenSource{
+		Fetch: func(ctx context.Context, service, subjectToken string) (string, *int64, error) {
+			return registry.ExternalToken(ctx, service, cfg.ExternalAgents.TokenServices[service], subjectToken)
+		},
+		Forbidden: []string{cfg.Identity.Audience, cfg.ExternalAgents.Audience},
 	}).For
 }
 
@@ -943,7 +945,13 @@ func (r *runtimeComponents) externalAgentOptions(
 		Resource:     cfg.ExternalAgents.Resource,
 		Issuer:       cfg.Identity.Issuer,
 		Scopes:       cfg.ExternalAgents.Scopes,
-		Services:     cfg.ExternalAgents.ServiceToken.Enabled(),
+		TokenServices: func() []string {
+			ids := []string{}
+			for _, service := range externalTokenServices(cfg, r.registry) {
+				ids = append(ids, service.ServiceID)
+			}
+			return ids
+		},
 	}
 }
 
@@ -1064,7 +1072,11 @@ func (r *runtimeComponents) initAgent(
 			repository: r.repository,
 			executor:   r.executor,
 			observer:   observer,
-		}, r.externalAuth.VerifyExternal, externalServiceTokens(cfg, r.externalAuth))
+		},
+			r.externalAuth.VerifyExternal,
+			func() []modules.TokenService { return externalTokenServices(cfg, r.registry) },
+			externalServiceTokens(cfg, r.externalAuth, r.registry),
+		)
 	}
 
 	return nil

@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"net/url"
-	"slices"
+	"regexp"
 	"strings"
 )
 
@@ -11,7 +11,12 @@ const (
 	defaultExternalAgentCallsPerMinute = 30
 	maxExternalAgentCallsPerMinute     = 600
 	maxExternalAgentScopes             = 32
+	maxExternalTokenServices           = 32
+	minExternalTokenSecret             = 16
+	maxExternalTokenSecret             = 512
 )
+
+var externalTokenServiceID = regexp.MustCompile("^[a-z][a-z0-9_.-]{0,127}$")
 
 // ExternalAgents configures the MCP endpoint for a user's own agent. It is disabled by default.
 type ExternalAgents struct {
@@ -23,10 +28,11 @@ type ExternalAgents struct {
 	Audience string `yaml:"audience"`
 	// Scopes are advertised to clients as the scopes to request from the issuer.
 	Scopes []string `yaml:"scopes"`
-	// ServiceToken lets external agents call marked service methods. Loom exchanges
-	// the agent's token for a separate service token. Without it only help,
-	// history and memory are available.
-	ServiceToken ExternalServiceToken `yaml:"service_token"`
+	// TokenServices approves the services that issue service tokens for external
+	// agents. The key is a service ID; the value is the secret that authenticates
+	// Loom to that service. Loom sends the agent's token only to these services.
+	// Without an entry only help, history and memory are available.
+	TokenServices map[string]string `yaml:"token_services" json:"-"`
 	// CallsPerMinute limits tool calls of one user. Zero uses the default.
 	CallsPerMinute int `yaml:"calls_per_minute"`
 }
@@ -43,7 +49,7 @@ func (c ExternalAgents) CallLimit() int {
 func (c ExternalAgents) Validate(identityAudience string) error {
 	if !c.Enabled {
 		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || c.CallsPerMinute != 0 ||
-			!c.ServiceToken.empty() {
+			len(c.TokenServices) > 0 {
 			return errors.New("external agent settings require external_agents.enabled")
 		}
 		return nil
@@ -66,42 +72,16 @@ func (c ExternalAgents) Validate(identityAudience string) error {
 	if !validScopes(c.Scopes) {
 		return errors.New("external_agents.scopes contains an invalid scope")
 	}
-	return c.ServiceToken.validate(identityAudience, c.Audience)
-}
-
-// ExternalServiceToken configures the OAuth token exchange that gives Loom a
-// separate token for downstream services. The external agent never receives it.
-type ExternalServiceToken struct {
-	// ClientID and ClientSecret authenticate Loom at the issuer's token endpoint.
-	ClientID     string `yaml:"client_id"`
-	ClientSecret string `yaml:"client_secret"`
-	// Audiences are the audiences of the downstream services.
-	Audiences []string `yaml:"audiences"`
-	// Scopes are requested for the service token.
-	Scopes []string `yaml:"scopes"`
-}
-
-// Enabled reports that external agents can call service methods.
-func (c ExternalServiceToken) Enabled() bool { return c.ClientID != "" }
-
-func (c ExternalServiceToken) empty() bool {
-	return c.ClientID == "" && c.ClientSecret == "" && len(c.Audiences) == 0 && len(c.Scopes) == 0
-}
-
-// validate refuses a service token that would also open one of Loom's endpoints.
-func (c ExternalServiceToken) validate(loomAudiences ...string) error {
-	if c.empty() {
-		return nil
+	if len(c.TokenServices) > maxExternalTokenServices {
+		return errors.New("external_agents.token_services has too many entries")
 	}
-	if c.ClientID == "" || c.ClientSecret == "" || len(c.Audiences) == 0 {
-		return errors.New("external_agents.service_token requires client_id, client_secret and audiences")
-	}
-	if len(c.Audiences) > maxExternalAgentScopes || len(c.Scopes) > maxExternalAgentScopes || !validScopes(c.Scopes) {
-		return errors.New("external_agents.service_token has invalid audiences or scopes")
-	}
-	for _, audience := range c.Audiences {
-		if audience == "" || len(audience) > 256 || slices.Contains(loomAudiences, audience) {
-			return errors.New("external_agents.service_token.audiences must name downstream services, not Loom")
+	for service, secret := range c.TokenServices {
+		if !externalTokenServiceID.MatchString(service) || len(secret) < minExternalTokenSecret ||
+			len(secret) > maxExternalTokenSecret ||
+			strings.ContainsFunc(secret, func(r rune) bool { return r <= ' ' || r > '~' }) {
+			return errors.New(
+				"external_agents.token_services maps a service ID to a secret of 16..512 printable characters",
+			)
 		}
 	}
 	return nil

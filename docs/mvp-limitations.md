@@ -34,7 +34,7 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 ## Not implemented
 
 - Cross-org delegation is intentionally denied. Supporting it needs a separate trust contract.
-- Automatic renewal of a delegated user's token, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth. The [service token](external-agents.md#service-token) exchange for external agents is a separate function.
+- Automatic renewal of a delegated user's token, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth. The [token service](external-agents.md#token-services) request for external agents is a separate function.
 - Incoming opaque service secrets. Services use verified Zitadel tokens and trusted caller bindings.
 - Provider token deltas and WebSocket. SSE contains durable run events; steering applies at step boundaries.
 - A general parallel scheduler for model tool calls. Scripts can use parallel host RPC.
@@ -43,7 +43,7 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 - A common dependency circuit breaker, automatic late-usage retrieval or a global platform spend cap. Bounded provider retry and sponsored recovery already exist.
 - Remote cancellation through manifest cancel_path. Cancel is not rollback.
 - External agent writes, memory writes, files, skills and paid tools. External agents have read methods only; their rate limit is local to one API process.
-- Acceptance of the external agent service token exchange with the installed issuer. The exchange has fixture tests only.
+- Acceptance of an external agent token service in the installation. The request has fixture tests only.
 - Object storage, chunk-upload sessions, cross-host blob transfer or native PDF/audio/video model input. The worker processes these formats; supported images can attach directly.
 - A proven private-inference boundary, automatic memory extraction, memory administration UI, subagents or proactive runs.
 - Privileged retention changes for all existing resources or secure erasure of every checkpoint/audit/backup trace.

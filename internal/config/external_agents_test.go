@@ -31,13 +31,17 @@ func TestExternalAgentsConfig(t *testing.T) {
 		{"scope with space", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{"open id"} }), false},
 		{"scope with quote", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{`open"id`} }), false},
 		{"missing audience", enabled(func(c *config.ExternalAgents) { c.Audience = "" }), false},
-		{"service token", enabled(func(c *config.ExternalAgents) { c.ServiceToken = serviceToken("service") }), true},
-		{"service token for Loom", enabled(func(c *config.ExternalAgents) { c.ServiceToken = serviceToken("loom") }), false},
-		{"service token for MCP", enabled(func(c *config.ExternalAgents) { c.ServiceToken = serviceToken("mcp") }), false},
-		{"service token without secret", enabled(func(c *config.ExternalAgents) {
-			c.ServiceToken = config.ExternalServiceToken{ClientID: "exchange", Audiences: []string{"service"}}
+		{"token service", enabled(func(c *config.ExternalAgents) { c.TokenServices = tokenService("chat-client") }), true},
+		{"token service with a short secret", enabled(func(c *config.ExternalAgents) {
+			c.TokenServices = map[string]string{"chat-client": "short"}
 		}), false},
-		{"service token while disabled", config.ExternalAgents{ServiceToken: serviceToken("service")}, false},
+		{"token service with a space in the secret", enabled(func(c *config.ExternalAgents) {
+			c.TokenServices = map[string]string{"chat-client": "sixteen characters"}
+		}), false},
+		{"token service with an invalid ID", enabled(func(c *config.ExternalAgents) {
+			c.TokenServices = tokenService("Chat Client")
+		}), false},
+		{"token service while disabled", config.ExternalAgents{TokenServices: tokenService("chat-client")}, false},
 		{"shared audience", enabled(func(c *config.ExternalAgents) { c.Audience = "loom" }), false},
 		{"limit", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 600 }), true},
 		{"limit too high", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 601 }), false},
@@ -55,6 +59,6 @@ func TestExternalAgentsConfig(t *testing.T) {
 	}
 }
 
-func serviceToken(audience string) config.ExternalServiceToken {
-	return config.ExternalServiceToken{ClientID: "exchange", ClientSecret: "secret", Audiences: []string{audience}}
+func tokenService(id string) map[string]string {
+	return map[string]string{id: "sixteen-characters"}
 }
