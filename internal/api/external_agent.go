@@ -79,10 +79,11 @@ const (
 )
 
 // kind classifies the message. A call has a method and a string or number ID.
-// A notification has a method and no ID. A client response has an ID and a
-// result or error, and no method. Every other shape is invalid.
+// A notification has a method and no ID. A client response has an ID and either
+// a result or an error, and no method. Every other shape is invalid.
 func (r rpcRequest) kind() rpcKind {
-	if r.JSONRPC != jsonRPCVersion {
+	answered := len(r.Result) > 0 || len(r.Error) > 0
+	if r.JSONRPC != jsonRPCVersion || (answered && r.Method != "") || (len(r.Result) > 0 && len(r.Error) > 0) {
 		return rpcInvalid
 	}
 	if len(r.ID) == 0 {
@@ -103,7 +104,7 @@ func (r rpcRequest) kind() rpcKind {
 	if r.Method != "" {
 		return rpcCall
 	}
-	if len(r.Result) > 0 || len(r.Error) > 0 {
+	if answered {
 		return rpcSilent
 	}
 	return rpcInvalid

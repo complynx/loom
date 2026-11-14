@@ -157,8 +157,11 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 		"object request ID": {
 			`{"jsonrpc":"2.0","id":{},"method":"tools/call","params":{"name":"script"}}`, http.StatusOK, -32600,
 		},
-		"missing method":             {`{"jsonrpc":"2.0","id":1}`, http.StatusOK, -32600},
-		"empty object":               {`{}`, http.StatusOK, -32600},
+		"missing method": {`{"jsonrpc":"2.0","id":1}`, http.StatusOK, -32600},
+		"empty object":   {`{}`, http.StatusOK, -32600},
+		"call with a result": {
+			`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"script"},"result":{}}`, http.StatusOK, -32600,
+		},
 		"wrong version notification": {`{"jsonrpc":"1.0","method":"ping"}`, http.StatusOK, -32600},
 	} {
 		response := mcpRequest(handler, "user-token", tc.body)

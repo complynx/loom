@@ -65,7 +65,7 @@ external_agents:
 | `enabled` | Registers `/mcp`, the metadata route and the profile routes. |
 | `resource` | Public URL of the MCP endpoint. HTTPS except loopback. It must contain a path without a trailing slash. Loom serves the endpoint at `/mcp` and the metadata at `/.well-known/oauth-protected-resource`; a proxy must map both public paths. |
 | `audience` | Required. Audience that a token for the MCP endpoint must contain. It must differ from `identity.audience`. See [token audience](#token-audience). |
-| `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the audiences of downstream services, the organization and the roles into the access token. At most 32 entries. |
+| `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the organization and the roles into the access token. Add the scopes for the audiences of downstream services only when `forward_token` is true. At most 32 entries. |
 | `forward_token` | Lets external agents call marked service methods. Default false: only help, history and memory are available. Read the [known limit](#known-limit-downstream-token) before you set it. |
 | `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit also counts calls of a user without access. It is local to one API process. |
 
@@ -139,7 +139,6 @@ operation right, for example the personal memory routes, which read, change
 and delete memory. A token that is valid at both endpoints would let the
 agent's client use those routes outside the profile, outside the read-only
 limit and outside the history record.
-
 
 The role claims of the token must contain the user's module roles, or the
 catalog of the session is empty.

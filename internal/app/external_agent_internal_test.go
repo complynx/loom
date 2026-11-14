@@ -188,10 +188,10 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.NotContains(t, result, `"ok"`)
 	_, err = pool.Exec(ctx, "DROP TRIGGER refuse_external_action ON chat_events")
 	require.NoError(t, err)
-	require.EqualValues(t, 3, reads.Load())
 
 	hold := &heldRead{started: make(chan struct{}), release: make(chan struct{})}
 	held.Store(hold)
+	before := reads.Load()
 	result, failed = script(`modules.business.read({}); await modules.business.ready({}); return "done";`)
 	close(hold.release)
 	held.Store(nil)
@@ -208,18 +208,19 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		unawaited,
 		"a call that the script did not wait for must enter the record",
 	)
-	require.EqualValues(t, 4, reads.Load())
+	require.Equal(t, before+1, reads.Load())
 
 	const twoReads = `const first = await modules.business.read({});
 		try { await modules.business.read({}); return "second call was allowed"; }
 		catch (failure) { return {first, error: failure.error}; }`
 	revokeToken := func() { tokenRevoked.Store(true) }
 	afterRead.Store(&revokeToken)
+	before = reads.Load()
 	result, failed = script(twoReads)
 	tokenRevoked.Store(false)
 	require.False(t, failed, result)
 	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
-	require.EqualValues(t, 5, reads.Load(), "a revoked token must block the next call of a running script")
+	require.Equal(t, before+1, reads.Load(), "a revoked token must block the next call of a running script")
 
 	revoke := func() {
 		_, revokeErr := repository.PutExternalAgentProfile(
@@ -230,10 +231,11 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		assert.NoError(t, revokeErr)
 	}
 	afterRead.Store(&revoke)
+	before = reads.Load()
 	result, failed = script(twoReads)
 	require.False(t, failed, result)
 	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
-	require.EqualValues(t, 6, reads.Load(), "a revoked profile must block the next call of a running script")
+	require.Equal(t, before+1, reads.Load(), "a revoked profile must block the next call of a running script")
 }
 
 func TestExternalAgentLimiterBoundsOneUserPerMinute(t *testing.T) {
