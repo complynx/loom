@@ -66,6 +66,8 @@ Preserve these invariants:
 
 Add migrations for schema changes. Do not edit an already deployed migration to change existing data. Startup does not perform down migrations; document compatibility and recovery before an incompatible update.
 
+Loom has production consumers. Every new or changed migration must pass PostgreSQL tests before release: apply it to a fresh database and upgrade from the schema of the currently deployed release with representative existing data. Verify data preservation, the changed behavior and a safe repeat of the migration command. Skipped database tests do not satisfy this requirement. Include the migration test results in the PR. During rollout, application and River migrations must complete successfully before the new API accepts requests or workers start; follow the [deployment procedure](docs/operations.md#update-an-installation).
+
 For dependencies, use normal go.mod/go.sum versions. Follow the [dependency policy](docs/dependencies.md). Retain required notices and worker corresponding-source material.
 
 ## Documentation is part of the change

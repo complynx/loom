@@ -4,10 +4,12 @@ This guide describes an installed Loom service. Keep hostnames, secrets, ingress
 
 ## Update an installation
 
-1. Select a reviewed source revision and wait for CI. Upstream main publishes API and file-worker images.
+1. Select a reviewed source revision and wait for CI. For migration changes, require passing PostgreSQL tests for both a fresh database and an upgrade from the currently deployed release with existing data, as specified in [Contributing](../CONTRIBUTING.md#change-rules). Upstream main publishes API and file-worker images.
 2. Pull the selected images with your deployment system. If you use a deployment hook, check the receiver separately. Event delivery does not prove application startup.
-3. Check the actual image IDs, readiness, panel access and startup/migration errors. Record resolved digests when using latest.
-4. Check schema compatibility before returning to an older image. Startup never runs down migrations. Back up the database and session keys before schema upgrades. Stop incompatible older workers.
+3. Back up the database and session keys before schema upgrades. Stop older Loom workers before applying migrations.
+4. Require application and River migrations to complete before the new API accepts requests or workers start. Use automatic startup migrations, or a successful `loom migrate` job from the selected release before starting the service with `database.migrate_on_start: false`. Stop the rollout if migrations fail; see [startup](startup.md).
+5. Check the actual image IDs, readiness, panel access and startup/migration errors before returning the service to production consumers. Record resolved digests when using latest.
+6. Check schema compatibility before returning to an older image. Startup never runs down migrations.
 
 [CI](ci.md) defines upstream tags and hook behavior. [Startup](startup.md) defines migrations and key creation. Restart does not overwrite database settings with bootstrap YAML.
 
