@@ -143,7 +143,7 @@ type mcpToolResult struct {
 // mcpVersionSupported reports the protocol revisions whose tool calls this endpoint serves.
 func mcpVersionSupported(version string) bool {
 	switch version {
-	case mcpLatestVersion, "2025-06-18", "2025-03-26":
+	case mcpLatestVersion, "2025-06-18":
 		return true
 	default:
 		return false
@@ -253,8 +253,12 @@ func (s *server) mcpMessage(w http.ResponseWriter, r *http.Request) (rpcRequest,
 		return request, false
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, s.options.MaxBodyBytes))
-	if err != nil {
+	if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
 		fail(w, http.StatusRequestEntityTooLarge, "body_too_large", "Request body is too large", false)
+		return request, false
+	}
+	if err != nil {
+		fail(w, http.StatusUnprocessableEntity, "invalid_request", "Request body could not be read", false)
 		return request, false
 	}
 	if json.Unmarshal(raw, &request) == nil {

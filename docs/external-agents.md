@@ -61,9 +61,9 @@ external_agents:
 | --- | --- |
 | `enabled` | Registers `/mcp`, the metadata route and the profile routes. |
 | `resource` | Public URL of the MCP endpoint. HTTPS except loopback. It must contain a path without a trailing slash. Loom serves the endpoint at `/mcp` and the metadata at `/.well-known/oauth-protected-resource`; a proxy must map both public paths. |
-| `audience` | Audience that a token for the MCP endpoint must contain. Omission uses `identity.audience`. See [token audience](#token-audience). |
+| `audience` | Required. Audience that a token for the MCP endpoint must contain. It must differ from `identity.audience`. See [token audience](#token-audience). |
 | `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the audiences of downstream services, the organization and the roles into the access token. At most 32 entries. |
-| `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit is local to one API process. |
+| `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit also counts calls of a user without access. It is local to one API process. |
 
 When `enabled` is false, the other fields must be absent. In recovery mode the
 endpoint and the profile routes are not served and return `404`.
@@ -108,9 +108,10 @@ these rules:
   dropped. The [profile](#user-profile) supplies the rights of the session.
 
 The client refreshes its own token. Loom stores no credential for an external
-agent. Token checks can use the [positive claims cache](identity-cache.md), so
-a revoked token or removed role can stay effective for the cache TTL. A profile
-change is not cached.
+agent. Loom checks the token at each request and again before each module call
+of a running script. These checks can use the
+[positive claims cache](identity-cache.md), so a revoked token or removed role
+can stay effective for the cache TTL. A profile change is not cached.
 
 Registration of the client at the issuer (pre-registered client, Client ID
 Metadata Document or dynamic registration) is the operator's decision. Loom
@@ -120,21 +121,25 @@ does not proxy registration.
 
 Loom does not require the resource URL in the token audience: the issuer
 decides which audience values it writes. Set `external_agents.audience` to the
-value that the issuer writes for this endpoint.
+value that the issuer writes for this endpoint. It must differ from
+`identity.audience`; Loom refuses to start with a shared value.
 
-- **Separate audience (recommended).** Loom checks MCP tokens with a separate
-  authenticator and claims cache. A token for the MCP audience is not accepted
-  at `/v1`, and a `/v1` token is not accepted at `/mcp`, unless the issuer
-  writes both audiences into one token.
-- **Shared audience (omitted field).** The token of an external agent is also
-  a normal `/v1` token. If a role of an ordinary user maps to Loom operation
-  rights such as `runs.create`, a client that holds that token can call `/v1`
-  with it. The MCP endpoint never grants those rights. With a shared audience,
-  give ordinary users module permissions only, and let registered callers
-  supply the operation rights through their caller binding.
+Loom checks MCP tokens with a separate authenticator and claims cache. A token
+for the MCP audience is not accepted at `/v1`, and a `/v1` token is not
+accepted at `/mcp`.
 
-In both modes the role claims of the token must contain the user's module
-roles, or the catalog of the session is empty.
+The separation is necessary. A `/v1` token of a user opens routes that need no
+operation right, for example the personal memory routes, which read, change
+and delete memory. A token that is valid at both endpoints would let the
+agent's client use those routes outside the profile, outside the read-only
+limit and outside the history record.
+
+> **Operator check.** Configure the issuer so that a token for an external
+> agent's client cannot contain `identity.audience`. If the issuer writes both
+> audiences into one token, the separation does not hold.
+
+The role claims of the token must contain the user's module roles, or the
+catalog of the session is empty.
 
 ### Known limit: downstream token
 
@@ -180,7 +185,7 @@ authorization and bypasses the positive claims cache.
 | Field | Meaning |
 | --- | --- |
 | `enabled` | Master switch. False denies every tool call. |
-| `history` | Allows `modules.history.search` and `modules.history.read` in the default chat. |
+| `history` | Allows `modules.history.search` and `modules.history.read` in the default chat. The history can contain results of methods that are not marked for external agents. |
 | `memory` | Allows `modules.memory.state`, `list` and `read`. Memory writes stay unavailable. |
 | `version` | Current stored version. Zero creates the profile. A stale value returns `409 external_agent_profile_version_conflict`; read again and resolve. |
 
@@ -233,6 +238,10 @@ Mark a method only when its result can leave Loom's disclosure boundary. The
 agent's model is unknown, and its context can also contain text from other
 tools.
 
+The mark controls direct calls only. The `history` switch of a profile gives
+the agent the chat history, which can contain earlier results of unmarked
+methods in the internal agent's answers.
+
 Upgrade Loom before a service publishes `external_agent` or the new caller
 permission. Older strict v1 readers reject both. Remove them from static and
 dynamic documents before a rollback.
@@ -250,7 +259,7 @@ server-side clients send no `Origin` header.
 
 | Method | Result |
 | --- | --- |
-| `initialize` | Protocol version, `tools` capability, server information and instructions. Loom answers with the requested revision when it is `2025-11-25`, `2025-06-18` or `2025-03-26`; otherwise with `2025-11-25`. |
+| `initialize` | Protocol version, `tools` capability, server information and instructions. Loom answers with the requested revision when it is `2025-11-25` or `2025-06-18`; otherwise with `2025-11-25`. |
 | `ping` | Empty result. |
 | `tools/list` | The `script` tool. |
 | `tools/call` | Tool result as one text content item with `isError`. |
@@ -413,7 +422,7 @@ record. They do not prove these installation properties:
 | JSON-RPC exchange, `401` challenge, metadata, disabled routes | `TestMCPEndpointAuthorizesAndServesTools`, `TestMCPEndpointRejectsInvalidExchanges` in `internal/api` |
 | Token rules and dropped operation rights | `TestExternalAuthenticationKeepsOnlyModulePermissions` in `internal/identity` |
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |
-| Profile switches, zero credits, history record, no run, withheld result, concurrency bound, revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
+| Profile switches, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
 | Profile right comes from the caller binding, not from the user's role | `TestProfilePermissionComesFromCallerBinding` in `internal/identity` |
 | Compression in run context, refused event type on the public route | `TestPassiveContextKeepsHistoryAndLatestActions` in `internal/store` |
 | Upgrade from the previous schema with existing data | `TestExternalAgentProfileMigrationKeepsExistingData` in `internal/store` |

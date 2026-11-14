@@ -15,6 +15,7 @@ import (
 
 	"github.com/complynx/loom/internal/config"
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/identity"
 	"github.com/complynx/loom/internal/modules"
 	"github.com/complynx/loom/internal/sandbox"
 )
@@ -36,15 +37,26 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	}), modules.Options{})
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(ctx))
-	agent := newExternalAgent(runtimeTools{
-		repository: repository, registry: registry, executor: sandbox.Inline{},
-		cfg: config.Config{Sandbox: config.Sandbox{ScriptTimeoutCeilingMS: 5000}},
-	})
 	user := domain.Principal{
 		Issuer: "https://issuer.example", Subject: "alice", Actor: "alice", OrgID: "org",
 		Permissions: map[string]bool{"business.access": true}, ExpiresAt: time.Now().Add(time.Hour),
 	}
 	caller := domain.ExternalCaller{Principal: user, ClientID: "claude-desktop", Token: "user-token"}
+	var tokenRevoked atomic.Bool
+	verify := func(context.Context, string) (domain.ExternalCaller, error) {
+		if tokenRevoked.Load() {
+			return domain.ExternalCaller{}, identity.ErrUnauthorized
+		}
+		return caller, nil
+	}
+	tools := runtimeTools{
+		repository: repository, registry: registry, executor: sandbox.Inline{},
+		cfg: config.Config{
+			Sandbox:        config.Sandbox{ScriptTimeoutCeilingMS: 5000},
+			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600},
+		},
+	}
+	agent := newExternalAgent(tools, verify)
 	script := func(code string) (string, bool) {
 		arguments, marshalErr := json.Marshal(map[string]string{"code": code})
 		require.NoError(t, marshalErr)
@@ -55,9 +67,16 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	result, failed := script(`return await modules.business.read({})`)
 	require.True(t, failed)
 	require.Contains(t, result, "external_agent_disabled")
-	tools, err := agent.Tools(ctx, caller)
+	offered, err := agent.Tools(ctx, caller)
 	require.NoError(t, err)
-	require.Equal(t, externalDisabledDescription, tools[0].Description)
+	require.Equal(t, externalDisabledDescription, offered[0].Description)
+
+	tools.cfg.ExternalAgents.CallsPerMinute = 1
+	limited := newExternalAgent(tools, verify)
+	denied, _ := limited.Call(ctx, caller, externalScriptTool, json.RawMessage(`{"code":"return 1"}`))
+	require.Contains(t, string(denied), "external_agent_disabled")
+	denied, _ = limited.Call(ctx, caller, externalScriptTool, json.RawMessage(`{"code":"return 1"}`))
+	require.Contains(t, string(denied), "rate_limited", "the limit must also bound a caller without access")
 
 	confirming := user
 	confirming.Actor = "chat-client"
@@ -77,11 +96,11 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	_, err = pool.Exec(ctx, "UPDATE billing_accounts SET balance=0")
 	require.NoError(t, err)
 
-	tools, err = agent.Tools(ctx, caller)
+	offered, err = agent.Tools(ctx, caller)
 	require.NoError(t, err)
-	require.Contains(t, tools[0].Description, `"id":"business"`)
-	require.Contains(t, tools[0].Description, `"id":"history"`)
-	require.NotContains(t, tools[0].Description, `"id":"memory"`)
+	require.Contains(t, offered[0].Description, `"id":"business"`)
+	require.Contains(t, offered[0].Description, `"id":"history"`)
+	require.NotContains(t, offered[0].Description, `"id":"memory"`)
 
 	result, failed = script(`const [first] = await Promise.all([modules.business.read({}), modules.business.read({})]);
 		return {first, earlier: (await modules.history.read({after_seq: 0})).events.length};`)
@@ -176,6 +195,17 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	)
 	require.EqualValues(t, 4, reads.Load())
 
+	const twoReads = `const first = await modules.business.read({});
+		try { await modules.business.read({}); return "second call was allowed"; }
+		catch (failure) { return {first, error: failure.error}; }`
+	revokeToken := func() { tokenRevoked.Store(true) }
+	afterRead.Store(&revokeToken)
+	result, failed = script(twoReads)
+	tokenRevoked.Store(false)
+	require.False(t, failed, result)
+	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
+	require.EqualValues(t, 5, reads.Load(), "a revoked token must block the next call of a running script")
+
 	revoke := func() {
 		_, revokeErr := repository.PutExternalAgentProfile(
 			ctx,
@@ -185,12 +215,10 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		assert.NoError(t, revokeErr)
 	}
 	afterRead.Store(&revoke)
-	result, failed = script(`const first = await modules.business.read({});
-		try { await modules.business.read({}); return "second call was allowed"; }
-		catch (failure) { return {first, error: failure.error}; }`)
+	result, failed = script(twoReads)
 	require.False(t, failed, result)
 	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
-	require.EqualValues(t, 5, reads.Load(), "a revoked profile must block the next call of a running script")
+	require.EqualValues(t, 6, reads.Load(), "a revoked profile must block the next call of a running script")
 }
 
 func TestExternalAgentLimiterBoundsOneUserPerMinute(t *testing.T) {

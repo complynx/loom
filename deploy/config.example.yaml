@@ -122,7 +122,7 @@ search:
 external_agents:
   enabled: false
   # resource: "https://loom.example.com/mcp"
-  # audience: "replace-with-mcp-audience" # Omit to share identity.audience.
+  # audience: "replace-with-mcp-audience" # Required; must differ from identity.audience.
   # scopes: ["openid"]
   # calls_per_minute: 30
 

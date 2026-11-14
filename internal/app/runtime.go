@@ -431,23 +431,18 @@ func runtimeServiceClassifier(
 	}
 }
 
-// externalAuthenticator verifies tokens for the MCP endpoint. A separate audience
-// gets its own authenticator and claims cache, so a token that is valid for one
-// endpoint is never accepted at the other because of a cached check.
+// externalAuthenticator verifies tokens for the MCP endpoint. Its audience always
+// differs from the /v1 audience. It has its own claims cache, so a token that is
+// valid for one endpoint is never accepted at the other because of a cached check.
 func externalAuthenticator(
 	cfg config.Config,
-	primary *identity.Authenticator,
 	repository *store.Store,
 	registry *modules.Registry,
 	observedServices *sync.Map,
 	observer *telemetry.Telemetry,
 ) (*identity.Authenticator, error) {
-	audience := cfg.ExternalAgents.Audience
-	if audience == "" || audience == cfg.Identity.Audience {
-		return primary, nil
-	}
 	identityConfig := cfg.Identity
-	identityConfig.Audience = audience
+	identityConfig.Audience = cfg.ExternalAgents.Audience
 	auth, err := identity.New(identityConfig, &http.Client{Transport: telemetry.TraceTransport{}}, nil)
 	if err != nil {
 		return nil, err
@@ -1026,7 +1021,6 @@ func (r *runtimeComponents) initAgent(
 	if cfg.ExternalAgents.Enabled {
 		r.externalAuth, err = externalAuthenticator(
 			cfg,
-			r.auth,
 			r.repository,
 			r.registry,
 			&r.observedServices,
@@ -1041,7 +1035,7 @@ func (r *runtimeComponents) initAgent(
 			repository: r.repository,
 			executor:   r.executor,
 			observer:   observer,
-		})
+		}, r.externalAuth.VerifyExternal)
 	}
 
 	return nil

@@ -43,14 +43,20 @@ const (
 type ExternalAgent struct {
 	tools   runtimeTools
 	limiter *externalLimiter
+	// verify checks a held token again before each module call of a script.
+	verify func(context.Context, string) (domain.ExternalCaller, error)
 	// scripts bounds concurrent external scripts. The sandbox pool is shared with
 	// internal runs; external agents may use at most half of it.
 	scripts chan struct{}
 }
 
-func newExternalAgent(tools runtimeTools) *ExternalAgent {
+func newExternalAgent(
+	tools runtimeTools,
+	verify func(context.Context, string) (domain.ExternalCaller, error),
+) *ExternalAgent {
 	return &ExternalAgent{
-		tools: tools,
+		tools:  tools,
+		verify: verify,
 		limiter: &externalLimiter{
 			limit:   tools.cfg.ExternalAgents.CallLimit(),
 			windows: map[string]externalWindow{},
@@ -97,7 +103,7 @@ func externalBuiltinAllowed(profile domain.ExternalAgentProfile, module, method 
 }
 
 // admit checks current policy, the token lifetime and the user's profile. It runs
-// before each tool call and again before each module call of a script.
+// before each tool call and, through readmit, before each module call of a script.
 func (a *ExternalAgent) admit(ctx context.Context, caller domain.ExternalCaller) (externalSession, error) {
 	p := caller.Principal
 	if p.Subject == "" || p.OrgID == "" || caller.Token == "" || p.ServiceAccount ||
@@ -133,22 +139,40 @@ func (s externalSession) modulePrincipal() modules.Principal {
 	return modulePrincipal(s.principal, s.caller.Token, 0)
 }
 
-// limitKey identifies the user for the rate limit, across all of their agents.
-func (s externalSession) limitKey() string {
-	return s.principal.Issuer + "\x1f" + s.principal.Subject
+// externalLimitKey identifies the user for the rate limit, across all of their agents.
+func externalLimitKey(caller domain.ExternalCaller) string {
+	return caller.Principal.Issuer + "\x1f" + caller.Principal.Subject
+}
+
+// readmit checks the held token again and then admits the caller. A token that
+// now belongs to another identity is refused.
+func (a *ExternalAgent) readmit(ctx context.Context, held domain.ExternalCaller) (externalSession, error) {
+	fresh, err := a.verify(ctx, held.Token)
+	if err != nil {
+		if errors.Is(err, identity.ErrUnauthorized) {
+			err = domain.NewError(http.StatusUnauthorized, "unauthorized")
+		}
+		return externalSession{}, err
+	}
+	if fresh.Principal.Issuer != held.Principal.Issuer || fresh.Principal.Subject != held.Principal.Subject ||
+		fresh.Principal.OrgID != held.Principal.OrgID {
+		return externalSession{}, domain.NewError(http.StatusUnauthorized, "unauthorized")
+	}
+	return a.admit(ctx, fresh)
 }
 
 // Tools returns the tool list for the caller. A caller whom policy or the profile
 // denies gets one tool whose description states the reason.
 func (a *ExternalAgent) Tools(ctx context.Context, caller domain.ExternalCaller) ([]domain.ExternalTool, error) {
+	// The limit applies before any database work, also for a caller without access.
+	if !a.limiter.allow(externalLimitKey(caller), time.Now()) {
+		return nil, domain.NewError(http.StatusTooManyRequests, "rate_limited")
+	}
 	var description string
 	session, err := a.admit(ctx, caller)
 	denied, _ := errors.AsType[*domain.Error](err)
 	switch {
 	case err == nil:
-		if !a.limiter.allow(session.limitKey(), time.Now()) {
-			return nil, domain.NewError(http.StatusTooManyRequests, "rate_limited")
-		}
 		if description, err = a.scriptDescription(ctx, session); err != nil {
 			return nil, err
 		}
@@ -320,15 +344,16 @@ func (a *ExternalAgent) call(
 			Recovery: "Supply {code} with nonempty JavaScript source.",
 		}
 	}
-	session, err := a.admit(ctx, caller)
-	if err != nil {
-		return nil, err
-	}
-	if !a.limiter.allow(session.limitKey(), time.Now()) {
+	// The limit applies before any database work, also for a caller without access.
+	if !a.limiter.allow(externalLimitKey(caller), time.Now()) {
 		return nil, &domain.ToolError{
 			Code:     "rate_limited",
 			Recovery: "Wait one minute. Combine related reads in one script.",
 		}
+	}
+	session, err := a.admit(ctx, caller)
+	if err != nil {
+		return nil, err
 	}
 	select {
 	case a.scripts <- struct{}{}:
@@ -389,8 +414,9 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 		bindings[index].Methods = append(bindings[index].Methods, tool.Method)
 	}
 	executionID := uuid.NewString()
-	// One admission before each module call: a profile change applies to the next call.
-	current := func(c context.Context) (externalSession, error) { return a.admit(c, session.caller) }
+	// One token check and one admission before each module call: a revoked token,
+	// a removed role or a profile change applies to the next call.
+	current := func(c context.Context) (externalSession, error) { return a.readmit(c, session.caller) }
 	remote := a.tools.registry.ExternalBroker(
 		func(c context.Context) (modules.Principal, error) {
 			fresh, admitErr := current(c)

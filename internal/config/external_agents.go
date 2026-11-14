@@ -18,7 +18,7 @@ type ExternalAgents struct {
 	// Resource is the public URL of the MCP endpoint. Clients use it as the OAuth resource.
 	Resource string `yaml:"resource"`
 	// Audience is the audience that a token for the MCP endpoint must contain.
-	// Empty uses identity.audience. A separate value keeps MCP tokens off the /v1 API.
+	// It must differ from identity.audience: an MCP token must not open the /v1 API.
 	Audience string `yaml:"audience"`
 	// Scopes are advertised to clients as the scopes to request from the issuer.
 	Scopes []string `yaml:"scopes"`
@@ -34,7 +34,8 @@ func (c ExternalAgents) CallLimit() int {
 	return c.CallsPerMinute
 }
 
-func (c ExternalAgents) Validate() error {
+// Validate checks the settings. identityAudience is the audience of the /v1 API.
+func (c ExternalAgents) Validate(identityAudience string) error {
 	if !c.Enabled {
 		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || c.CallsPerMinute != 0 {
 			return errors.New("external agent settings require external_agents.enabled")
@@ -46,6 +47,9 @@ func (c ExternalAgents) Validate() error {
 	}
 	if u, err := url.Parse(c.Resource); err != nil || u.Path == "" || strings.HasSuffix(u.Path, "/") {
 		return errors.New("external_agents.resource must contain the endpoint path without a trailing slash")
+	}
+	if c.Audience == "" || c.Audience == identityAudience {
+		return errors.New("external_agents.audience is required and must differ from identity.audience")
 	}
 	if c.CallsPerMinute < 0 || c.CallsPerMinute > maxExternalAgentCallsPerMinute {
 		return errors.New("external_agents.calls_per_minute must be between 1 and 600; zero uses 30")

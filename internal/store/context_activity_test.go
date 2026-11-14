@@ -17,11 +17,12 @@ func TestPassiveContextKeepsHistoryAndLatestActions(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []passiveContextCase{
-		{"first dialogue", false, 5, userAction},
-		{"after dialogue", true, 5, userAction},
-		{"four actions", true, 4, userAction},
-		{"large stream", false, 1005, userAction},
-		{"external agent", false, 5, domain.ExternalAgentActionEvent},
+		{"first dialogue", false, 5, userAction, 0},
+		{"after dialogue", true, 5, userAction, 0},
+		{"four actions", true, 4, userAction, 0},
+		{"large stream", false, 1005, userAction, 0},
+		{"external agent", false, 5, domain.ExternalAgentActionEvent, 0},
+		{"mixed sources", false, 5, domain.ExternalAgentActionEvent, 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -37,6 +38,8 @@ type passiveContextCase struct {
 	dialog  bool
 	actions int
 	kind    string
+	// userFirst is the number of leading user actions in an external agent case.
+	userFirst int
 }
 
 func checkPassiveContext(t *testing.T, test passiveContextCase) {
@@ -63,10 +66,11 @@ func checkPassiveContext(t *testing.T, test passiveContextCase) {
 			Type:          test.kind,
 			Text:          fmt.Sprintf("action %d", index),
 		}
-		if test.kind == userAction {
-			_, err = s.AppendEvent(ctx, p, chat.ID, event)
-		} else {
-			_, err = s.AppendEvent(ctx, p, chat.ID, event)
+		if index <= test.userFirst {
+			event.Type = userAction
+		}
+		_, err = s.AppendEvent(ctx, p, chat.ID, event)
+		if event.Type != userAction {
 			require.ErrorContains(t, err, "invalid_event", "only Loom writes external agent actions")
 			_, err = s.AppendExternalAction(
 				ctx,

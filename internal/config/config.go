@@ -317,7 +317,7 @@ func (c Config) validateTrust() error {
 	if err := c.validateOperator(); err != nil {
 		return err
 	}
-	if err := c.ExternalAgents.Validate(); err != nil {
+	if err := c.ExternalAgents.Validate(c.Identity.Audience); err != nil {
 		return err
 	}
 	if c.Sandbox.EngineCandidate != "" && c.Sandbox.EngineCandidate != "goja" {

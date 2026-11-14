@@ -9,7 +9,7 @@ import (
 func TestExternalAgentsConfig(t *testing.T) {
 	t.Parallel()
 	enabled := func(change func(*config.ExternalAgents)) config.ExternalAgents {
-		cfg := config.ExternalAgents{Enabled: true, Resource: "https://loom.example.com/mcp"}
+		cfg := config.ExternalAgents{Enabled: true, Resource: "https://loom.example.com/mcp", Audience: "mcp"}
 		change(&cfg)
 		return cfg
 	}
@@ -30,14 +30,15 @@ func TestExternalAgentsConfig(t *testing.T) {
 		{"scopes", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{"openid", "urn:example:aud"} }), true},
 		{"scope with space", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{"open id"} }), false},
 		{"scope with quote", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{`open"id`} }), false},
-		{"audience", enabled(func(c *config.ExternalAgents) { c.Audience = "mcp-project" }), true},
+		{"missing audience", enabled(func(c *config.ExternalAgents) { c.Audience = "" }), false},
+		{"shared audience", enabled(func(c *config.ExternalAgents) { c.Audience = "loom" }), false},
 		{"limit", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 600 }), true},
 		{"limit too high", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 601 }), false},
 		{"negative limit", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = -1 }), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if err := tc.cfg.Validate(); (err == nil) != tc.valid {
+			if err := tc.cfg.Validate("loom"); (err == nil) != tc.valid {
 				t.Fatalf("valid=%v error=%v", tc.valid, err)
 			}
 		})
