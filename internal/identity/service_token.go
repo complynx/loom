@@ -142,7 +142,7 @@ func (s *ServiceTokens) exchange(ctx context.Context, caller domain.ExternalCall
 }
 
 // verify checks that the issuer signed the service token for the same user and
-// for the requested services only. It returns the token expiry.
+// organization and for the requested services only. It returns the token expiry.
 func (s *ServiceTokens) verify(
 	ctx context.Context,
 	keysEndpoint, token string,
@@ -167,8 +167,18 @@ func (s *ServiceTokens) verify(
 	if !verifyClaims(parsed, keys, kid, &claims) {
 		return time.Time{}, ErrUnauthorized
 	}
+	// The signature is verified above, so the other claims of this token are trusted.
+	var owner struct {
+		OrgID string `json:"urn:zitadel:iam:user:resourceowner:id"`
+	}
+	if parsed.UnsafeClaimsWithoutVerification(&owner) != nil {
+		return time.Time{}, ErrUnauthorized
+	}
 	now := time.Now()
+	// A service decides by the organization in its token. When the token names
+	// one, it must be the organization that Loom used for admission.
 	if claims.Expiry == nil || !claims.Expiry.Time().After(now) || claims.Subject != user.Subject ||
+		owner.OrgID != "" && owner.OrgID != user.OrgID ||
 		claims.ValidateWithLeeway(jwt.Expected{Issuer: a.cfg.Issuer, Time: now}, serviceTokenClockLeeway) != nil {
 		return time.Time{}, ErrUnauthorized
 	}

@@ -163,6 +163,8 @@ func authenticationServer(t *testing.T, key *rsa.PrivateKey, issuer *string) *ht
 				aud = "mcp"
 			case "both-audiences":
 				aud = []string{"harness", "mcp"}
+			case "mcp-and-service":
+				aud = []string{"mcp", "service"}
 			}
 			_ = json.NewEncoder(w).
 				Encode(map[string]any{"active": active, "iss": *issuer, "sub": sub, "aud": aud, "exp": exp, "client_id": "agent-client", "urn:zitadel:iam:user:resourceowner:id": org, "urn:zitadel:iam:org:project:roles": map[string]any{"member": map[string]string{org: "example"}}})

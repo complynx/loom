@@ -71,7 +71,7 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 				IssuedAt: jwt.NewNumericDate(time.Now().Add(5 * time.Second)),
 				Expiry:   jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			}
-			response, sign := map[string]any{"token_type": "Bearer", "expires_in": 3600}, signer
+			response, sign, org := map[string]any{"token_type": "Bearer", "expires_in": 3600}, signer, "org"
 			switch r.Form.Get("subject_token") {
 			case "other-user":
 				claims.Subject = "mallory"
@@ -85,10 +85,17 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 				claims.Expiry = jwt.NewNumericDate(time.Now().Add(-time.Second))
 			case "forged":
 				sign = forger
+			case "other-org":
+				org = "other"
+			case "wrong-type":
+				response["token_type"] = "N_A"
+			case "zero-lifetime":
+				response["expires_in"] = 0
 			case "no-lifetime":
 				delete(response, "expires_in")
 			}
-			token, signErr := jwt.Signed(sign).Claims(claims).Serialize()
+			token, signErr := jwt.Signed(sign).Claims(claims).
+				Claims(map[string]any{"urn:zitadel:iam:user:resourceowner:id": org}).Serialize()
 			assert.NoError(t, signErr)
 			response["access_token"] = token
 			_ = json.NewEncoder(w).Encode(response)
@@ -130,7 +137,8 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 	require.EqualValues(t, 1, exchanges.Load(), "a valid service token is reused")
 
 	for _, token := range []string{
-		"other-user", "opens-loom", "missing-audience", "other-issuer", "expired", "forged",
+		"other-user", "other-org", "opens-loom", "missing-audience", "other-issuer", "expired", "forged",
+		"wrong-type", "zero-lifetime",
 	} {
 		_, err = tokens.For(context.Background(), caller(token))
 		require.ErrorIs(t, err, identity.ErrUnauthorized, token)

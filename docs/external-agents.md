@@ -179,6 +179,8 @@ Loom accepts the returned token only when all of these are true:
 
 - It is a JWT that the issuer signed, and it is not expired.
 - Its subject is the user of the agent's token.
+- If it contains the organization claim, the organization is that of the
+  agent's token. A service must not decide by another organization than Loom.
 - It contains every configured audience.
 - It contains neither `identity.audience` nor `external_agents.audience`. A
   token that Loom sends to a service must not open Loom.
@@ -465,8 +467,8 @@ record. They do not prove these installation properties:
 | --- | --- |
 | JSON-RPC exchange, `401` challenge, metadata, disabled routes | `TestMCPEndpointAuthorizesAndServesTools`, `TestMCPEndpointRejectsInvalidExchanges` in `internal/api` |
 | Token rules and dropped operation rights | `TestExternalAuthenticationKeepsOnlyModulePermissions` in `internal/identity` |
-| A token for one endpoint, or for both, does not open the other; rejected audiences are a list | `TestEndpointAudiencesAreMutuallyExclusive` in `internal/identity` |
-| Service token exchange: issuer signature, same user, requested audiences, never a Loom audience, expiry, reuse | `TestServiceTokenExchangeBindsUserAndAudiences` in `internal/identity` |
+| A token for one endpoint, or for both, does not open the other; `/mcp` refuses a token with a service audience | `TestEndpointAudiencesAreMutuallyExclusive` in `internal/identity` |
+| Service token exchange: issuer signature, same user and organization, requested audiences, never a Loom audience, expiry, reuse | `TestServiceTokenExchangeBindsUserAndAudiences` in `internal/identity` |
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |
 | Profile switches, service token sent instead of the agent's token, direct profile write refused, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
 | Profile right comes from the caller binding, not from the user's role | `TestProfilePermissionComesFromCallerBinding` in `internal/identity` |
