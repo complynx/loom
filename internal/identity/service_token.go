@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"crypto/sha256"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -23,6 +24,8 @@ const (
 	// serviceTokenClockLeeway accepts a token that the issuer made a moment ago
 	// when the issuer's clock is ahead. It does not extend the expiry.
 	serviceTokenClockLeeway = 30 * time.Second
+	// issuedTypeJWT is the type that Loom requests from the issuer and requires in its response.
+	issuedTypeJWT = "urn:ietf:params:oauth:token-type:jwt"
 )
 
 // ServiceTokenExchange configures the token exchange for downstream services.
@@ -56,10 +59,25 @@ func NewServiceTokens(auth *Authenticator, cfg ServiceTokenExchange) *ServiceTok
 	return &ServiceTokens{auth: auth, cfg: cfg, cache: map[[sha256.Size]byte]serviceToken{}}
 }
 
+// serviceTokenKey binds a cached token to the agent's token and to the
+// permissions that Loom saw for it. After a role change Loom gets a new service
+// token, so a service does not decide by older roles than Loom.
+func serviceTokenKey(caller domain.ExternalCaller) [sha256.Size]byte {
+	hash := sha256.New()
+	hash.Write([]byte(caller.Token))
+	for _, permission := range slices.Sorted(maps.Keys(caller.Principal.Permissions)) {
+		if caller.Principal.Permissions[permission] {
+			hash.Write([]byte{0})
+			hash.Write([]byte(permission))
+		}
+	}
+	return [sha256.Size]byte(hash.Sum(nil))
+}
+
 // For returns the service token of a caller whose token was verified in this
 // request. A cached token is reused until it is close to expiry.
 func (s *ServiceTokens) For(ctx context.Context, caller domain.ExternalCaller) (string, error) {
-	key := sha256.Sum256([]byte(caller.Token))
+	key := serviceTokenKey(caller)
 	now := time.Now()
 	s.mu.Lock()
 	cached, ok := s.cache[key]
@@ -103,7 +121,7 @@ func (s *ServiceTokens) exchange(ctx context.Context, caller domain.ExternalCall
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"subject_token":        {caller.Token},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
-		"requested_token_type": {"urn:ietf:params:oauth:token-type:jwt"},
+		"requested_token_type": {issuedTypeJWT},
 		"audience":             s.cfg.Audiences,
 	}
 	if len(s.cfg.Scopes) > 0 {
@@ -119,13 +137,14 @@ func (s *ServiceTokens) exchange(ctx context.Context, caller domain.ExternalCall
 	// expires_in is optional (RFC 8693, section 2.2.1). The signed expiry is always required.
 	var response struct {
 		Token   string `json:"access_token"`
+		Issued  string `json:"issued_token_type"`
 		Type    string `json:"token_type"`
 		Expires *int64 `json:"expires_in"`
 	}
 	if err = a.fetch(req, &response); err != nil {
 		return serviceToken{}, err
 	}
-	if response.Token == "" || !strings.EqualFold(response.Type, "Bearer") ||
+	if response.Token == "" || response.Issued != issuedTypeJWT || !strings.EqualFold(response.Type, "Bearer") ||
 		response.Expires != nil && *response.Expires <= 0 {
 		return serviceToken{}, ErrUnauthorized
 	}

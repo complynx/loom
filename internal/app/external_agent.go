@@ -150,7 +150,12 @@ func (a *ExternalAgent) servicePrincipal(ctx context.Context, session externalSe
 	if a.serviceToken == nil {
 		return modules.Principal{}, modules.ErrUnavailable
 	}
+	started := time.Now()
 	token, err := a.serviceToken(ctx, session.caller)
+	// The metric is the operator's trace of a refused or failed exchange.
+	if a.tools.observer != nil {
+		a.tools.observer.Operation(ctx, "external_service_token", operationOutcome(err), "", started)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return modules.Principal{}, ctx.Err()

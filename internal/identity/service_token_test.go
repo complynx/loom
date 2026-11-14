@@ -71,7 +71,10 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 				IssuedAt: jwt.NewNumericDate(time.Now().Add(5 * time.Second)),
 				Expiry:   jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			}
-			response, sign, org := map[string]any{"token_type": "Bearer", "expires_in": 3600}, signer, "org"
+			response, sign, org := map[string]any{
+				"token_type": "Bearer", "expires_in": 3600,
+				"issued_token_type": "urn:ietf:params:oauth:token-type:jwt",
+			}, signer, "org"
 			switch r.Form.Get("subject_token") {
 			case "other-user":
 				claims.Subject = "mallory"
@@ -91,6 +94,8 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 				response["token_type"] = "N_A"
 			case "zero-lifetime":
 				response["expires_in"] = 0
+			case "other-issued-type":
+				response["issued_token_type"] = "urn:ietf:params:oauth:token-type:access_token"
 			case "no-lifetime":
 				delete(response, "expires_in")
 			}
@@ -138,7 +143,7 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 
 	for _, token := range []string{
 		"other-user", "other-org", "opens-loom", "missing-audience", "other-issuer", "expired", "forged",
-		"wrong-type", "zero-lifetime",
+		"wrong-type", "zero-lifetime", "other-issued-type",
 	} {
 		_, err = tokens.For(context.Background(), caller(token))
 		require.ErrorIs(t, err, identity.ErrUnauthorized, token)
@@ -147,6 +152,11 @@ func TestServiceTokenExchangeBindsUserAndAudiences(t *testing.T) {
 	// The response lifetime is optional; the signed expiry then bounds the reuse.
 	require.EqualValues(t, 1, exchange(caller("no-lifetime")))
 	require.EqualValues(t, 0, exchange(caller("no-lifetime")))
+	// After a role change of the same agent token, the service gets a token with the new roles.
+	granted := caller("agent")
+	granted.Principal.Permissions = map[string]bool{"notes.read": true}
+	require.EqualValues(t, 1, exchange(granted))
+	require.EqualValues(t, 0, exchange(granted))
 	// A service token is never reused beyond the agent's own token.
 	closing := caller("closing")
 	closing.Principal.ExpiresAt = time.Now().Add(10 * time.Second)

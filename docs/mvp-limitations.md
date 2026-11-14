@@ -34,7 +34,7 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 ## Not implemented
 
 - Cross-org delegation is intentionally denied. Supporting it needs a separate trust contract.
-- Automatic token exchange, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth.
+- Automatic renewal of a delegated user's token, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth. The [service token](external-agents.md#service-token) exchange for external agents is a separate function.
 - Incoming opaque service secrets. Services use verified Zitadel tokens and trusted caller bindings.
 - Provider token deltas and WebSocket. SSE contains durable run events; steering applies at step boundaries.
 - A general parallel scheduler for model tool calls. Scripts can use parallel host RPC.

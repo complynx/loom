@@ -187,10 +187,13 @@ Loom accepts the returned token only when all of these are true:
 
 Loom keeps a service token in memory and reuses it for the same agent token
 until 30 seconds before it expires, and never longer than the agent's token.
+When Loom sees other permissions for that agent token, it exchanges again.
 If the exchange fails, service calls fail and `help.list` returns a
-`remote_catalog_unavailable` warning; history and memory stay available.
+`remote_catalog_unavailable` warning; history and memory stay available. The
+operation metric `external_service_token` counts the outcomes.
 
-The response must have `token_type` `Bearer`. `expires_in` is optional; the
+The response must have `token_type` `Bearer` and `issued_token_type`
+`urn:ietf:params:oauth:token-type:jwt`. `expires_in` is optional; the
 signed expiry always applies. Loom accepts an issue time up to 30 seconds
 ahead of its own clock.
 
