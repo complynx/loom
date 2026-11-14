@@ -5,12 +5,12 @@ go 1.27.3
 require (
 	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/dop251/goja v0.0.0-20261010130053-73dc7edc278f
-	github.com/go-jose/go-jose/v4 v4.1.8
+	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/pressly/goose/v3 v3.29.0
-	github.com/riverqueue/river v0.51.0
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.0
+	github.com/riverqueue/river v0.51.1
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.47.0
@@ -41,9 +41,9 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
-	github.com/riverqueue/river/riverdriver v0.51.0 // indirect
-	github.com/riverqueue/river/rivershared v0.51.0 // indirect
-	github.com/riverqueue/river/rivertype v0.51.0 // indirect
+	github.com/riverqueue/river/riverdriver v0.51.1 // indirect
+	github.com/riverqueue/river/rivershared v0.51.1 // indirect
+	github.com/riverqueue/river/rivertype v0.51.1 // indirect
 	github.com/sethvargo/go-retry v0.5.0 // indirect
 	github.com/tidwall/gjson v1.20.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
