@@ -344,7 +344,7 @@ func (e *Engine) executeAuthorizedTurn(
 	if replayErr := e.replaySteps(ctx, run, &turn); replayErr != nil {
 		return stoppedTurn(replayErr)
 	}
-	if inputErr := e.applySteering(ctx, run, settings, &turn); inputErr != nil {
+	if inputErr := e.applySteering(ctx, run, &turn); inputErr != nil {
 		return stoppedTurn(inputErr)
 	}
 	ctx, finish, traceErr := e.traceStep(ctx, run)
@@ -374,11 +374,11 @@ func (e *Engine) executeReadyTurn(
 			return false, lookupErr
 		}
 		if run.OutputPolicy.InvalidText(turn.finalCandidate) || pending != nil {
-			return e.rejectFinalOutput(ctx, run, settings, turn, pending)
+			return e.rejectFinalOutput(ctx, run, turn, pending)
 		}
 		return e.completeTurn(ctx, run, turn.finalCandidate)
 	}
-	if len(turn.steps)+turn.newInputSteps >= settings.MaxSteps {
+	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
 		return false, e.finish(ctx, run, domain.Paused, "step_limit", "")
 	}
 
@@ -459,7 +459,7 @@ func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState
 	return nil
 }
 
-func (e *Engine) applySteering(ctx context.Context, run domain.Run, settings domain.Settings, turn *turnState) error {
+func (e *Engine) applySteering(ctx context.Context, run domain.Run, turn *turnState) error {
 	id := run.ID
 	inputs, err := e.store.PendingInputs(ctx, id, e.opts.Owner, run.Fence)
 	if err != nil {
@@ -482,7 +482,7 @@ func (e *Engine) applySteering(ctx context.Context, run domain.Run, settings dom
 		if input.Kind != "steering" {
 			continue
 		}
-		if len(turn.steps)+turn.newInputSteps >= settings.MaxSteps {
+		if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
 			return e.stopTurn(ctx, run, domain.Paused, "step_limit")
 		}
 		payload, _ := json.Marshal(input)
@@ -1042,7 +1042,7 @@ func effectiveRunSettings(settings domain.Settings) domain.Settings {
 		settings.HistoryRecentLimit = 100
 	}
 	if settings.MaxSteps <= 0 {
-		settings.MaxSteps = 30
+		settings.MaxSteps = domain.DefaultMaxSteps
 	}
 	return settings
 }

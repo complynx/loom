@@ -91,7 +91,9 @@ Text wakes the same run from `waiting_input` or `waiting_approval`. During
 inference it is processed between steps. Wait publication checks for already
 accepted messages so a concurrent question does not strand them. Messages in
 paused, uncertain or `waiting_auth` runs do not bypass resume, reconciliation or
-reauthorization.
+reauthorization. The exception is `paused / step_limit`: a new input renews the
+[step budget](api/runs-input.md) and queues the same run if no control request or
+unresolved outcome blocks it. Idempotent input retries do not renew the budget.
 
 | Accepted input | Current wait | Continuation |
 |---|---|---|
@@ -99,7 +101,8 @@ reauthorization.
 | Steering with a critical native form | Question or critical action in an agent-mode run | Dialogue queues; the action still needs its binary callback |
 | Native `approval` callback | Its protocol approval; possibly a follow-up question in agent mode | Decision is saved; the effect is queued without language interpretation |
 | Steering for `exact_text` | Pending critical action | Runtime accepts the valid exact phrase or rejects the action; then queues continuation |
-| Steering while paused, reconciling or waiting for auth | Lifecycle blocker | Input is saved; it does not itself clear that blocker |
+| Steering while paused with `step_limit` | Exhausted step budget | A new input renews the step budget and queues the same run unless another blocker applies |
+| Steering during other pauses, reconciliation or waiting for auth | Lifecycle blocker | Input is saved; it does not itself clear that blocker |
 
 ## Ordinary actions
 

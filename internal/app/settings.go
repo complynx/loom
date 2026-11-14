@@ -42,7 +42,7 @@ func bootstrapSettings(c config.Config) (domain.Settings, error) {
 		s.HistoryRecentLimit = 100
 	}
 	if s.MaxSteps <= 0 {
-		s.MaxSteps = 30
+		s.MaxSteps = domain.DefaultMaxSteps
 	}
 	tariffs := map[string]config.Tariff{}
 	for _, t := range b.Tariffs {

@@ -51,7 +51,10 @@ in the repository and shipped images. An earlier audit does not certify a new gr
 
 ## Update procedure
 
-The selected Huma 2.40 release requires Go 1.26 or newer; Loom uses Go 1.27.3.
+The selected Huma 2.40 release requires Go 1.26 or newer; Loom uses Go 1.27.4.
+Go 1.27.4 fixes the standard-library HTTP server vulnerability
+[GO-2026-6859](https://vuln.go.dev/ID/GO-2026-6859.json). Keep the module, CI
+toolchain and pinned build/test images on the patched release.
 Loom registers documentation with Huma but retains its own HTTP handlers and
 request-body limits. The release's generic raw-body defaults do not replace
 those limits.
