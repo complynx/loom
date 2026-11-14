@@ -42,6 +42,17 @@ func TestExternalAgentsConfig(t *testing.T) {
 			c.TokenServices = tokenService("Chat Client")
 		}), false},
 		{"token service while disabled", config.ExternalAgents{TokenServices: tokenService("chat-client")}, false},
+		{"own introspection client", enabled(func(c *config.ExternalAgents) {
+			c.ClientID, c.ClientSecret = "mcp-client", "secret"
+		}), true},
+		{"introspection client without a credential", enabled(func(c *config.ExternalAgents) {
+			c.ClientID = "mcp-client"
+		}), false},
+		{"introspection secret without a client", enabled(func(c *config.ExternalAgents) {
+			c.ClientSecret = "secret"
+		}), false},
+		{"introspection client while disabled", config.ExternalAgents{ClientID: "mcp-client", ClientSecret: "secret"}, false},
+		{"application key while disabled", config.ExternalAgents{ClientKeyBase64: "e30="}, false},
 		{"shared audience", enabled(func(c *config.ExternalAgents) { c.Audience = "loom" }), false},
 		{"limit", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 600 }), true},
 		{"limit too high", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 601 }), false},

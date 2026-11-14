@@ -293,6 +293,12 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	if e != nil {
 		return Config{}, e
 	}
+	// A disabled endpoint loads no key: Validate refuses its settings by name.
+	if c.ExternalAgents.Enabled {
+		if c.ExternalAgents, e = c.ExternalAgents.ResolveCredentials(); e != nil {
+			return Config{}, e
+		}
+	}
 	return c, c.Validate()
 }
 func (c Config) Validate() error {

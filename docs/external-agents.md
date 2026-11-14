@@ -55,6 +55,8 @@ external_agents:
   resource: "https://loom.example.com/mcp"
   audience: "replace-with-mcp-audience"
   scopes: ["openid"]
+  client_id: "replace-with-mcp-introspection-client"
+  client_secret: "${CLX_MCP_INTROSPECTION_SECRET}"
   token_services:
     replace-with-service-id: "${CLX_MCP_TOKEN_SERVICE_SECRET}"
   calls_per_minute: 30
@@ -66,6 +68,7 @@ external_agents:
 | `resource` | Public URL of the MCP endpoint. HTTPS except loopback. It must contain a path without a trailing slash. Loom serves the endpoint at `/mcp` and the metadata at `/.well-known/oauth-protected-resource`; a proxy must map both public paths. |
 | `audience` | Required. Audience that a token for the MCP endpoint must contain. It must differ from `identity.audience`. See [token audience](#token-audience). |
 | `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the organization and the roles into the access token. Do not add scopes for the audiences of downstream services. At most 32 entries. |
+| `client_id`, `client_secret`, `client_key_base64`, `client_key_file` | Optional introspection credentials for MCP tokens, with the meaning of the same `identity` fields. Without them Loom uses the `identity` credentials. See [introspection client](#introspection-client). |
 | `token_services` | Optional. Approves [token services](#token-services): each key is a service ID, each value is the secret that authenticates Loom to that service. A secret has 16 to 512 printable ASCII characters without spaces. At most 32 entries. Without an entry only help, history and memory are available. |
 | `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit also counts calls of a user without access. It is local to one API process. |
 
@@ -147,7 +150,21 @@ agent's client use those routes outside the profile, outside the read-only
 limit and outside the history record.
 
 The role claims of the token must contain the user's module roles, or the
-catalog of the session is empty.
+session has only the modules and methods that need no permission.
+
+### Introspection client
+
+By default Loom introspects MCP tokens with the `identity` credentials. Some
+issuers answer an introspection request only when the token's audience contains
+the introspecting client or its project. ZITADEL is such an issuer. An MCP
+token must not contain `identity.audience`, so on such an issuer the `identity`
+client cannot introspect it and every request to `/mcp` gets `401`.
+
+For such an issuer, register a second introspection client that the MCP token
+names, for example an API application in the project of the MCP clients, and
+set its credentials in `external_agents`. Use `client_id` with `client_secret`,
+or one application key (`client_key_base64` or `client_key_file`). Loom uses
+them only for MCP tokens. The `/v1` API keeps the `identity` credentials.
 
 ### Token services
 
@@ -510,6 +527,10 @@ record. They do not prove these installation properties:
   including client registration.
 - The issued token contains the MCP audience, the organization and the user's
   module roles, and no downstream service accepts it.
+- The issuer answers the introspection of an MCP token for the configured
+  [introspection client](#introspection-client), and the answer contains the
+  user's module roles. A client in another project can get other role claims;
+  the session then has only the methods that need no permission.
 - A [token service](#token-services) checks the secret and the agent's token.
   Its service token contains the roles that the services need and no Loom
   audience.
@@ -524,6 +545,7 @@ record. They do not prove these installation properties:
 | JSON-RPC exchange, `401` challenge, metadata, disabled routes | `TestMCPEndpointAuthorizesAndServesTools`, `TestMCPEndpointRejectsInvalidExchanges` in `internal/api` |
 | Token rules and dropped operation rights | `TestExternalAuthenticationKeepsOnlyModulePermissions` in `internal/identity` |
 | A token for one endpoint, or for both, does not open the other | `TestEndpointAudiencesAreMutuallyExclusive` in `internal/identity` |
+| Own introspection credentials for MCP tokens; the `/v1` credentials do not change | `TestExternalIdentityUsesOwnIntrospectionClient` in `internal/app` |
 | Token service request: Loom's secret and the agent's token, only to a service that declared the endpoint | `TestExternalTokenServiceGetsSecretAndSubjectToken` in `internal/modules` |
 | Service token checks: issuer signature, same user and organization, never a Loom audience, expiry, reuse for one token service | `TestServiceTokenBindsUserAndNeverOpensLoom` in `internal/identity` |
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |

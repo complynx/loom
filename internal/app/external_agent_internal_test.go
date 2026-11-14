@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -323,6 +325,39 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.False(t, failed, result)
 	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
 	require.Equal(t, before+1, reads.Load(), "a revoked profile must block the next call of a running script")
+}
+
+// An issuer can introspect a token only for a client that the token names. An
+// MCP token must not name the /v1 audience, so the MCP endpoint can have its
+// own introspection client.
+func TestExternalIdentityUsesOwnIntrospectionClient(t *testing.T) {
+	t.Parallel()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	cfg := config.Config{
+		Identity: config.Identity{
+			Issuer: "https://id.example", Audience: "loom",
+			ClientID: "loom-client", ClientKeyID: "loom-key", ClientPrivateKey: key,
+			// A key that was loaded from a file keeps its path in the settings.
+			ClientKeyFile: "/run/secrets/loom-key",
+		},
+		ExternalAgents: config.ExternalAgents{Audience: "mcp"},
+	}
+	inherited := externalIdentity(cfg)
+	require.Equal(t, "mcp", inherited.Audience)
+	require.Equal(t, "loom", inherited.RejectAudience)
+	require.Equal(t, "loom-client", inherited.ClientID)
+	require.NotNil(t, inherited.ClientPrivateKey)
+
+	cfg.ExternalAgents.ClientID, cfg.ExternalAgents.ClientSecret = "mcp-client", "mcp-secret"
+	own := externalIdentity(cfg)
+	require.Equal(t, "mcp-client", own.ClientID)
+	require.Equal(t, "mcp-secret", own.ClientSecret)
+	require.Empty(t, own.ClientKeyID)
+	require.Nil(t, own.ClientPrivateKey, "the key of the /v1 client must not sign for the MCP client")
+	_, err = identity.New(own, nil, nil)
+	require.NoError(t, err, "the key file of the /v1 client must not conflict with the MCP secret")
+	require.Equal(t, "loom-client", cfg.Identity.ClientID, "the /v1 settings must not change")
 }
 
 func TestExternalAgentLimiterBoundsOneUserPerMinute(t *testing.T) {

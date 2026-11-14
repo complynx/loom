@@ -432,6 +432,24 @@ func runtimeServiceClassifier(
 	}
 }
 
+// externalIdentity returns the identity settings that verify MCP tokens: the
+// MCP audience, and the introspection credentials of the MCP endpoint when the
+// operator configured them.
+func externalIdentity(cfg config.Config) config.Identity {
+	identityConfig := cfg.Identity
+	identityConfig.Audience = cfg.ExternalAgents.Audience
+	// An agent's token must open only the MCP endpoint, never the /v1 API.
+	identityConfig.RejectAudience = cfg.Identity.Audience
+	if external := cfg.ExternalAgents; external.OwnCredentials() {
+		identityConfig.ClientID, identityConfig.ClientSecret = external.ClientID, external.ClientSecret
+		identityConfig.ClientKeyID, identityConfig.ClientPrivateKey = external.ClientKeyID, external.ClientPrivateKey
+		// The key sources of the /v1 client must not stay next to the MCP
+		// credentials: the authenticator accepts one credential source.
+		identityConfig.ClientKeyBase64, identityConfig.ClientKeyFile = external.ClientKeyBase64, external.ClientKeyFile
+	}
+	return identityConfig
+}
+
 // externalAuthenticator verifies tokens for the MCP endpoint. Its audience always
 // differs from the /v1 audience. It has its own claims cache, so a token that is
 // valid for one endpoint is never accepted at the other because of a cached check.
@@ -442,11 +460,7 @@ func externalAuthenticator(
 	observedServices *sync.Map,
 	observer *telemetry.Telemetry,
 ) (*identity.Authenticator, error) {
-	identityConfig := cfg.Identity
-	identityConfig.Audience = cfg.ExternalAgents.Audience
-	// An agent's token must open only the MCP endpoint, never the /v1 API.
-	identityConfig.RejectAudience = cfg.Identity.Audience
-	auth, err := identity.New(identityConfig, &http.Client{Transport: telemetry.TraceTransport{}}, nil)
+	auth, err := identity.New(externalIdentity(cfg), &http.Client{Transport: telemetry.TraceTransport{}}, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -124,6 +124,8 @@ external_agents:
   # resource: "https://loom.example.com/mcp"
   # audience: "replace-with-mcp-audience" # Required; must differ from identity.audience.
   # scopes: ["openid"]
+  # client_id: "replace-with-mcp-introspection-client" # Optional; default is the identity client.
+  # client_secret: "${CLX_MCP_INTROSPECTION_SECRET}"    # Or client_key_base64 / client_key_file.
   # token_services: # Optional. Approved token services for marked service reads: service ID -> secret.
   #   replace-with-service-id: "${CLX_MCP_TOKEN_SERVICE_SECRET}"
   # calls_per_minute: 30

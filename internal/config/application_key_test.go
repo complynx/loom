@@ -58,6 +58,15 @@ func TestApplicationKeyCredentialsFromSecretOrFile(t *testing.T) {
 	require.Equal(t, "key-1", identity.ClientKeyID)
 	require.Empty(t, identity.ClientKeyBase64)
 	require.True(t, private.Equal(identity.ClientPrivateKey))
+	// The MCP endpoint loads its own application key with the same rules.
+	external, err := (config.ExternalAgents{ClientKeyBase64: encoded}).ResolveCredentials()
+	require.NoError(t, err)
+	require.Equal(t, "client-1", external.ClientID)
+	require.Equal(t, "key-1", external.ClientKeyID)
+	require.Empty(t, external.ClientKeyBase64)
+	require.True(t, private.Equal(external.ClientPrivateKey))
+	_, err = (config.ExternalAgents{ClientKeyBase64: encoded, ClientSecret: "secret"}).ResolveCredentials()
+	require.ErrorContains(t, err, "external_agents:", "the error must name the block")
 	for _, whitespace := range []string{"\n", "\r\n", " ", "\t", " \r\n\t \n", "\u00a0"} {
 		var wrapped strings.Builder
 		wrapped.WriteString(whitespace)
