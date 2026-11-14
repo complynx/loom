@@ -53,6 +53,8 @@ func externalHandler(service *externalService, options api.Options) http.Handler
 		Resource: "https://loom.example.com/mcp",
 		Issuer:   "https://id.example.com",
 		Scopes:   []string{"openid", "urn:example:aud"},
+
+		AllowedOrigins: []string{"https://app.example.com"},
 	}
 	return api.New(nil, authFunc(allowed), options)
 }
@@ -152,6 +154,10 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 		"batch":           {`[{"jsonrpc":"2.0","id":1,"method":"ping"}]`, http.StatusBadRequest, -32600},
 		"malformed JSON":  {`{"jsonrpc":`, http.StatusBadRequest, -32700},
 		"null request ID": {`{"jsonrpc":"2.0","id":null,"method":"ping"}`, http.StatusOK, -32600},
+		"object request ID": {
+			`{"jsonrpc":"2.0","id":{},"method":"tools/call","params":{"name":"script"}}`, http.StatusOK, -32600,
+		},
+		"missing method": {`{"jsonrpc":"2.0","id":1}`, http.StatusOK, -32600},
 	} {
 		response := mcpRequest(handler, "user-token", tc.body)
 		require.Equal(t, tc.status, response.Code, name)
@@ -170,12 +176,25 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 	require.Equal(t, http.StatusMethodNotAllowed, w.Code)
 	require.Equal(t, http.MethodPost, w.Header().Get("Allow"))
 
-	recovery := mcpRequest(
-		externalHandler(service, api.Options{RecoveryMode: true}),
-		"user-token",
-		`{"jsonrpc":"2.0","id":1,"method":"ping"}`,
-	)
-	require.Equal(t, http.StatusServiceUnavailable, recovery.Code)
+	clientResponse := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","id":7,"result":{}}`)
+	require.Equal(t, http.StatusAccepted, clientResponse.Code)
+
+	for origin, status := range map[string]int{
+		"https://app.example.com":  http.StatusOK,
+		"https://evil.example.com": http.StatusForbidden,
+	} {
+		browser := httptest.NewRequest(
+			http.MethodPost,
+			"/mcp",
+			strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`),
+		)
+		browser.Header.Set("Content-Type", "application/json")
+		browser.Header.Set("Authorization", "Bearer user-token")
+		browser.Header.Set("Origin", origin)
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, browser)
+		require.Equal(t, status, w.Code, origin)
+	}
 	require.Empty(t, service.calls)
 
 	disabled := api.New(nil, authFunc(allowed), api.Options{})

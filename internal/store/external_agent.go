@@ -11,25 +11,19 @@ import (
 
 const externalAgentProfileColumns = "enabled,history,memory,version,confirmed_by,updated_at"
 
-func externalAgentOwner(ctx context.Context, s *Store, p domain.Principal) (string, error) {
-	if p.ServiceAccount {
-		return "", domain.Forbidden()
-	}
-	return s.ResolveUser(ctx, p)
-}
-
 // ExternalAgentProfile returns the stored consent of the authenticated user.
 // A user without a stored profile gets the zero profile: all access is denied.
+// It is one read without side effects: it runs before every external module call.
 func (s *Store) ExternalAgentProfile(ctx context.Context, p domain.Principal) (domain.ExternalAgentProfile, error) {
 	out := domain.ExternalAgentProfile{}
-	uid, err := externalAgentOwner(ctx, s, p)
-	if err != nil {
-		return out, err
+	if p.ServiceAccount || p.Issuer == "" || p.Subject == "" || p.OrgID == "" {
+		return out, domain.Forbidden()
 	}
-	err = s.pool.QueryRow(
+	err := s.pool.QueryRow(
 		ctx,
-		"SELECT "+externalAgentProfileColumns+" FROM external_agent_profiles WHERE owner_id=$1 AND org_id=$2",
-		uid,
+		"SELECT p.enabled,p.history,p.memory,p.version,p.confirmed_by,p.updated_at FROM external_agent_profiles p JOIN users u ON u.id=p.owner_id WHERE u.issuer=$1 AND u.subject=$2 AND p.org_id=$3",
+		p.Issuer,
+		p.Subject,
 		p.OrgID,
 	).Scan(&out.Enabled, &out.History, &out.Memory, &out.Version, &out.ConfirmedBy, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {

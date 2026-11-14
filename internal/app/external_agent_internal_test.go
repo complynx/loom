@@ -24,6 +24,7 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	repository, pool := searchToolStore(t)
 	ctx := t.Context()
 	var reads atomic.Int32
+	var afterRead atomic.Pointer[func()]
 	manifest := externalAgentManifest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -39,6 +40,9 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 				return
 			}
 			reads.Add(1)
+			if hook := afterRead.Swap(nil); hook != nil {
+				(*hook)()
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"operation_id": input.OperationID, "status": "succeeded", "result": map[string]bool{"ok": true},
 			})
@@ -145,16 +149,53 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, "SELECT count(*) FROM runs").Scan(&runs))
 	require.Zero(t, runs, "an external action must not create a run")
 
-	_, err = repository.PutExternalAgentProfile(
+	profile, err = repository.PutExternalAgentProfile(
 		ctx,
 		confirming,
-		domain.ExternalAgentProfileUpdate{Version: profile.Version},
+		domain.ExternalAgentProfileUpdate{Enabled: true, History: true, Memory: true, Version: profile.Version},
 	)
 	require.NoError(t, err)
+	result, failed = script(
+		`return {revision: typeof (await modules.memory.state({})).revision, put: typeof modules.memory.put};`,
+	)
+	require.False(t, failed, result)
+	require.JSONEq(t, `{"revision":"number","put":"undefined"}`, result)
+
+	agent.scripts <- struct{}{}
 	result, failed = script(`return await modules.business.read({})`)
 	require.True(t, failed)
-	require.Contains(t, result, "external_agent_disabled")
-	require.EqualValues(t, 2, reads.Load())
+	require.Contains(t, result, `"error":"busy"`)
+	<-agent.scripts
+
+	_, err = pool.Exec(ctx, `CREATE FUNCTION refuse_external_action() RETURNS trigger AS $$
+		BEGIN RAISE EXCEPTION 'history is unavailable'; END $$ LANGUAGE plpgsql`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `CREATE TRIGGER refuse_external_action BEFORE INSERT ON chat_events FOR EACH ROW
+		WHEN (NEW.kind = 'external_agent.action') EXECUTE FUNCTION refuse_external_action()`)
+	require.NoError(t, err)
+	result, failed = script(`return await modules.business.read({})`)
+	require.True(t, failed, "a result without a history record must be withheld")
+	require.Contains(t, result, "history_unavailable")
+	require.NotContains(t, result, `"ok"`)
+	_, err = pool.Exec(ctx, "DROP TRIGGER refuse_external_action ON chat_events")
+	require.NoError(t, err)
+	require.EqualValues(t, 3, reads.Load())
+
+	revoke := func() {
+		_, revokeErr := repository.PutExternalAgentProfile(
+			ctx,
+			confirming,
+			domain.ExternalAgentProfileUpdate{Version: profile.Version},
+		)
+		assert.NoError(t, revokeErr)
+	}
+	afterRead.Store(&revoke)
+	result, failed = script(`const first = await modules.business.read({});
+		try { await modules.business.read({}); return "second call was allowed"; }
+		catch (failure) { return {first, error: failure.error}; }`)
+	require.False(t, failed, result)
+	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
+	require.EqualValues(t, 4, reads.Load(), "a revoked profile must block the next call of a running script")
 }
 
 func TestExternalAgentLimiterBoundsOneUserPerMinute(t *testing.T) {

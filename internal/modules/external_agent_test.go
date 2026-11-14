@@ -70,7 +70,6 @@ func TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts(t *testing.T) {
 	broker := registry.ExternalBroker(
 		func(context.Context) (modules.Principal, error) { return principal(), nil },
 		"execution-one",
-		nil,
 	)
 	arguments := json.RawMessage(`{"specialist_id":"andrey"}`)
 	result, err := broker.Call(context.Background(), "massage", "list_slots", arguments)

@@ -8,7 +8,9 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/identity"
@@ -28,6 +30,7 @@ const (
 	rpcMethodNotFound = -32601
 	rpcInvalidParams  = -32602
 	rpcInternalError  = -32603
+	rpcServerError    = -32000
 )
 
 // ExternalAgentService runs tools for a user's own agent outside any run.
@@ -45,6 +48,8 @@ type ExternalAgentOptions struct {
 	// Resource is the public URL of the MCP endpoint. Issuer is its authorization server.
 	Resource, Issuer string
 	Scopes           []string
+	// AllowedOrigins lists the browser origins that may call the endpoint.
+	AllowedOrigins []string
 }
 
 // externalAgentCapability tells a registered client that it can offer external agents.
@@ -54,11 +59,34 @@ type externalAgentCapability struct {
 	Access   []string `json:"access"`
 }
 
+// rpcRequest is one incoming JSON-RPC message. Result and Error identify a client response.
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   json.RawMessage `json:"error,omitempty"`
+}
+
+// reply reports whether the message is a request that needs a response.
+// Notifications and client responses need none.
+func (r rpcRequest) reply() bool {
+	return len(r.ID) > 0 && (r.Method != "" || (len(r.Result) == 0 && len(r.Error) == 0))
+}
+
+// valid reports a well-formed request: version 2.0, a method and a string or number ID.
+func (r rpcRequest) valid() bool {
+	var id any
+	if r.JSONRPC != jsonRPCVersion || r.Method == "" || json.Unmarshal(r.ID, &id) != nil {
+		return false
+	}
+	switch id.(type) {
+	case string, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 type rpcError struct {
@@ -202,6 +230,11 @@ func (s *server) mcpMessage(w http.ResponseWriter, r *http.Request) (rpcRequest,
 		)
 		return request, false
 	}
+	deadlineErr := http.NewResponseController(w).SetReadDeadline(time.Now().Add(requestReadTimeout))
+	if deadlineErr != nil && !errors.Is(deadlineErr, http.ErrNotSupported) {
+		fail(w, http.StatusRequestTimeout, "request_timeout", "Request body could not be read", false)
+		return request, false
+	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, s.options.MaxBodyBytes))
 	if err != nil {
 		fail(w, http.StatusRequestEntityTooLarge, "body_too_large", "Request body is too large", false)
@@ -233,8 +266,10 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST", false)
 		return
 	}
-	if s.options.RecoveryMode {
-		fail(w, http.StatusServiceUnavailable, "recovery_mode", "Restore review is required", false)
+	// A browser sends Origin. Only configured origins may use a user's token from a page.
+	origin := r.Header.Get("Origin")
+	if origin != "" && !slices.Contains(s.options.ExternalAgent.AllowedOrigins, origin) {
+		fail(w, http.StatusForbidden, "forbidden_origin", "Origin is not allowed", false)
 		return
 	}
 	caller, ok := s.mcpCaller(w, r)
@@ -245,17 +280,20 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if len(request.ID) == 0 {
-		// Notifications and client responses need no reply.
+	if !request.reply() {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-	response := rpcResponse{JSONRPC: jsonRPCVersion, ID: request.ID}
-	if request.JSONRPC != jsonRPCVersion || request.Method == "" || string(request.ID) == "null" {
-		response.Error = &rpcError{rpcInvalidRequest, "Invalid JSON-RPC request"}
-	} else {
-		response.Result, response.Error = s.mcpCall(r.Context(), caller, request)
+	if !request.valid() {
+		write(w, http.StatusOK, rpcResponse{
+			JSONRPC: jsonRPCVersion,
+			ID:      json.RawMessage("null"),
+			Error:   &rpcError{rpcInvalidRequest, "Invalid JSON-RPC request"},
+		})
+		return
 	}
+	response := rpcResponse{JSONRPC: jsonRPCVersion, ID: request.ID}
+	response.Result, response.Error = s.mcpCall(r.Context(), caller, request)
 	write(w, http.StatusOK, response)
 }
 
@@ -281,6 +319,9 @@ func (s *server) mcpCall(ctx context.Context, caller domain.ExternalCaller, requ
 		return map[string]any{}, nil
 	case "tools/list":
 		tools, err := service.Tools(ctx, caller)
+		if limited, ok := errors.AsType[*domain.Error](err); ok && limited.Status == http.StatusTooManyRequests {
+			return nil, &rpcError{rpcServerError, "rate_limited: wait one minute"}
+		}
 		if err != nil {
 			return nil, &rpcError{rpcInternalError, "Tools are unavailable"}
 		}

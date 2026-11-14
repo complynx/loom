@@ -806,15 +806,15 @@ func (r *Registry) BrokerLive(
 
 // ExternalBroker serves reads for an external agent. It calls only methods marked
 // external_agent. It does not import artifacts: an external action has no run to own them.
-// executionID replaces the run ID in the request envelope.
+// executionID replaces the run ID in the request envelope. principal is called once
+// before each call; it must check that the caller is still admitted.
 func (r *Registry) ExternalBroker(
 	principal func(context.Context) (Principal, error),
 	executionID string,
-	guard func(context.Context) error,
 ) sandbox.Broker {
 	return sandbox.BrokerFunc(
 		func(ctx context.Context, module, method string, args json.RawMessage) (json.RawMessage, error) {
-			return r.readCall(ctx, principal, executionID, guard, module, method, args, true)
+			return r.readCall(ctx, principal, executionID, nil, module, method, args, true)
 		},
 	)
 }

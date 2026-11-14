@@ -122,7 +122,9 @@ search:
 external_agents:
   enabled: false
   # resource: "https://loom.example.com/mcp"
+  # audience: "replace-with-mcp-audience" # Omit to share identity.audience.
   # scopes: ["openid"]
+  # allowed_origins: [] # Browser origins; requests without Origin are accepted.
   # calls_per_minute: 30
 
 # Choose proxy SSO or a separate public PKCE client; see docs/operator-login.md.

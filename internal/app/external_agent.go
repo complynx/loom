@@ -30,7 +30,12 @@ const (
 	historySearchMethod    = "search"
 )
 
-const externalDisabledDescription = "Loom access for external agents is disabled for this user. Every call fails with external_agent_disabled. The user enables access in the chat client that confirmed their Loom account."
+const (
+	externalDisabledDescription   = "Loom access for external agents is disabled for this user. Every call fails with external_agent_disabled. The user enables access in the chat client that confirmed their Loom account."
+	externalDisclosureDescription = "The Loom operator does not allow external disclosure. Every call fails with disclosure_denied. Do not retry."
+	externalDisabledCode          = "external_agent_disabled"
+	externalDisclosureCode        = "disclosure_denied"
+)
 
 // ExternalAgent serves a user's own agent. It works outside any run: it starts no
 // internal inference and reserves no credits. It offers read methods only. Loom
@@ -38,6 +43,9 @@ const externalDisabledDescription = "Loom access for external agents is disabled
 type ExternalAgent struct {
 	tools   runtimeTools
 	limiter *externalLimiter
+	// scripts bounds concurrent external scripts. The sandbox pool is shared with
+	// internal runs; external agents may use at most half of it.
+	scripts chan struct{}
 }
 
 func newExternalAgent(tools runtimeTools) *ExternalAgent {
@@ -47,6 +55,7 @@ func newExternalAgent(tools runtimeTools) *ExternalAgent {
 			limit:   tools.cfg.ExternalAgents.CallLimit(),
 			windows: map[string]externalWindow{},
 		},
+		scripts: make(chan struct{}, max(1, tools.cfg.Sandbox.MaxWorkers/2)), //nolint:mnd // half of the pool
 	}
 }
 
@@ -100,14 +109,14 @@ func (a *ExternalAgent) admit(ctx context.Context, caller domain.ExternalCaller)
 		return externalSession{}, err
 	}
 	if !settings.ExternalDisclosure {
-		return externalSession{}, domain.NewError(http.StatusForbidden, "disclosure_denied")
+		return externalSession{}, domain.NewError(http.StatusForbidden, externalDisclosureCode)
 	}
 	profile, err := a.tools.repository.ExternalAgentProfile(ctx, p)
 	if err != nil {
 		return externalSession{}, err
 	}
 	if !profile.Enabled {
-		return externalSession{}, domain.NewError(http.StatusForbidden, "external_agent_disabled")
+		return externalSession{}, domain.NewError(http.StatusForbidden, externalDisabledCode)
 	}
 	permissions := maps.Clone(p.Permissions)
 	if permissions == nil {
@@ -129,18 +138,25 @@ func (s externalSession) limitKey() string {
 	return s.principal.Issuer + "\x1f" + s.principal.Subject
 }
 
-// Tools returns the tool list for the caller. A user without an enabled profile
-// gets one tool whose description states that access is disabled.
+// Tools returns the tool list for the caller. A caller whom policy or the profile
+// denies gets one tool whose description states the reason.
 func (a *ExternalAgent) Tools(ctx context.Context, caller domain.ExternalCaller) ([]domain.ExternalTool, error) {
-	description := externalDisabledDescription
+	var description string
 	session, err := a.admit(ctx, caller)
-	if err == nil {
+	denied, _ := errors.AsType[*domain.Error](err)
+	switch {
+	case err == nil:
 		if !a.limiter.allow(session.limitKey(), time.Now()) {
 			return nil, domain.NewError(http.StatusTooManyRequests, "rate_limited")
 		}
-		description, err = a.scriptDescription(ctx, session)
-	}
-	if denied, ok := errors.AsType[*domain.Error](err); err != nil && (!ok || denied.Status != http.StatusForbidden) {
+		if description, err = a.scriptDescription(ctx, session); err != nil {
+			return nil, err
+		}
+	case denied != nil && denied.Code == externalDisabledCode:
+		description = externalDisabledDescription
+	case denied != nil && denied.Code == externalDisclosureCode:
+		description = externalDisclosureDescription
+	default:
 		return nil, err
 	}
 	return []domain.ExternalTool{{
@@ -314,6 +330,12 @@ func (a *ExternalAgent) call(
 			Recovery: "Wait one minute. Combine related reads in one script.",
 		}
 	}
+	select {
+	case a.scripts <- struct{}{}:
+		defer func() { <-a.scripts }()
+	default:
+		return nil, &domain.ToolError{Code: "busy", Recovery: "Loom is at capacity for external agents. Retry later."}
+	}
 	return a.script(ctx, session, input.Code)
 }
 
@@ -324,10 +346,10 @@ func externalFailure(err error) json.RawMessage {
 		code = known.Code
 	}
 	switch {
-	case code == "external_agent_disabled":
+	case code == externalDisabledCode:
 		failure.Code = code
 		failure.Recovery = "Ask the user to enable external agent access in the chat client that confirmed their Loom account."
-	case code == "disclosure_denied":
+	case code == externalDisclosureCode:
 		failure.Code = code
 		failure.Recovery = "The operator does not allow external disclosure. Do not retry."
 	case code == "history_unavailable":
@@ -367,6 +389,7 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 		bindings[index].Methods = append(bindings[index].Methods, tool.Method)
 	}
 	executionID := uuid.NewString()
+	// One admission before each module call: a profile change applies to the next call.
 	current := func(c context.Context) (externalSession, error) { return a.admit(c, session.caller) }
 	remote := a.tools.registry.ExternalBroker(
 		func(c context.Context) (modules.Principal, error) {
@@ -374,7 +397,6 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 			return fresh.modulePrincipal(), admitErr
 		},
 		executionID,
-		func(c context.Context) error { _, admitErr := current(c); return admitErr },
 	)
 	calls := &externalCalls{}
 	slots := make(chan struct{}, parallel)

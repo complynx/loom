@@ -200,7 +200,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		resources.cipher,
 		resources.authorize,
 		operatorLogin,
-		resources.external,
+		resources.externalAgentOptions(cfg, observer),
 	)
 	server, listener, metricsServer, err := runtimeServers(
 		ctx,
@@ -412,6 +412,55 @@ func runtimeRegistry(
 	return registry, nil
 }
 
+// runtimeServiceClassifier recognizes registered service identities of the Loom audience.
+func runtimeServiceClassifier(
+	cfg config.Config,
+	repository *store.Store,
+	registry *modules.Registry,
+	observedServices *sync.Map,
+) identity.ServiceClassifier {
+	return func(c context.Context, p domain.Principal) (bool, error) {
+		if registry.TrustReady() != nil {
+			return false, identity.ErrUnavailable
+		}
+
+		if _, known := observedServices.Load(serviceIdentity{p.Issuer, p.Subject, cfg.Identity.Audience}); known {
+			return true, nil
+		}
+		return repository.IsKnownServiceIdentity(c, p.Issuer, p.Subject, cfg.Identity.Audience)
+	}
+}
+
+// externalAuthenticator verifies tokens for the MCP endpoint. A separate audience
+// gets its own authenticator and claims cache, so a token that is valid for one
+// endpoint is never accepted at the other because of a cached check.
+func externalAuthenticator(
+	cfg config.Config,
+	primary *identity.Authenticator,
+	repository *store.Store,
+	registry *modules.Registry,
+	observedServices *sync.Map,
+	observer *telemetry.Telemetry,
+) (*identity.Authenticator, error) {
+	audience := cfg.ExternalAgents.Audience
+	if audience == "" || audience == cfg.Identity.Audience {
+		return primary, nil
+	}
+	identityConfig := cfg.Identity
+	identityConfig.Audience = audience
+	auth, err := identity.New(identityConfig, &http.Client{Transport: telemetry.TraceTransport{}}, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err = auth.UseServiceClassifier(
+		runtimeServiceClassifier(cfg, repository, registry, observedServices),
+	); err != nil {
+		return nil, err
+	}
+	auth.UseCacheControl(repository.IdentityCacheEpoch, repository.ClearIdentityCache, observer.IdentityCache)
+	return auth, nil
+}
+
 func runtimeAuthenticator(
 	cfg config.Config,
 	repository *store.Store,
@@ -430,16 +479,7 @@ func runtimeAuthenticator(
 	if err != nil {
 		return nil, err
 	}
-	err = auth.UseServiceClassifier(func(c context.Context, p domain.Principal) (bool, error) {
-		if registry.TrustReady() != nil {
-			return false, identity.ErrUnavailable
-		}
-
-		if _, known := observedServices.Load(serviceIdentity{p.Issuer, p.Subject, cfg.Identity.Audience}); known {
-			return true, nil
-		}
-		return repository.IsKnownServiceIdentity(c, p.Issuer, p.Subject, cfg.Identity.Audience)
-	})
+	err = auth.UseServiceClassifier(runtimeServiceClassifier(cfg, repository, registry, observedServices))
 	if err != nil {
 		return nil, err
 	}
@@ -629,24 +669,13 @@ func runtimeHandler(
 	cipher *identity.SessionCipher,
 	authorize RunAuthorizer,
 	operatorLogin *api.OperatorLogin,
-	external *ExternalAgent,
+	external *api.ExternalAgentOptions,
 ) http.Handler {
-	measured := measuredAuth{auth: auth, observer: observer}
-	var externalOptions *api.ExternalAgentOptions
-	if external != nil {
-		externalOptions = &api.ExternalAgentOptions{
-			Service:      external,
-			Authenticate: measured.AuthenticateExternal,
-			Resource:     cfg.ExternalAgents.Resource,
-			Issuer:       cfg.Identity.Issuer,
-			Scopes:       cfg.ExternalAgents.Scopes,
-		}
-	}
 	return api.New(
 		repository,
-		measured,
+		measuredAuth{auth: auth, observer: observer},
 		api.Options{
-			ExternalAgent: externalOptions,
+			ExternalAgent: external,
 			ClearIdentityCache: func(c context.Context) (int64, error) {
 				epoch, err := auth.ClearPermissionsCache(c)
 				if err == nil {
@@ -873,7 +902,26 @@ type runtimeComponents struct {
 	queue            *river.Client[pgx.Tx]
 	maxWorkers       int
 	// external is nil when external agents are disabled or in recovery mode.
-	external *ExternalAgent
+	external     *ExternalAgent
+	externalAuth *identity.Authenticator
+}
+
+// externalAgentOptions returns nil when the MCP endpoint is not served.
+func (r *runtimeComponents) externalAgentOptions(
+	cfg config.Config,
+	observer *telemetry.Telemetry,
+) *api.ExternalAgentOptions {
+	if r.external == nil {
+		return nil
+	}
+	return &api.ExternalAgentOptions{
+		Service:        r.external,
+		Authenticate:   measuredAuth{auth: r.externalAuth, observer: observer}.AuthenticateExternal,
+		Resource:       cfg.ExternalAgents.Resource,
+		Issuer:         cfg.Identity.Issuer,
+		Scopes:         cfg.ExternalAgents.Scopes,
+		AllowedOrigins: cfg.ExternalAgents.AllowedOrigins,
+	}
 }
 
 func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) error {
@@ -977,6 +1025,17 @@ func (r *runtimeComponents) initAgent(
 		return err
 	}
 	if cfg.ExternalAgents.Enabled {
+		r.externalAuth, err = externalAuthenticator(
+			cfg,
+			r.auth,
+			r.repository,
+			r.registry,
+			&r.observedServices,
+			observer,
+		)
+		if err != nil {
+			return err
+		}
 		r.external = newExternalAgent(runtimeTools{
 			cfg:        cfg,
 			registry:   r.registry,
