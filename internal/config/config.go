@@ -41,9 +41,12 @@ type Database struct {
 	LockTimeoutMS      int    `yaml:"lock_timeout_ms"`
 }
 type Identity struct {
-	AdminOrganizationID        string              `yaml:"admin_organization_id"`
-	Issuer                     string              `yaml:"issuer"`
-	Audience                   string              `yaml:"audience"`
+	AdminOrganizationID string `yaml:"admin_organization_id"`
+	Issuer              string `yaml:"issuer"`
+	Audience            string `yaml:"audience"`
+	// RejectAudience is set at startup, not in YAML. A token that contains it is
+	// refused: it belongs to the other endpoint.
+	RejectAudience             string              `yaml:"-"                             json:"-"`
 	ClientID                   string              `yaml:"client_id"`
 	ClientSecret               string              `yaml:"client_secret"`
 	ClientKeyBase64            string              `yaml:"client_key_base64"             json:"-"`

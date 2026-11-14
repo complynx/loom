@@ -43,7 +43,7 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 - A common dependency circuit breaker, automatic late-usage retrieval or a global platform spend cap. Bounded provider retry and sponsored recovery already exist.
 - Remote cancellation through manifest cancel_path. Cancel is not rollback.
 - External agent writes, memory writes, files, skills and paid tools. External agents have read methods only; their rate limit is local to one API process.
-- A separate downstream credential for external agents. Loom forwards the agent's access token to services, so a client can also call a reachable service directly, outside the method mark, profile and history record. See the [known limit](external-agents.md#known-limit-downstream-token).
+- A separate downstream credential for external agents. Service reads are off by default. With `external_agents.forward_token`, Loom forwards the agent's access token to services, so a client can also call a reachable service directly, outside the method mark, profile and history record. See the [known limit](external-agents.md#known-limit-downstream-token).
 - Object storage, chunk-upload sessions, cross-host blob transfer or native PDF/audio/video model input. The worker processes these formats; supported images can attach directly.
 - A proven private-inference boundary, automatic memory extraction, memory administration UI, subagents or proactive runs.
 - Privileged retention changes for all existing resources or secure erasure of every checkpoint/audit/backup trace.

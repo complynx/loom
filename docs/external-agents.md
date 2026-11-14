@@ -13,12 +13,13 @@ that are not implemented.
 
 | Part | State |
 | --- | --- |
-| MCP endpoint, OAuth resource metadata, `script` tool with read methods | Implemented. |
+| MCP endpoint, OAuth resource metadata, `script` tool with help, history and memory reads | Implemented. |
+| Service reads through marked methods | Implemented behind the `forward_token` operator switch, default off. |
 | User profile written by a confirming chat client | Implemented. |
 | `external_agent` method mark in manifests | Implemented for read methods. |
 | History record for each external action | Implemented. |
 | Acceptance with a real MCP client and the installed issuer | Open. See [Acceptance](#acceptance). |
-| Separate token for downstream services | Not implemented. Loom forwards the agent's token. See the [known limit](#known-limit-downstream-token). |
+| Separate token for downstream services | Not implemented. With `forward_token`, Loom forwards the agent's token. See the [known limit](#known-limit-downstream-token). |
 | External service writes and personal-memory writes | Not implemented. See [Planned writes](#planned-writes). |
 | Files, skills, paid transcription, diagnostics and administration tools | Not available to external agents. |
 
@@ -35,7 +36,8 @@ An external action runs outside any run.
   the credit check.
 - External scripts share the sandbox workers with internal runs. At most half
   of `sandbox.max_workers` (minimum one) can run external scripts at the same
-  time. A call above that bound fails with `busy`.
+  time. A call above that bound fails with `busy`. With one sandbox worker,
+  that worker serves both internal runs and external scripts.
 - Loom writes each action to the user's default chat as a
   [passive event](api/runs-input.md#passive-events). The next internal run
   reads that event as context. A current run reads it between steps.
@@ -54,6 +56,7 @@ external_agents:
   resource: "https://loom.example.com/mcp"
   audience: "replace-with-mcp-audience"
   scopes: ["openid"]
+  forward_token: false
   calls_per_minute: 30
 ```
 
@@ -63,6 +66,7 @@ external_agents:
 | `resource` | Public URL of the MCP endpoint. HTTPS except loopback. It must contain a path without a trailing slash. Loom serves the endpoint at `/mcp` and the metadata at `/.well-known/oauth-protected-resource`; a proxy must map both public paths. |
 | `audience` | Required. Audience that a token for the MCP endpoint must contain. It must differ from `identity.audience`. See [token audience](#token-audience). |
 | `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the audiences of downstream services, the organization and the roles into the access token. At most 32 entries. |
+| `forward_token` | Lets external agents call marked service methods. Default false: only help, history and memory are available. Read the [known limit](#known-limit-downstream-token) before you set it. |
 | `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit also counts calls of a user without access. It is local to one API process. |
 
 When `enabled` is false, the other fields must be absent. In recovery mode the
@@ -71,12 +75,13 @@ endpoint and the profile routes are not served and return `404`.
 `GET /v1/capabilities` reports the feature to registered clients:
 
 ```json
-{"external_agent": {"version": 1, "resource": "https://loom.example.com/mcp", "access": ["history", "memory"]}}
+{"external_agent": {"version": 1, "resource": "https://loom.example.com/mcp", "access": ["history", "memory"], "services": false}}
 ```
 
 The key is absent when the endpoint is disabled. A chat client must check it
 before it offers the feature, and can show `resource` as the URL that the user
-adds to their agent.
+adds to their agent. `access` lists the profile switches. `services` reports
+whether external agents can call service methods on this installation.
 
 ## Authorization
 
@@ -126,7 +131,8 @@ value that the issuer writes for this endpoint. It must differ from
 
 Loom checks MCP tokens with a separate authenticator and claims cache. A token
 for the MCP audience is not accepted at `/v1`, and a `/v1` token is not
-accepted at `/mcp`.
+accepted at `/mcp`. A token that contains both audiences is refused at both
+endpoints.
 
 The separation is necessary. A `/v1` token of a user opens routes that need no
 operation right, for example the personal memory routes, which read, change
@@ -134,18 +140,19 @@ and delete memory. A token that is valid at both endpoints would let the
 agent's client use those routes outside the profile, outside the read-only
 limit and outside the history record.
 
-> **Operator check.** Configure the issuer so that a token for an external
-> agent's client cannot contain `identity.audience`. If the issuer writes both
-> audiences into one token, the separation does not hold.
 
 The role claims of the token must contain the user's module roles, or the
 catalog of the session is empty.
 
 ### Known limit: downstream token
 
-Loom calls a service with the access token that the external agent sent, the
-same way a delegated run forwards the user's token. The token must therefore
-contain the audience of each service.
+By default external agents cannot call service methods. The catalog, the
+bindings and dispatch contain only help, history and memory.
+
+`forward_token: true` enables marked service reads. Loom then calls a service
+with the access token that the external agent sent, the same way a delegated
+run forwards the user's token. The token must therefore contain the audience of
+each service.
 
 - This does not follow the MCP rule that a server must not pass the client's
   token to another service.
@@ -154,12 +161,12 @@ contain the audience of each service.
   limit and the history record. These controls apply only to calls through
   Loom.
 
-Do not enable the endpoint for clients that you do not trust with direct
-access to those services. The fix is a separate downstream credential: Loom
-accepts a token for the MCP audience only and gets the service token itself,
-for example by token exchange. This needs a check against the installed issuer
-and must be complete before [writes](#planned-writes) exist. See
-[acceptance](#acceptance).
+Set `forward_token` only when every client that can get such a token is trusted
+with direct access to those services. The fix is a separate downstream
+credential: Loom accepts a token for the MCP audience only and gets the service
+token itself, for example by token exchange. This needs a check against the
+installed issuer. When it exists, it replaces `forward_token`, and it must be
+complete before [writes](#planned-writes) exist. See [acceptance](#acceptance).
 
 ## User profile
 
@@ -176,7 +183,9 @@ external agents to users who already use that client.
 | PUT | `/v1/users/me/external-agent` | `{enabled, history, memory, version}` | Updated profile. |
 
 Both routes require `external_agent.profile.write`. PUT uses fresh
-authorization and bypasses the positive claims cache.
+authorization and bypasses the positive claims cache. PUT also requires a
+delegated request: Loom refuses a user's direct token, also when a role grants
+the permission.
 
 ```json
 {"enabled": true, "history": true, "memory": false, "version": 0}
@@ -209,8 +218,7 @@ To let a caller write profiles:
    `identity.role_permissions`.
 
 In a delegated request the permission comes from the caller, not from the
-user. Do not map it to a role of ordinary users: a user who has it could
-enable their own profile with a direct token.
+user.
 
 ## Method mark
 
@@ -269,7 +277,8 @@ An `MCP-Protocol-Version` header with an unsupported revision returns `400`.
 A request ID must be a string or a number. Batches, other ID types, another
 `jsonrpc` value and every other message shape return JSON-RPC error `-32600`
 with a null ID and start no tool. Unknown methods return `-32601`. A `tools/list` request above
-the rate limit returns `-32000` with the message `rate_limited`.
+the rate limit returns `-32000` with the message `rate_limited`. Malformed
+`initialize` parameters return `-32602`.
 
 ## The script tool
 
@@ -284,12 +293,15 @@ Available bindings:
 | `help` | `list`, `read` | Always. The catalog contains only what this session can call. |
 | `history` | `search`, `read` | Profile `history`. Default chat only. |
 | `memory` | `state`, `list`, `read` | Profile `memory`. |
-| Service modules | Marked read methods | Module and method permissions of the user. |
+| Service modules | Marked read methods | `forward_token` is set, and the user has the module and method permissions. |
 
 The tool description contains the same environment overview and navigation
 guidance that the internal agent receives. Start with
 `return await modules.help.list({})` and read a method card before an
 unfamiliar call.
+
+If the service catalog is unavailable, a script still runs with the builtin
+modules, and `help.list` returns a `remote_catalog_unavailable` warning.
 
 Script time and parallel calls use the current `script_timeout_ms` and
 `parallel_rpc_limit` settings and their deployment ceilings. The other limits
@@ -421,8 +433,9 @@ record. They do not prove these installation properties:
 | --- | --- |
 | JSON-RPC exchange, `401` challenge, metadata, disabled routes | `TestMCPEndpointAuthorizesAndServesTools`, `TestMCPEndpointRejectsInvalidExchanges` in `internal/api` |
 | Token rules and dropped operation rights | `TestExternalAuthenticationKeepsOnlyModulePermissions` in `internal/identity` |
+| A token for one endpoint, or for both, does not open the other | `TestEndpointAudiencesAreMutuallyExclusive` in `internal/identity` |
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |
-| Profile switches, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
+| Profile switches, service-call switch, direct profile write refused, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
 | Profile right comes from the caller binding, not from the user's role | `TestProfilePermissionComesFromCallerBinding` in `internal/identity` |
 | Compression in run context, refused event type on the public route | `TestPassiveContextKeepsHistoryAndLatestActions` in `internal/store` |
 | Upgrade from the previous schema with existing data | `TestExternalAgentProfileMigrationKeepsExistingData` in `internal/store` |

@@ -31,6 +31,8 @@ func TestExternalAgentsConfig(t *testing.T) {
 		{"scope with space", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{"open id"} }), false},
 		{"scope with quote", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{`open"id`} }), false},
 		{"missing audience", enabled(func(c *config.ExternalAgents) { c.Audience = "" }), false},
+		{"service calls", enabled(func(c *config.ExternalAgents) { c.ForwardToken = true }), true},
+		{"service calls while disabled", config.ExternalAgents{ForwardToken: true}, false},
 		{"shared audience", enabled(func(c *config.ExternalAgents) { c.Audience = "loom" }), false},
 		{"limit", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 600 }), true},
 		{"limit too high", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 601 }), false},

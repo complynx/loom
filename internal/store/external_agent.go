@@ -40,7 +40,9 @@ func (s *Store) PutExternalAgentProfile(
 	in domain.ExternalAgentProfileUpdate,
 ) (domain.ExternalAgentProfile, error) {
 	out := domain.ExternalAgentProfile{}
-	if !p.Has(domain.ExternalAgentProfilePermission) || p.ServiceAccount {
+	// Only a confirming caller that acts for the user writes the profile. A user's
+	// direct token is refused even if a role grants the permission.
+	if !p.Has(domain.ExternalAgentProfilePermission) || p.ServiceAccount || p.Actor == "" || p.Actor == p.Subject {
 		return out, domain.Forbidden()
 	}
 	if in.Version < 0 {

@@ -53,7 +53,7 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		repository: repository, registry: registry, executor: sandbox.Inline{},
 		cfg: config.Config{
 			Sandbox:        config.Sandbox{ScriptTimeoutCeilingMS: 5000},
-			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600},
+			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600, ForwardToken: true},
 		},
 	}
 	agent := newExternalAgent(tools, verify)
@@ -83,6 +83,10 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	confirming.Permissions = map[string]bool{domain.ExternalAgentProfilePermission: true}
 	_, err = repository.PutExternalAgentProfile(ctx, user, domain.ExternalAgentProfileUpdate{Enabled: true})
 	require.Error(t, err, "the user's own rights must not enable the profile")
+	direct := user
+	direct.Permissions = map[string]bool{domain.ExternalAgentProfilePermission: true}
+	_, err = repository.PutExternalAgentProfile(ctx, direct, domain.ExternalAgentProfileUpdate{Enabled: true})
+	require.Error(t, err, "a direct token must not write the profile, also with the permission")
 	profile, err := repository.PutExternalAgentProfile(
 		ctx,
 		confirming,
@@ -101,6 +105,17 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.Contains(t, offered[0].Description, `"id":"business"`)
 	require.Contains(t, offered[0].Description, `"id":"history"`)
 	require.NotContains(t, offered[0].Description, `"id":"memory"`)
+
+	tools.cfg.ExternalAgents = config.ExternalAgents{CallsPerMinute: 600}
+	closed := newExternalAgent(tools, verify)
+	withoutServices, closedFailed := closed.Call(
+		ctx,
+		caller,
+		externalScriptTool,
+		json.RawMessage(`{"code":"return [typeof modules.business, typeof modules.history];"}`),
+	)
+	require.False(t, closedFailed, string(withoutServices))
+	require.JSONEq(t, `["undefined","object"]`, string(withoutServices), "service methods need the operator switch")
 
 	result, failed = script(`const [first] = await Promise.all([modules.business.read({}), modules.business.read({})]);
 		return {first, earlier: (await modules.history.read({after_seq: 0})).events.length};`)

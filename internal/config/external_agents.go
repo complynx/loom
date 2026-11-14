@@ -22,6 +22,10 @@ type ExternalAgents struct {
 	Audience string `yaml:"audience"`
 	// Scopes are advertised to clients as the scopes to request from the issuer.
 	Scopes []string `yaml:"scopes"`
+	// ForwardToken lets external agents call marked service methods. Loom then
+	// sends the agent's own access token to the service. It is false by default:
+	// a client that holds such a token can also call a reachable service directly.
+	ForwardToken bool `yaml:"forward_token"`
 	// CallsPerMinute limits tool calls of one user. Zero uses the default.
 	CallsPerMinute int `yaml:"calls_per_minute"`
 }
@@ -37,7 +41,7 @@ func (c ExternalAgents) CallLimit() int {
 // Validate checks the settings. identityAudience is the audience of the /v1 API.
 func (c ExternalAgents) Validate(identityAudience string) error {
 	if !c.Enabled {
-		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || c.CallsPerMinute != 0 {
+		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || c.CallsPerMinute != 0 || c.ForwardToken {
 			return errors.New("external agent settings require external_agents.enabled")
 		}
 		return nil

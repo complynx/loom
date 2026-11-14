@@ -47,6 +47,8 @@ type ExternalAgentOptions struct {
 	// Resource is the public URL of the MCP endpoint. Issuer is its authorization server.
 	Resource, Issuer string
 	Scopes           []string
+	// Services reports that external agents can call marked service methods.
+	Services bool
 }
 
 // externalAgentCapability tells a registered client that it can offer external agents.
@@ -54,6 +56,7 @@ type externalAgentCapability struct {
 	Version  int      `json:"version"`
 	Resource string   `json:"resource"`
 	Access   []string `json:"access"`
+	Services bool     `json:"services"`
 }
 
 // rpcRequest is one incoming JSON-RPC message. Result and Error identify a client response.
@@ -324,7 +327,9 @@ func (s *server) mcpCall(ctx context.Context, caller domain.ExternalCaller, requ
 		var params struct {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
-		_ = json.Unmarshal(request.Params, &params)
+		if len(request.Params) > 0 && json.Unmarshal(request.Params, &params) != nil {
+			return nil, &rpcError{rpcInvalidParams, "Invalid initialize parameters"}
+		}
 		result := mcpInitializeResult{
 			ProtocolVersion: mcpLatestVersion,
 			Capabilities:    map[string]map[string]any{"tools": {}},
@@ -340,7 +345,7 @@ func (s *server) mcpCall(ctx context.Context, caller domain.ExternalCaller, requ
 	case "tools/list":
 		tools, err := service.Tools(ctx, caller)
 		if limited, ok := errors.AsType[*domain.Error](err); ok && limited.Status == http.StatusTooManyRequests {
-			return nil, &rpcError{rpcServerError, "rate_limited: wait one minute"}
+			return nil, &rpcError{rpcServerError, "rate_limited"}
 		}
 		if err != nil {
 			return nil, &rpcError{rpcInternalError, "Tools are unavailable"}

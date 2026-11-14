@@ -443,6 +443,7 @@ func externalAuthenticator(
 ) (*identity.Authenticator, error) {
 	identityConfig := cfg.Identity
 	identityConfig.Audience = cfg.ExternalAgents.Audience
+	identityConfig.RejectAudience = cfg.Identity.Audience
 	auth, err := identity.New(identityConfig, &http.Client{Transport: telemetry.TraceTransport{}}, nil)
 	if err != nil {
 		return nil, err
@@ -464,8 +465,12 @@ func runtimeAuthenticator(
 	checkService func(context.Context, domain.Principal) (identity.Binding, error),
 	observedServices *sync.Map,
 ) (*identity.Authenticator, error) {
+	identityConfig := cfg.Identity
+	if cfg.ExternalAgents.Enabled {
+		identityConfig.RejectAudience = cfg.ExternalAgents.Audience
+	}
 	auth, err := identity.New(
-		cfg.Identity,
+		identityConfig,
 		&http.Client{Transport: telemetry.TraceTransport{}},
 		func(c context.Context, _ *http.Request, p domain.Principal) (identity.Binding, error) {
 			return checkService(c, p)
@@ -915,6 +920,7 @@ func (r *runtimeComponents) externalAgentOptions(
 		Resource:     cfg.ExternalAgents.Resource,
 		Issuer:       cfg.Identity.Issuer,
 		Scopes:       cfg.ExternalAgents.Scopes,
+		Services:     cfg.ExternalAgents.ForwardToken,
 	}
 }
 

@@ -104,6 +104,7 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 					Version:  1,
 					Resource: options.ExternalAgent.Resource,
 					Access:   []string{"history", "memory"},
+					Services: options.ExternalAgent.Services,
 				}
 			}
 			write(w, http.StatusOK, capabilities)

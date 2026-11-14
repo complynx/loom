@@ -281,6 +281,11 @@ func (a *Authenticator) introspectToken(ctx context.Context, token string) (toke
 	if !allowed || signed.Subject != "" && signed.Subject != info.Subject {
 		return tokenInfo{}, ErrUnauthorized
 	}
+	// A token for both endpoints would join what the separate audiences keep apart.
+	if reject := a.cfg.RejectAudience; reject != "" &&
+		(slices.Contains(info.Audience, reject) || signed.Audience.Contains(reject)) {
+		return tokenInfo{}, ErrUnauthorized
+	}
 	if signed.Expiry != nil && int64(*signed.Expiry) < info.Expires {
 		info.Expires = int64(*signed.Expiry)
 	}

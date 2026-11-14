@@ -53,6 +53,44 @@ func TestProfilePermissionComesFromCallerBinding(t *testing.T) {
 	require.Equal(t, "svc", p.Actor)
 }
 
+// A token for one endpoint must not open the other, also when it names both audiences.
+func TestEndpointAudiencesAreMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	var issuer string
+	server := authenticationServer(t, key, &issuer)
+	defer server.Close()
+	issuer = server.URL
+	authenticator := func(audience, reject string) *identity.Authenticator {
+		auth, newErr := identity.New(config.Identity{
+			Issuer: issuer, Audience: audience, RejectAudience: reject,
+			ClientID: "client", ClientSecret: "secret", JWKSCacheTTLSeconds: 60,
+		}, server.Client(), nil)
+		require.NoError(t, newErr)
+		return auth
+	}
+	request := func(token string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "http://harness/", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		return r
+	}
+	api, mcp := authenticator("harness", "mcp"), authenticator("mcp", "harness")
+
+	_, err = api.Authenticate(context.Background(), request("opaque"))
+	require.NoError(t, err)
+	_, err = mcp.AuthenticateExternal(context.Background(), request("mcp-only"))
+	require.NoError(t, err)
+	for _, token := range []string{"mcp-only", "both-audiences"} {
+		_, err = api.Authenticate(context.Background(), request(token))
+		require.ErrorIs(t, err, identity.ErrUnauthorized, token)
+	}
+	for _, token := range []string{"opaque", "both-audiences"} {
+		_, err = mcp.AuthenticateExternal(context.Background(), request(token))
+		require.ErrorIs(t, err, identity.ErrUnauthorized, token)
+	}
+}
+
 func TestExternalAuthenticationKeepsOnlyModulePermissions(t *testing.T) {
 	t.Parallel()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

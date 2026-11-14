@@ -53,6 +53,7 @@ func externalHandler(service *externalService, options api.Options) http.Handler
 		Resource: "https://loom.example.com/mcp",
 		Issuer:   "https://id.example.com",
 		Scopes:   []string{"openid", "urn:example:aud"},
+		Services: true,
 	}
 	return api.New(nil, authFunc(allowed), options)
 }
@@ -148,6 +149,7 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 	}{
 		"unknown method":  {`{"jsonrpc":"2.0","id":1,"method":"resources/list"}`, http.StatusOK, -32601},
 		"missing tool":    {`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`, http.StatusOK, -32602},
+		"initialize type": {`{"jsonrpc":"2.0","id":1,"method":"initialize","params":3}`, http.StatusOK, -32602},
 		"wrong version":   {`{"jsonrpc":"1.0","id":1,"method":"ping"}`, http.StatusOK, -32600},
 		"batch":           {`[{"jsonrpc":"2.0","id":1,"method":"ping"}]`, http.StatusBadRequest, -32600},
 		"malformed JSON":  {`{"jsonrpc":`, http.StatusBadRequest, -32700},
@@ -214,9 +216,11 @@ func TestExternalAgentProfileRoutesRequireConfirmingPermission(t *testing.T) {
 		ExternalAgent struct {
 			Resource string   `json:"resource"`
 			Access   []string `json:"access"`
+			Services bool     `json:"services"`
 		} `json:"external_agent"`
 	}
 	require.NoError(t, json.Unmarshal(capabilities.Body.Bytes(), &body))
 	require.Equal(t, "https://loom.example.com/mcp", body.ExternalAgent.Resource)
 	require.Equal(t, []string{"history", "memory"}, body.ExternalAgent.Access)
+	require.True(t, body.ExternalAgent.Services)
 }
