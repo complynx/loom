@@ -62,9 +62,9 @@ func TestEndpointAudiencesAreMutuallyExclusive(t *testing.T) {
 	server := authenticationServer(t, key, &issuer)
 	defer server.Close()
 	issuer = server.URL
-	authenticator := func(audience, reject string) *identity.Authenticator {
+	authenticator := func(audience string, reject ...string) *identity.Authenticator {
 		auth, newErr := identity.New(config.Identity{
-			Issuer: issuer, Audience: audience, RejectAudience: reject,
+			Issuer: issuer, Audience: audience, RejectAudiences: reject,
 			ClientID: "client", ClientSecret: "secret", JWKSCacheTTLSeconds: 60,
 		}, server.Client(), nil)
 		require.NoError(t, newErr)
@@ -75,7 +75,8 @@ func TestEndpointAudiencesAreMutuallyExclusive(t *testing.T) {
 		r.Header.Set("Authorization", "Bearer "+token)
 		return r
 	}
-	api, mcp := authenticator("harness", "mcp"), authenticator("mcp", "harness")
+	// The MCP endpoint also refuses the audiences of downstream services.
+	api, mcp := authenticator("harness", "mcp"), authenticator("mcp", "service", "harness")
 
 	_, err = api.Authenticate(context.Background(), request("opaque"))
 	require.NoError(t, err)

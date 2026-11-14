@@ -49,6 +49,9 @@ type ExternalAgent struct {
 	limiter *externalLimiter
 	// verify checks a held token again before each module call of a script.
 	verify func(context.Context, string) (domain.ExternalCaller, error)
+	// serviceToken exchanges a verified caller's token for a separate token for
+	// downstream services. Nil means that service methods are not available.
+	serviceToken func(context.Context, domain.ExternalCaller) (string, error)
 	// scripts bounds concurrent external scripts. The sandbox pool is shared with
 	// internal runs; external agents may use at most half of it.
 	scripts chan struct{}
@@ -57,10 +60,12 @@ type ExternalAgent struct {
 func newExternalAgent(
 	tools runtimeTools,
 	verify func(context.Context, string) (domain.ExternalCaller, error),
+	serviceToken func(context.Context, domain.ExternalCaller) (string, error),
 ) *ExternalAgent {
 	return &ExternalAgent{
-		tools:  tools,
-		verify: verify,
+		tools:        tools,
+		verify:       verify,
+		serviceToken: serviceToken,
 		limiter: &externalLimiter{
 			limit:   tools.cfg.ExternalAgents.CallLimit(),
 			windows: map[string]externalWindow{},
@@ -139,17 +144,36 @@ func (a *ExternalAgent) admit(ctx context.Context, caller domain.ExternalCaller)
 	return externalSession{caller: caller, profile: profile, principal: p}, nil
 }
 
-func (s externalSession) modulePrincipal() modules.Principal {
-	return modulePrincipal(s.principal, s.caller.Token, 0)
+// servicePrincipal is the identity that Loom presents to a downstream service.
+// It carries the exchanged service token, never the agent's own token.
+func (a *ExternalAgent) servicePrincipal(ctx context.Context, session externalSession) (modules.Principal, error) {
+	if a.serviceToken == nil {
+		return modules.Principal{}, modules.ErrUnavailable
+	}
+	token, err := a.serviceToken(ctx, session.caller)
+	if err != nil {
+		if ctx.Err() != nil {
+			return modules.Principal{}, ctx.Err()
+		}
+		// The agent's own token is already verified. A failed exchange is a fault
+		// of the installation, so the agent must not be told to sign in again. The
+		// cause is kept as text only: it must not match an authorization error.
+		return modules.Principal{}, fmt.Errorf("%w: service token exchange: %s", modules.ErrUnavailable, err.Error())
+	}
+	return modulePrincipal(session.principal, token, 0), nil
 }
 
 // serviceReads returns the marked service reads of the session. It returns none
-// unless the operator let Loom forward the agent's token to services.
+// unless the operator configured the service token exchange.
 func (a *ExternalAgent) serviceReads(ctx context.Context, session externalSession) ([]modules.Tool, error) {
-	if !a.tools.cfg.ExternalAgents.ForwardToken {
+	if a.serviceToken == nil {
 		return nil, nil
 	}
-	return a.tools.registry.ListExternal(ctx, session.modulePrincipal())
+	principal, err := a.servicePrincipal(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	return a.tools.registry.ListExternal(ctx, principal)
 }
 
 // externalLimitKey identifies the user for the rate limit, across all of their agents.
@@ -296,12 +320,11 @@ func (a *ExternalAgent) help(
 		return nil, err
 	}
 	return renderHelp(method, input, entries, cards, warnings, func(id string) (string, error) {
-		descriptor, describeErr := a.tools.registry.DescribeExternal(
-			ctx,
-			session.modulePrincipal(),
-			input.Module,
-			input.Method,
-		)
+		principal, describeErr := a.servicePrincipal(ctx, session)
+		if describeErr != nil {
+			return "", describeErr
+		}
+		descriptor, describeErr := a.tools.registry.DescribeExternal(ctx, principal, input.Module, input.Method)
 		if describeErr != nil {
 			return "", describeErr
 		}
@@ -434,7 +457,10 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 	remote := a.tools.registry.ExternalBroker(
 		func(c context.Context) (modules.Principal, error) {
 			fresh, admitErr := current(c)
-			return fresh.modulePrincipal(), admitErr
+			if admitErr != nil {
+				return modules.Principal{}, admitErr
+			}
+			return a.servicePrincipal(c, fresh)
 		},
 		executionID,
 	)
@@ -491,7 +517,7 @@ func (a *ExternalAgent) dispatch(
 	raw json.RawMessage,
 ) (json.RawMessage, error) {
 	if module != helpModule && module != historyModule && module != memoryModule {
-		if !a.tools.cfg.ExternalAgents.ForwardToken {
+		if a.serviceToken == nil {
 			return nil, modules.ErrUnavailable
 		}
 		return remote.Call(ctx, module, method, raw)

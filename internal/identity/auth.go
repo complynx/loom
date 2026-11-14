@@ -60,6 +60,8 @@ type discovery struct {
 	Issuer                string `json:"issuer"`
 	JWKSURI               string `json:"jwks_uri"`
 	IntrospectionEndpoint string `json:"introspection_endpoint"`
+	// TokenEndpoint is used only for the service token exchange and is checked there.
+	TokenEndpoint string `json:"token_endpoint"`
 }
 type tokenInfo struct {
 	Active    bool                         `json:"active"`
@@ -281,9 +283,11 @@ func (a *Authenticator) introspectToken(ctx context.Context, token string) (toke
 	if !allowed || signed.Subject != "" && signed.Subject != info.Subject {
 		return tokenInfo{}, ErrUnauthorized
 	}
-	// A token for both endpoints would join what the separate audiences keep apart.
-	if reject := a.cfg.RejectAudience; reject != "" &&
-		(slices.Contains(info.Audience, reject) || signed.Audience.Contains(reject)) {
+	// A token that also opens another endpoint or a service would join what the
+	// separate audiences keep apart.
+	if slices.ContainsFunc(a.cfg.RejectAudiences, func(reject string) bool {
+		return slices.Contains(info.Audience, reject) || signed.Audience.Contains(reject)
+	}) {
 		return tokenInfo{}, ErrUnauthorized
 	}
 	if signed.Expiry != nil && int64(*signed.Expiry) < info.Expires {

@@ -443,7 +443,11 @@ func externalAuthenticator(
 ) (*identity.Authenticator, error) {
 	identityConfig := cfg.Identity
 	identityConfig.Audience = cfg.ExternalAgents.Audience
-	identityConfig.RejectAudience = cfg.Identity.Audience
+	// An agent's token must open only the MCP endpoint. With a service audience it
+	// could call a service directly, past the method mark and the history record.
+	identityConfig.RejectAudiences = append(
+		[]string{cfg.Identity.Audience},
+		cfg.ExternalAgents.ServiceToken.Audiences...)
 	auth, err := identity.New(identityConfig, &http.Client{Transport: telemetry.TraceTransport{}}, nil)
 	if err != nil {
 		return nil, err
@@ -467,7 +471,7 @@ func runtimeAuthenticator(
 ) (*identity.Authenticator, error) {
 	identityConfig := cfg.Identity
 	if cfg.ExternalAgents.Enabled {
-		identityConfig.RejectAudience = cfg.ExternalAgents.Audience
+		identityConfig.RejectAudiences = []string{cfg.ExternalAgents.Audience}
 	}
 	auth, err := identity.New(
 		identityConfig,
@@ -906,6 +910,25 @@ type runtimeComponents struct {
 	externalAuth *identity.Authenticator
 }
 
+// externalServiceTokens returns the token exchange for downstream services, or
+// nil when the operator did not configure it.
+func externalServiceTokens(
+	cfg config.Config,
+	auth *identity.Authenticator,
+) func(context.Context, domain.ExternalCaller) (string, error) {
+	exchange := cfg.ExternalAgents.ServiceToken
+	if !exchange.Enabled() {
+		return nil
+	}
+	return identity.NewServiceTokens(auth, identity.ServiceTokenExchange{
+		ClientID:     exchange.ClientID,
+		ClientSecret: exchange.ClientSecret,
+		Audiences:    exchange.Audiences,
+		Scopes:       exchange.Scopes,
+		Forbidden:    []string{cfg.Identity.Audience, cfg.ExternalAgents.Audience},
+	}).For
+}
+
 // externalAgentOptions returns nil when the MCP endpoint is not served.
 func (r *runtimeComponents) externalAgentOptions(
 	cfg config.Config,
@@ -920,7 +943,7 @@ func (r *runtimeComponents) externalAgentOptions(
 		Resource:     cfg.ExternalAgents.Resource,
 		Issuer:       cfg.Identity.Issuer,
 		Scopes:       cfg.ExternalAgents.Scopes,
-		Services:     cfg.ExternalAgents.ForwardToken,
+		Services:     cfg.ExternalAgents.ServiceToken.Enabled(),
 	}
 }
 
@@ -1041,7 +1064,7 @@ func (r *runtimeComponents) initAgent(
 			repository: r.repository,
 			executor:   r.executor,
 			observer:   observer,
-		}, r.externalAuth.VerifyExternal)
+		}, r.externalAuth.VerifyExternal, externalServiceTokens(cfg, r.externalAuth))
 	}
 
 	return nil

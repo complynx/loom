@@ -53,10 +53,15 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		repository: repository, registry: registry, executor: sandbox.Inline{},
 		cfg: config.Config{
 			Sandbox:        config.Sandbox{ScriptTimeoutCeilingMS: 5000},
-			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600, ForwardToken: true},
+			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600},
 		},
 	}
-	agent := newExternalAgent(tools, verify)
+	// The service must receive the exchanged token, never the agent's own token.
+	serviceToken := func(_ context.Context, held domain.ExternalCaller) (string, error) {
+		assert.Equal(t, "user-token", held.Token)
+		return "service-token", nil
+	}
+	agent := newExternalAgent(tools, verify, serviceToken)
 	script := func(code string) (string, bool) {
 		arguments, marshalErr := json.Marshal(map[string]string{"code": code})
 		require.NoError(t, marshalErr)
@@ -72,7 +77,7 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.Equal(t, externalDisabledDescription, offered[0].Description)
 
 	tools.cfg.ExternalAgents.CallsPerMinute = 1
-	limited := newExternalAgent(tools, verify)
+	limited := newExternalAgent(tools, verify, serviceToken)
 	denied, _ := limited.Call(ctx, caller, externalScriptTool, json.RawMessage(`{"code":"return 1"}`))
 	require.Contains(t, string(denied), "external_agent_disabled")
 	denied, _ = limited.Call(ctx, caller, externalScriptTool, json.RawMessage(`{"code":"return 1"}`))
@@ -106,8 +111,8 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.Contains(t, offered[0].Description, `"id":"history"`)
 	require.NotContains(t, offered[0].Description, `"id":"memory"`)
 
-	tools.cfg.ExternalAgents = config.ExternalAgents{CallsPerMinute: 600}
-	closed := newExternalAgent(tools, verify)
+	tools.cfg.ExternalAgents.CallsPerMinute = 600
+	closed := newExternalAgent(tools, verify, nil)
 	withoutServices, closedFailed := closed.Call(
 		ctx,
 		caller,
@@ -115,7 +120,27 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		json.RawMessage(`{"code":"return [typeof modules.business, typeof modules.history];"}`),
 	)
 	require.False(t, closedFailed, string(withoutServices))
-	require.JSONEq(t, `["undefined","object"]`, string(withoutServices), "service methods need the operator switch")
+	require.JSONEq(t, `["undefined","object"]`, string(withoutServices), "service methods need the token exchange")
+	refused := newExternalAgent(tools, verify, func(context.Context, domain.ExternalCaller) (string, error) {
+		return "", identity.ErrUnauthorized
+	})
+	withoutExchange, refusedFailed := refused.Call(
+		ctx,
+		caller,
+		externalScriptTool,
+		json.RawMessage(`{"code":"return [typeof modules.business, typeof modules.history];"}`),
+	)
+	require.False(t, refusedFailed, string(withoutExchange))
+	require.JSONEq(
+		t,
+		`["undefined","object"]`,
+		string(withoutExchange),
+		"a failed exchange closes only service methods",
+	)
+	// A failed exchange is not the agent's fault: it must not read as a sign-in problem.
+	_, exchangeErr := refused.servicePrincipal(ctx, externalSession{})
+	require.ErrorIs(t, exchangeErr, modules.ErrUnavailable)
+	require.NotErrorIs(t, exchangeErr, identity.ErrUnauthorized)
 
 	result, failed = script(`const [first] = await Promise.all([modules.business.read({}), modules.business.read({})]);
 		return {first, earlier: (await modules.history.read({after_seq: 0})).events.length};`)
@@ -273,7 +298,7 @@ func (s *externalFixtureService) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "unexpected", http.StatusForbidden)
 		return
 	}
-	assert.Equal(s.t, "Bearer user-token", r.Header.Get("Authorization"))
+	assert.Equal(s.t, "Bearer service-token", r.Header.Get("Authorization"))
 	var input struct {
 		OperationID string `json:"operation_id"`
 	}

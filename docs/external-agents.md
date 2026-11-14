@@ -14,12 +14,11 @@ that are not implemented.
 | Part | State |
 | --- | --- |
 | MCP endpoint, OAuth resource metadata, `script` tool with help, history and memory reads | Implemented. |
-| Service reads through marked methods | Implemented behind the `forward_token` operator switch, default off. |
+| Service reads through marked methods | Implemented with a separate [service token](#service-token). Off until the operator configures the token exchange. |
 | User profile written by a confirming chat client | Implemented. |
 | `external_agent` method mark in manifests | Implemented for read methods. |
 | History record for each external action | Implemented. |
 | Acceptance with a real MCP client and the installed issuer | Open. See [Acceptance](#acceptance). |
-| Separate token for downstream services | Not implemented. With `forward_token`, Loom forwards the agent's token. See the [known limit](#known-limit-downstream-token). |
 | External service writes and personal-memory writes | Not implemented. See [Planned writes](#planned-writes). |
 | Files, skills, paid transcription, diagnostics and administration tools | Not available to external agents. |
 
@@ -56,7 +55,11 @@ external_agents:
   resource: "https://loom.example.com/mcp"
   audience: "replace-with-mcp-audience"
   scopes: ["openid"]
-  forward_token: false
+  service_token:
+    client_id: "replace-with-exchange-client"
+    client_secret: "${CLX_MCP_EXCHANGE_SECRET}"
+    audiences: ["replace-with-service-audience"]
+    scopes: ["openid"]
   calls_per_minute: 30
 ```
 
@@ -65,8 +68,8 @@ external_agents:
 | `enabled` | Registers `/mcp`, the metadata route and the profile routes. |
 | `resource` | Public URL of the MCP endpoint. HTTPS except loopback. It must contain a path without a trailing slash. Loom serves the endpoint at `/mcp` and the metadata at `/.well-known/oauth-protected-resource`; a proxy must map both public paths. |
 | `audience` | Required. Audience that a token for the MCP endpoint must contain. It must differ from `identity.audience`. See [token audience](#token-audience). |
-| `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the organization and the roles into the access token. Add the scopes for the audiences of downstream services only when `forward_token` is true. At most 32 entries. |
-| `forward_token` | Lets external agents call marked service methods. Default false: only help, history and memory are available. Read the [known limit](#known-limit-downstream-token) before you set it. |
+| `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the organization and the roles into the access token. Do not add scopes for the audiences of downstream services. At most 32 entries. |
+| `service_token` | Optional. Lets external agents call marked service methods through a token exchange. Without it only help, history and memory are available. See [service token](#service-token). |
 | `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit also counts calls of a user without access. It is local to one API process. |
 
 When `enabled` is false, the other fields must be absent. In recovery mode the
@@ -81,7 +84,7 @@ endpoint and the profile routes are not served and return `404`.
 The key is absent when the endpoint is disabled. A chat client must check it
 before it offers the feature, and can show `resource` as the URL that the user
 adds to their agent. `access` lists the profile switches. `services` reports
-whether external agents can call service methods on this installation.
+whether the service token exchange is configured.
 
 ## Authorization
 
@@ -132,7 +135,8 @@ value that the issuer writes for this endpoint. It must differ from
 Loom checks MCP tokens with a separate authenticator and claims cache. A token
 for the MCP audience is not accepted at `/v1`, and a `/v1` token is not
 accepted at `/mcp`. A token that contains both audiences is refused at both
-endpoints.
+endpoints. `/mcp` also refuses a token that contains a
+[service token](#service-token) audience.
 
 The separation is necessary. A `/v1` token of a user opens routes that need no
 operation right, for example the personal memory routes, which read, change
@@ -143,29 +147,58 @@ limit and outside the history record.
 The role claims of the token must contain the user's module roles, or the
 catalog of the session is empty.
 
-### Known limit: downstream token
+### Service token
 
 By default external agents cannot call service methods. The catalog, the
 bindings and dispatch contain only help, history and memory.
 
-`forward_token: true` enables marked service reads. Loom then calls a service
-with the access token that the external agent sent, the same way a delegated
-run forwards the user's token. The token must therefore contain the audience of
-each service.
+`service_token` enables marked service reads. Loom never sends the agent's
+token to a service. Before a service call, Loom exchanges that token at the
+issuer's token endpoint for a separate service token (OAuth 2.0 Token Exchange,
+RFC 8693) and sends only the service token. The external agent never receives
+it.
 
-- This does not follow the MCP rule that a server must not pass the client's
-  token to another service.
-- A client that holds the token can call a service that is reachable from the
-  client directly. Such a call skips the method mark, the profile, the rate
-  limit and the history record. These controls apply only to calls through
-  Loom.
+Loom also refuses an agent token that contains one of the configured service
+audiences. A client therefore cannot hold a token that opens both `/mcp` and a
+service that checks its audience, and cannot bypass the method mark, the
+profile, the rate limit and the history record that way.
 
-Set `forward_token` only when every client that can get such a token is trusted
-with direct access to those services. The fix is a separate downstream
-credential: Loom accepts a token for the MCP audience only and gets the service
-token itself, for example by token exchange. This needs a check against the
-installed issuer. When it exists, it replaces `forward_token`, and it must be
-complete before [writes](#planned-writes) exist. See [acceptance](#acceptance).
+| Field | Meaning |
+| --- | --- |
+| `client_id`, `client_secret` | Credentials of the client that Loom uses at the issuer's token endpoint. The issuer must allow that client the token exchange grant. |
+| `audiences` | Audiences of the downstream services, at most 32. They must not contain `identity.audience` or `external_agents.audience`. |
+| `scopes` | Scopes that Loom requests for the service token, for example the scopes that add the user's roles. At most 32. |
+
+The exchange request contains `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`,
+the agent's token as `subject_token` of type `access_token`,
+`requested_token_type=urn:ietf:params:oauth:token-type:jwt`, one `audience`
+value for each configured audience and the configured `scope`. Loom
+authenticates with HTTP Basic.
+
+Loom accepts the returned token only when all of these are true:
+
+- It is a JWT that the issuer signed, and it is not expired.
+- Its subject is the user of the agent's token.
+- It contains every configured audience.
+- It contains neither `identity.audience` nor `external_agents.audience`. A
+  token that Loom sends to a service must not open Loom.
+
+Loom keeps a service token in memory and reuses it for the same agent token
+until 30 seconds before it expires, and never longer than the agent's token.
+If the exchange fails, service calls fail and `help.list` returns a
+`remote_catalog_unavailable` warning; history and memory stay available.
+
+The response must have `token_type` `Bearer`. `expires_in` is optional; the
+signed expiry always applies. Loom accepts an issue time up to 30 seconds
+ahead of its own clock.
+
+Known limit: Loom sends a subject token only, without an actor token. An issuer
+that accepts a requested audience only when the subject token or an actor token
+already contains it refuses this exchange. ZITADEL documents that rule in its
+[token exchange guide](https://zitadel.com/docs/guides/integrate/token-exchange).
+Service reads then stay unavailable, because Loom also refuses an agent token
+with a service audience. Whether the installed issuer allows the exchange for
+the configured client and audiences is an open [acceptance](#acceptance) check.
 
 ## User profile
 
@@ -292,7 +325,7 @@ Available bindings:
 | `help` | `list`, `read` | Always. The catalog contains only what this session can call. |
 | `history` | `search`, `read` | Profile `history`. Default chat only. |
 | `memory` | `state`, `list`, `read` | Profile `memory`. |
-| Service modules | Marked read methods | `forward_token` is set, and the user has the module and method permissions. |
+| Service modules | Marked read methods | `service_token` is configured, and the user has the module and method permissions. |
 
 The tool description contains the same environment overview and navigation
 guidance that the internal agent receives. Start with
@@ -384,10 +417,9 @@ chat history; an older binary gives them to the internal agent as plain text.
 
 ## Planned writes
 
-The design below is agreed and not implemented.
+The design below is agreed and not implemented. It needs a proven
+[service token](#service-token) exchange with the installed issuer first.
 
-- **Downstream credential.** Loom stops forwarding the agent's token and gets
-  a separate service token. See the [known limit](#known-limit-downstream-token).
 - **Operations without a run.** A write keeps the prepare, consent, dispatch
   and status-recovery contract of [durable operations](modules/calls-confirmation.md).
   Its owner becomes the external session instead of a run. Dispatch does not
@@ -418,11 +450,12 @@ record. They do not prove these installation properties:
 
 - A real MCP client completes authorization against the installed issuer,
   including client registration.
-- The issued token contains the MCP audience, the organization, the user's
-  module roles and the audiences that downstream services require.
-- Whether the issuer can give Loom a separate service token for the user, so
-  that the agent's token needs no service audience. Record whether a service
-  accepts the agent's token directly.
+- The issued token contains the MCP audience, the organization and the user's
+  module roles, and no service audience.
+- The issuer allows the [service token](#service-token) exchange for the
+  configured client and audiences without an actor token, and the service
+  token contains the roles that the services need.
+- A downstream service accepts the service token and refuses the agent's token.
 - A chat client reads the capability, writes the profile and handles the new
   history event type.
 
@@ -432,9 +465,10 @@ record. They do not prove these installation properties:
 | --- | --- |
 | JSON-RPC exchange, `401` challenge, metadata, disabled routes | `TestMCPEndpointAuthorizesAndServesTools`, `TestMCPEndpointRejectsInvalidExchanges` in `internal/api` |
 | Token rules and dropped operation rights | `TestExternalAuthenticationKeepsOnlyModulePermissions` in `internal/identity` |
-| A token for one endpoint, or for both, does not open the other | `TestEndpointAudiencesAreMutuallyExclusive` in `internal/identity` |
+| A token for one endpoint, or for both, does not open the other; rejected audiences are a list | `TestEndpointAudiencesAreMutuallyExclusive` in `internal/identity` |
+| Service token exchange: issuer signature, same user, requested audiences, never a Loom audience, expiry, reuse | `TestServiceTokenExchangeBindsUserAndAudiences` in `internal/identity` |
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |
-| Profile switches, service-call switch, direct profile write refused, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
+| Profile switches, service token sent instead of the agent's token, direct profile write refused, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
 | Profile right comes from the caller binding, not from the user's role | `TestProfilePermissionComesFromCallerBinding` in `internal/identity` |
 | Compression in run context, refused event type on the public route | `TestPassiveContextKeepsHistoryAndLatestActions` in `internal/store` |
 | Upgrade from the previous schema with existing data | `TestExternalAgentProfileMigrationKeepsExistingData` in `internal/store` |

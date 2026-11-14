@@ -31,8 +31,13 @@ func TestExternalAgentsConfig(t *testing.T) {
 		{"scope with space", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{"open id"} }), false},
 		{"scope with quote", enabled(func(c *config.ExternalAgents) { c.Scopes = []string{`open"id`} }), false},
 		{"missing audience", enabled(func(c *config.ExternalAgents) { c.Audience = "" }), false},
-		{"service calls", enabled(func(c *config.ExternalAgents) { c.ForwardToken = true }), true},
-		{"service calls while disabled", config.ExternalAgents{ForwardToken: true}, false},
+		{"service token", enabled(func(c *config.ExternalAgents) { c.ServiceToken = serviceToken("service") }), true},
+		{"service token for Loom", enabled(func(c *config.ExternalAgents) { c.ServiceToken = serviceToken("loom") }), false},
+		{"service token for MCP", enabled(func(c *config.ExternalAgents) { c.ServiceToken = serviceToken("mcp") }), false},
+		{"service token without secret", enabled(func(c *config.ExternalAgents) {
+			c.ServiceToken = config.ExternalServiceToken{ClientID: "exchange", Audiences: []string{"service"}}
+		}), false},
+		{"service token while disabled", config.ExternalAgents{ServiceToken: serviceToken("service")}, false},
 		{"shared audience", enabled(func(c *config.ExternalAgents) { c.Audience = "loom" }), false},
 		{"limit", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 600 }), true},
 		{"limit too high", enabled(func(c *config.ExternalAgents) { c.CallsPerMinute = 601 }), false},
@@ -48,4 +53,8 @@ func TestExternalAgentsConfig(t *testing.T) {
 	if limit := (config.ExternalAgents{Enabled: true}).CallLimit(); limit != 30 {
 		t.Fatalf("default call limit = %d", limit)
 	}
+}
+
+func serviceToken(audience string) config.ExternalServiceToken {
+	return config.ExternalServiceToken{ClientID: "exchange", ClientSecret: "secret", Audiences: []string{audience}}
 }
