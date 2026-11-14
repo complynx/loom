@@ -77,8 +77,8 @@ func (e *Engine) contextItems(
 		}
 		return currentRequestContext(items, filtered, run), false, nil
 	}
-	if len(steps) >= settings.MaxSteps {
-		return nil, false, history.ErrContextUnavailable
+	if run.StepLimitReached(len(steps)) {
+		return nil, false, e.stopTurn(ctx, run, domain.Paused, "step_limit")
 	}
 	prefix, err := summaryPrefix(filtered, settings.HistoryRecentLimit, budget, run.ID)
 	if err != nil {

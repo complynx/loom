@@ -97,7 +97,7 @@ func (e *Engine) dispatchBinaryReply(ctx context.Context, run domain.Run, p doma
 			return false, nil
 		}
 	}
-	if len(turn.steps)+turn.newInputSteps >= settings.MaxSteps {
+	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
 		return true, e.stopTurn(ctx, run, domain.Paused, "step_limit")
 	}
 	copyTurn := *turn

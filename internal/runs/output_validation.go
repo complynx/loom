@@ -60,11 +60,10 @@ func (e *Engine) saveOutputRejection(ctx context.Context, run domain.Run, approv
 func (e *Engine) rejectFinalOutput(
 	ctx context.Context,
 	run domain.Run,
-	settings domain.Settings,
 	turn *turnState,
 	pending *domain.Approval,
 ) (bool, error) {
-	if len(turn.steps)+turn.newInputSteps >= settings.MaxSteps {
+	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
 		return false, e.finish(ctx, run, domain.Paused, "step_limit", "")
 	}
 	err := e.saveOutputRejection(ctx, run, pending)

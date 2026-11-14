@@ -594,6 +594,9 @@ func (s *Store) transition(
 	if err := reconcilePausedState(ctx, tx, rid, &state, &reason); err != nil {
 		return err
 	}
+	if e = recheckStepLimit(ctx, tx, r, &state, &reason); e != nil {
+		return e
+	}
 	if state == domain.Completed {
 		if err := validateCompletion(ctx, tx, r, result); err != nil {
 			return err
@@ -644,16 +647,25 @@ func (s *Store) transition(
 			return e
 		}
 	}
+	return s.recordTransition(ctx, tx, r)
+}
+
+func (s *Store) recordTransition(ctx context.Context, tx pgx.Tx, r domain.Run) error {
+	if r.State == domain.Queued && s.enqueue != nil {
+		if err := s.enqueue(ctx, tx, r.ID); err != nil {
+			return err
+		}
+	}
 	event := "run.status"
-	if state == domain.Paused {
+	if r.State == domain.Paused {
 		event = "run.resumable"
 	}
 	return runEvent(
 		ctx,
 		tx,
-		rid,
+		r.ID,
 		event,
-		map[string]any{eventStatusKey: state, eventReasonKey: reason, eventRunIDKey: rid},
+		map[string]any{eventStatusKey: r.State, eventReasonKey: r.Reason, eventRunIDKey: r.ID},
 	)
 }
 
@@ -823,8 +835,12 @@ func (s *Store) addInput(
 	if err := s.applyInput(ctx, tx, r, &in); err != nil {
 		return err
 	}
+	stepLimitWake, e := renewStepBudget(ctx, tx, r)
+	if e != nil {
+		return e
+	}
 	in.ID = id()
-	wake := in.Kind == "answer" || in.Kind == domain.InputApproval
+	wake := in.Kind == "answer" || in.Kind == domain.InputApproval || stepLimitWake
 	conversationWake, e := s.recordConversationInput(ctx, tx, p, r, &in)
 	if e != nil {
 		return e

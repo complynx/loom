@@ -45,6 +45,22 @@ same run; a different body returns `409 idempotency_conflict`. Existing retries
 are checked before `chat_busy`. One nonterminal run owns a chat: submit subsequent
 messages to that run.
 
+`max_steps` bounds work since the latest accepted input, rather than the complete
+conversation. Each new steering message, answer or approval callback renews this
+budget. A retry with the same idempotency key does not renew it. Steps still
+include model, tool, input and context-maintenance checkpoints. Unused steps do
+not accumulate. Run history and completed effects remain intact.
+
+A new input automatically queues a run paused with `step_limit`, unless a
+pause/cancel request or unresolved outcome blocks execution. Other pauses still
+require their normal recovery procedure. Authorization, spending limits, active
+time and total lifetime limits continue to apply. The persisted
+`step_budget_start` records the completed step count at the latest input; old run
+documents default to zero. This additive field needs no schema migration. Drain
+old API servers and workers before relying on renewed budgets. Old APIs do not
+renew budgets or wake step-limit pauses; old binaries enforce the former
+whole-run limit and drop `step_budget_start` when they rewrite a run document.
+
 `delivery.mode=wait` waits up to `wait_ms` (maximum 30000 ms, possibly lower by
 configuration). It returns `200` on a terminal state, including failure/cancellation,
 or `202` at timeout. This changes delivery only. A lost HTTP response does not cancel

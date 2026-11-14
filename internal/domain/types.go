@@ -108,6 +108,7 @@ type CreateRun struct {
 	BillingAccountID string            `json:"billing_account_id,omitempty"`
 }
 type Run struct {
+	StepBudgetStart      int               `json:"step_budget_start,omitempty"`
 	Skills               []SkillDefinition `json:"skills,omitempty"`
 	ExecutionProfile     ExecutionProfile  `json:"execution_profile,omitempty"`
 	OutputPolicy         OutputPolicy      `json:"output_policy,omitzero"`

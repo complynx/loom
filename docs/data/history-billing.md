@@ -12,6 +12,9 @@
 
 Summary обновляется, когда свежая история не помещается в заданные ограничения, а не каждый run. Она хранит `through_seq` и `source_hash` входных данных суммаризации. Этот hash служит provenance, а не проверкой целостности при каждом чтении. Публичного редактирования событий нет; удаление чата и lifecycle retention удаляют соответствующие summaries. Если summarization недоступна и прежней выжимки недостаточно, run приостанавливается с `context_unavailable`, а ограничения не обрезаются молча. Слишком большой одиночный input отклоняется; клиент может отдельно загрузить поддерживаемый файл как артефакт и передать его ID, но автоматического преобразования текста в файл нет.
 
+If summarization is blocked by an exhausted step budget, the run pauses with
+`step_limit`. A new accepted input can renew the [step budget](../api/runs-input.md).
+
 Активный run применяет новые события между шагами. Snapshot сборки контекста имеет верхнюю seq; более поздние события остаются для следующей границы. UI-событие показывает прошлое: перед изменением backend состояние читается заново.
 
 История доступна через literal (default), PostgreSQL fulltext с конфигурацией `simple` и RE2 regex над ограниченным авторизованным диапазоном. Bounded snippets и paged read сохраняют доступ к полным событиям; ответ явно указывает truncation, skipped sequences и продолжение. Опциональный vector API принимает внешние embeddings и выполняет exact cosine ranking через pgvector. `search.semantic_enabled: false` скрывает инструмент и отключает indexing route. Embeddings-сервис и автоматическая индексация не реализованы.
