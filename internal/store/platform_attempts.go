@@ -137,7 +137,7 @@ func (s *Store) RecoverSponsoredRun(ctx context.Context, rid string, maxAttempts
 			return err
 		}
 		var eligible bool
-		if err = tx.QueryRow(ctx, `SELECT (state IN('queued','running','reconciling') AND NOT pause_requested AND NOT cancel_requested AND (lease_until IS NULL OR lease_until<=clock_timestamp()) AND NOT EXISTS(SELECT 1 FROM write_operations WHERE run_id=$1 AND state IN('dispatching','pending','unknown')) AND NOT EXISTS(SELECT 1 FROM steps WHERE run_id=$1 AND state IN('pending','unknown') AND kind NOT IN('model','summary','compact'))) FROM runs WHERE id=$1`, rid).
+		if err = tx.QueryRow(ctx, `SELECT (state IN('queued','running','reconciling') AND NOT pause_requested AND NOT cancel_requested AND (lease_until IS NULL OR lease_until<=clock_timestamp()) AND NOT EXISTS(SELECT 1 FROM write_operations WHERE run_id=$1 AND state IN('dispatching','pending','unknown')) AND NOT EXISTS(SELECT 1 FROM steps WHERE run_id=$1 AND state IN('pending','unknown') AND kind NOT IN`+providerStepKinds+`)) FROM runs WHERE id=$1`, rid).
 			Scan(&eligible); err != nil {
 			return err
 		}

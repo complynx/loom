@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,7 +59,10 @@ func TestRecoverySuccessorKeepsContextAndFence(t *testing.T) {
 	r := settledRunForDeletion(t.Context(), t, s, p)
 	require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, "unusable", ""))
 	in := domain.RecoverMessage{Text: "Continue with the same task", ReplaceRunID: r.ID}
-	receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "replace", in)
+	// An uppercase spelling of the run ID is the same target and the same request.
+	upper := in
+	upper.ReplaceRunID = strings.ToUpper(r.ID)
+	receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "replace", upper)
 	require.NoError(t, err)
 	require.Equal(t, "queued", receipt.Status)
 	require.NotEqual(t, r.ID, receipt.RunID)
@@ -102,6 +106,10 @@ func TestRecoveryRetainsOrderedMessagesWithoutFunds(t *testing.T) {
 	second, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "second", domain.RecoverMessage{Text: "second"})
 	require.NoError(t, err)
 	require.Equal(t, "earlier_message_pending", second.Reason)
+	located, err := s.ActiveChatRun(t.Context(), p, r.ChatID)
+	require.NoError(t, err)
+	require.Equal(t, "earlier_message_pending", located.Reason)
+	require.Equal(t, first.MessageID, located.BlockingMessageID)
 	_, err = s.Pool().Exec(t.Context(), "UPDATE billing_accounts SET balance=10000 WHERE owner_id=$1", r.OwnerID)
 	require.NoError(t, err)
 	for _, key := range []string{"first", "second"} {
@@ -383,6 +391,41 @@ func TestRecoveryRevokedSessionRollsBackReplacementButRetainsMessage(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, domain.Running, previous.State)
 	require.False(t, previous.CancelRequested)
+	// After the run ends, the locator reports the same blocker as the message.
+	_, err = s.AbandonChatMessage(t.Context(), p, r.ChatID, receipt.MessageID, "withdraw")
+	require.NoError(t, err)
+	require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Completed, "", "done"))
+	located, err := s.ActiveChatRun(t.Context(), p, r.ChatID)
+	require.NoError(t, err)
+	require.Equal(t, "authorization_required", located.Reason)
+	require.Equal(t, receipt.NextAction, located.NextAction)
+}
+
+// A replacement must not stop running work when the wallet cannot pay a successor.
+func TestRecoveryDoesNotCancelRunningWorkWithoutFunds(t *testing.T) {
+	t.Parallel()
+	s := testStore(t)
+	p := principal("unfunded-replacement")
+	r, err := s.CreateRun(t.Context(), p, "create", request())
+	require.NoError(t, err)
+	r, err = s.ClaimRun(t.Context(), r.ID, "worker", time.Minute)
+	require.NoError(t, err)
+	_, err = s.Pool().Exec(t.Context(), "UPDATE billing_accounts SET balance=0 WHERE owner_id=$1", r.OwnerID)
+	require.NoError(t, err)
+	receipt, err := s.RecoverChatMessage(
+		t.Context(),
+		p,
+		r.ChatID,
+		"replace",
+		domain.RecoverMessage{Text: "continue", ReplaceRunID: r.ID},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "credits_exhausted", receipt.Reason)
+	require.False(t, receipt.Delivered)
+	running, err := s.GetRun(t.Context(), p, r.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.Running, running.State)
+	require.False(t, running.CancelRequested)
 }
 
 func TestRecoverySteeringCanUseTheRunsExistingReservation(t *testing.T) {

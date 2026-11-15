@@ -27,8 +27,4 @@ func TestReplayLimitNoteRestoresSavedNoteOnly(t *testing.T) {
 	replayLimitNote(failed, step(provider.Response{Text: "unusable", ErrorCode: "limit_note_failed"}))
 	require.True(t, failed.limitNoteSaved)
 	require.Empty(t, failed.limitNote)
-
-	retried := &turnState{}
-	replayLimitNote(retried, step(provider.Response{ErrorCode: "provider_retry"}))
-	require.False(t, retried.limitNoteSaved)
 }

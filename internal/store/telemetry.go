@@ -39,7 +39,7 @@ func (s *Store) TelemetrySnapshot(ctx context.Context) (telemetry.Snapshot, erro
 	var platformAttempts, platformExposure, expiredLeases, cancelRequested float64
 	err := s.pool.QueryRow(ctx, `SELECT
  (SELECT COALESCE(sum(reserved),0)::double precision FROM billing_accounts),
- (SELECT count(*)::double precision FROM steps WHERE state='unknown' AND kind IN('model','summary','compact')),
+ (SELECT count(*)::double precision FROM steps WHERE state='unknown' AND kind IN`+providerStepKinds+`),
  (SELECT count(*)::double precision FROM write_operations WHERE state IN('dispatching','pending','unknown')),
  (SELECT COALESCE(max(EXTRACT(EPOCH FROM now()-created_at)),0)::double precision FROM steps WHERE reserve>0 AND state IN('pending','unknown')),
  (SELECT COALESCE(max(EXTRACT(EPOCH FROM now()-state_entered_at)),0)::double precision FROM runs WHERE state='queued'),

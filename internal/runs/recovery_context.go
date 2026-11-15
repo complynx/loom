@@ -44,6 +44,10 @@ func (e *Engine) recoveryContextFailure(ctx context.Context, run domain.Run, err
 		return e.stopTurn(ctx, run, suspension.State, suspension.Reason)
 	}
 	denial, isDenial := errors.AsType[*domain.Error](err)
+	if isDenial && denial.Code == "recovery_context_too_large" {
+		// A size denial has another remedy than a lost authority or history.
+		return e.stopTurn(ctx, run, domain.Paused, denial.Code)
+	}
 	if (isDenial && !denial.Retryable && denial.Status < http.StatusInternalServerError) ||
 		errors.Is(err, operations.ErrBinding) {
 		return e.stopTurn(ctx, run, domain.Paused, "recovery_context_unavailable")

@@ -14,7 +14,7 @@ import (
 
 const (
 	stepLimitReason       = "step_limit"
-	limitNoteKind         = "limit_note"
+	limitNoteKind         = domain.LimitNoteStepKind
 	limitNoteOutputTokens = 1024
 	limitNoteInstruction  = "The step allowance for this request is used. Do not continue the work now and do not call tools. Write a short note in the language of the user: what is done, where the work stopped and what remains. State verified results only. Then ask whether to continue."
 )
@@ -55,9 +55,8 @@ func (e *Engine) pauseAtStepLimit(
 		func(ctx context.Context) (provider.Response, error) { return e.model.Respond(ctx, request) },
 	)
 	cancel()
-	if handled, retryErr := e.deferRejection(ctx, run, step, response, inferErr); handled {
-		return false, retryErr
-	}
+	// A definite provider failure only loses the note. It must not start durable
+	// provider retries, which would replace the step-limit pause.
 	failure, known := errors.AsType[*provider.Failure](inferErr)
 	if inferErr != nil && response.ID == "" && (!known || failure.UnknownUsage) {
 		return e.recoverUnknownInference(ctx, run, step)
@@ -132,14 +131,11 @@ func (e *Engine) completeLimitNote(
 }
 
 // replayLimitNote restores a saved note after a restart, so the model is not
-// called again. A deferred provider retry leaves the note unsaved.
+// called again. A failed note is saved too, with no text.
 func replayLimitNote(turn *turnState, step domain.Step) {
 	var response provider.Response
-	if json.Unmarshal(step.Result, &response) != nil || response.ErrorCode == "provider_retry" {
-		return
-	}
 	turn.limitNoteSaved = true
-	if response.ErrorCode == "" {
+	if json.Unmarshal(step.Result, &response) == nil && response.ErrorCode == "" {
 		turn.limitNote = response.Text
 	}
 }

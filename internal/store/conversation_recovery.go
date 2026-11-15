@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strings"
 
@@ -23,6 +24,7 @@ const (
 
 	uncertainEffectReason      = "inference_or_effect_uncertain"
 	stepLimitReason            = "step_limit"
+	creditsExhaustedReason     = "credits_exhausted"
 	recoveryAskUserAction      = "ask_user_to_continue"
 	recoveryAcceptedStatus     = "accepted"
 	recoverySendAction         = "send_message"
@@ -66,7 +68,12 @@ func (s *Store) ActiveChatRun(ctx context.Context, p domain.Principal, cid strin
 			return domain.NotFound()
 		}
 		out = recoveryRunReceipt(r)
-		return locateRecoveryBlocker(ctx, tx, uid, r, &out)
+		// A retained message of this chat blocks every later message.
+		blocked, err := earlierRecoveryMessage(ctx, tx, cid, actor(p), math.MaxInt64, &out)
+		if err != nil || blocked {
+			return err
+		}
+		return s.locateRecoveryBlocker(ctx, tx, p, uid, r, &out)
 	})
 	return out, err
 }
@@ -86,8 +93,13 @@ func (s *Store) RecoverChatMessage(
 	if key == "" || len(key) > 128 || strings.TrimSpace(in.Text) == "" || len(in.Text) > 65536 {
 		return out, domain.NewError(http.StatusUnprocessableEntity, "invalid_message")
 	}
-	if _, err := uuid.Parse(in.ReplaceRunID); in.ReplaceRunID != "" && err != nil {
-		return out, domain.NewError(http.StatusUnprocessableEntity, "invalid_run_id")
+	if in.ReplaceRunID != "" {
+		target, err := uuid.Parse(in.ReplaceRunID)
+		if err != nil {
+			return out, domain.NewError(http.StatusUnprocessableEntity, "invalid_run_id")
+		}
+		// PostgreSQL returns run IDs in canonical form.
+		in.ReplaceRunID = target.String()
 	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		out = domain.RecoveryReceipt{}
@@ -108,7 +120,7 @@ func (s *Store) RecoverChatMessage(
 		if replayErr != nil || done {
 			return replayErr
 		}
-		blocked, blockErr := earlierRecoveryMessage(ctx, tx, cid, actor(p), &out)
+		blocked, blockErr := earlierRecoveryMessage(ctx, tx, cid, actor(p), out.Sequence, &out)
 		if blockErr != nil || blocked {
 			return blockErr
 		}
@@ -122,7 +134,7 @@ func (s *Store) RecoverChatMessage(
 func blockRecovery(out *domain.RecoveryReceipt, reason string) {
 	action := "resolve_blocker_then_retry"
 	switch reason {
-	case "credits_exhausted":
+	case creditsExhaustedReason:
 		action = "fund_wallet_then_retry"
 	case "run_order_unavailable":
 		action = "create_run"
@@ -195,7 +207,7 @@ func (s *Store) deliverRecoveryMessage(
 	terminal := r.State.Terminal()
 	replace := messageReplaces(r, in.ReplaceRunID)
 	if replace {
-		if preflightErr := s.preflightRecoveryReplacement(ctx, tx, p, uid, in, r); preflightErr != nil {
+		if preflightErr := s.preflightRecoveryReplacement(ctx, tx, p, uid, r); preflightErr != nil {
 			return preflightErr
 		}
 		pending, pendingErr := recoveryReplacementPending(ctx, tx, r, out)
@@ -412,22 +424,19 @@ func recoveryDeliveryBlocked(
 		available += r.ReservedMicrocredits
 	}
 	if available <= 0 {
-		blockRecovery(out, "credits_exhausted")
+		blockRecovery(out, creditsExhaustedReason)
 		return true, nil
 	}
 	return false, nil
 }
 
 // messageReplaces reports whether a message supersedes the latest run with a
-// linked successor. The caller names the run, or the run stopped for money: its
-// own allowance or the wallet could not pay the next step. A run allowance bounds
-// one action; a money pause must not stop the conversation. The wallet check
-// still applies to the successor.
+// linked successor. The caller names the run, or the run stopped because its own
+// allowance cannot pay the next step. A run allowance bounds one action; it must
+// not stop the conversation. A run that stopped for an empty wallet is not
+// replaced: the message wakes it, and it tries its step again.
 func messageReplaces(r domain.Run, target string) bool {
-	if target == r.ID {
-		return true
-	}
-	return r.State == domain.Paused && (r.Reason == "budget_exhausted" || r.Reason == "credits_exhausted")
+	return target == r.ID || r.State == domain.Paused && r.Reason == "budget_exhausted"
 }
 
 func recoveryReplacementPending(
@@ -461,14 +470,16 @@ func recoveryReplacementPending(
 	return false, nil
 }
 
+// earlierRecoveryMessage reports the first retained message before the sequence.
 func earlierRecoveryMessage(
 	ctx context.Context,
 	tx pgx.Tx,
 	cid, actorID string,
+	before int64,
 	out *domain.RecoveryReceipt,
 ) (bool, error) {
 	var blockerActor string
-	err := tx.QueryRow(ctx, "SELECT id::text,actor_id FROM conversation_messages WHERE chat_id=$1 AND seq<$2 AND NOT delivered AND NOT abandoned ORDER BY seq LIMIT 1", cid, out.Sequence).
+	err := tx.QueryRow(ctx, "SELECT id::text,actor_id FROM conversation_messages WHERE chat_id=$1 AND seq<$2 AND NOT delivered AND NOT abandoned ORDER BY seq LIMIT 1", cid, before).
 		Scan(&out.BlockingMessageID, &blockerActor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil

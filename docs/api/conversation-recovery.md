@@ -28,7 +28,10 @@ organization, actor and chat visibility. It does not expose another actor's run.
 The locator applies the same checks as message delivery. If a message sent now
 would meet a blocker, the locator reports that blocker with the same `reason` and
 `next_action`; see [Money and actionable blockers](#money-and-actionable-blockers).
-For example, a terminal run of a chat with removed legacy history reports
+It reports a retained undelivered message first, with `blocking_message_id`, then
+legacy order, unknown outcomes, the wallet, the saved session and the model
+entitlement. It does not check the run capacity limits. For example, a terminal
+run of a chat with removed legacy history reports
 `blocked / run_order_unavailable`, and an empty wallet reports
 `blocked / credits_exhausted`.
 A run paused at its step limit worked without a final result. It returns
@@ -41,7 +44,9 @@ Money is different: it is never a question to continue. An empty wallet returns
 `blocked / credits_exhausted`; tell the user that the budget is used. A run that
 is paused for money (`budget_exhausted` or `credits_exhausted`) while the wallet
 has funds returns `accepted` with `next_action: send_message`: the next message
-continues the conversation in a new run.
+continues the conversation. This wallet check is only `available > 0`. If the
+funds cannot cover the next step, the run pauses again with `credits_exhausted`;
+that pause is the signal that the budget is used.
 Any other paused run that no message blocker applies to returns `blocked`, its
 own pause reason and `next_action: resolve_blocker_then_resume`.
 
@@ -84,10 +89,11 @@ the current configured run cap, and has no `replaces_run_id`. The wallet remains
 the shared money limit of the owner.
 
 A run allowance bounds one action; it does not stop the conversation. If the open
-run is paused because its own allowance (`budget_exhausted`) or the wallet
-(`credits_exhausted`) could not pay the next step, the message replaces that run:
-Loom supersedes it and admits a linked successor. The wallet check applies to the
-successor, so an empty wallet still returns `blocked / credits_exhausted`.
+run is paused because its own allowance could not pay the next step
+(`budget_exhausted`), the message replaces that run: Loom supersedes it and
+admits a linked successor. If the run is paused because the wallet could not pay
+(`credits_exhausted`), the message wakes the same run, and the run tries its step
+again. In both cases an empty wallet returns `blocked / credits_exhausted`.
 
 To replace an open run that is unusable for another reason, supply its observed ID:
 
@@ -188,10 +194,10 @@ manual continuation action. Loom never replaces a run without a message, and one
 message creates at most one run. There is no limit on successive replacements:
 the user can continue unfinished work again.
 
-Before requesting cancellation, Loom checks the saved session
-and current model entitlement. A revoked session or disallowed model does not
-cancel running work through this endpoint. The predecessor's own reservation is
-not treated as wallet exhaustion during that preflight. Funds and admission are
+Before requesting cancellation, Loom checks the wallet, the saved session
+and current model entitlement. An empty wallet, a revoked session or a disallowed
+model does not cancel running work through this endpoint. The predecessor's own
+reservation counts as available funds during that preflight. Funds and admission are
 checked again after cancellation; later policy changes can still block a successor.
 
 Loom creates a successor only after there are no pending/unknown steps,
@@ -238,16 +244,17 @@ Context call IDs are namespaced to avoid collisions with current calls. Prior
 confirmation tokens and consent are not imported. Known successful effects must
 not be repeated; prepared actions need a new prepare and fresh consent.
 The handoff is limited to 64 operations and 65536 encoded bytes. It fails closed
-with `paused / recovery_context_unavailable` on a binding, retention or size
-denial. The same pause applies when the module or method of a receipt is no
+with `paused / recovery_context_unavailable` on a binding or retention denial,
+and with `paused / recovery_context_too_large` on a size denial. The first pause
+also applies when the module or method of a receipt is no
 longer visible to the current principal: it was removed, or the permission for
 the module was revoked. Loom does not distinguish these two cases, and it does
 not retry them. A denied method permission or a rejected session uses
 `waiting_auth / recovery_authorization_required`.
 Restore current authority/context access and resume or reauthorize explicitly;
-do not drop receipts or blindly repeat an effect. A size denial
-(`recovery_context_too_large`) has no consumer remedy: cancel that run. The next
-message then starts a new round. Custom engine integrations
+do not drop receipts or blindly repeat an effect. After a size denial
+(`recovery_context_too_large`) the work cannot continue with its receipts. A
+person must decide to stop that run; the next message then starts a new round. Custom engine integrations
 without a receipt-authorizing callback can continue only chains with no operations.
 Receipts whose predecessor admission event has been removed by retention/deletion
 are not copied back into model context; recovery fails closed in that case too.
@@ -301,7 +308,8 @@ locator both use this table:
 message. When no blocker in the table applies, it reports its own pause reason
 with `next_action: resolve_blocker_then_resume`: resolve the cause, then resume
 that run. Money pauses are the exception: the next message replaces a run paused
-with `budget_exhausted` or `credits_exhausted`, as described above.
+with `budget_exhausted` and wakes a run paused with `credits_exhausted`, as
+described above.
 
 `accepted: true, delivered: false` distinguishes retained text from an applied
 input. `blocked` can also accompany `delivered: true` when the receiving run has

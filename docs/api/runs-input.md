@@ -68,7 +68,9 @@ completed. The note is optional: without funds for it, or after a provider
 failure, the run pauses without a note.
 
 A new input automatically queues a run paused with `step_limit`, unless a
-pause/cancel request or unresolved outcome blocks execution. Other pauses still
+pause/cancel request or unresolved outcome blocks execution. The same applies to
+a run paused with `credits_exhausted`: it tries its step again, and it pauses
+again if the wallet still cannot pay. Other pauses still
 require their normal recovery procedure. Authorization, spending limits, active
 time and total lifetime limits continue to apply. The persisted
 `step_budget_start` records the completed step count at the latest input; old run

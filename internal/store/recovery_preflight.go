@@ -10,19 +10,40 @@ import (
 	"github.com/complynx/loom/internal/domain"
 )
 
-// Check successor prerequisites before requesting cancellation. The predecessor's
-// own reservation is intentionally excluded; final funds/capacity checks run again.
+// preflightRecoveryReplacement checks successor prerequisites before it requests
+// the cancellation of running work. The reservation of the predecessor returns to
+// the wallet when it stops, so it counts as available here. Funds and capacity
+// are checked again when the successor is admitted.
 func (s *Store) preflightRecoveryReplacement(
 	ctx context.Context,
 	tx pgx.Tx,
 	p domain.Principal,
 	uid string,
-	in domain.RecoverMessage,
 	r domain.Run,
 ) error {
 	if r.State != domain.Running {
 		return nil
 	}
+	var available int64
+	if err := tx.QueryRow(ctx, "SELECT balance-reserved FROM billing_accounts WHERE owner_id=$1", uid).
+		Scan(&available); err != nil {
+		return err
+	}
+	if available+r.ReservedMicrocredits <= 0 {
+		return domain.NewError(http.StatusTooManyRequests, creditsExhaustedReason)
+	}
+	return s.checkSuccessorAdmission(ctx, tx, p, uid, r)
+}
+
+// checkSuccessorAdmission checks the saved session and the current model
+// entitlement for a run that would follow r. It changes nothing.
+func (s *Store) checkSuccessorAdmission(
+	ctx context.Context,
+	tx pgx.Tx,
+	p domain.Principal,
+	uid string,
+	r domain.Run,
+) error {
 	if err := validateRecoverySession(ctx, tx, p, r.AuthSessionID); err != nil {
 		return err
 	}
@@ -34,7 +55,7 @@ func (s *Store) preflightRecoveryReplacement(
 		p,
 		uid,
 		r.ChatID,
-		recoveryRunCreation(r, in.Text),
+		recoveryRunCreation(r, ""),
 		s.normalizeExecutionSettings(settings),
 		prefs,
 		policy,
@@ -73,36 +94,44 @@ func checkPendingConversationMessages(ctx context.Context, tx pgx.Tx, cid string
 }
 
 // locateRecoveryBlocker makes the locator report the blocker that a message
-// would meet now. It uses the same checks as message delivery.
-func locateRecoveryBlocker(
+// would meet now. It uses the same checks as message delivery, except the run
+// capacity limits, which need the admission lock.
+func (s *Store) locateRecoveryBlocker(
 	ctx context.Context,
 	tx pgx.Tx,
+	p domain.Principal,
 	uid string,
 	r domain.Run,
 	out *domain.RecoveryReceipt,
 ) error {
 	terminal := r.State.Terminal()
-	// A message without a target replaces only a run that is paused for money.
+	// A message without a target replaces only a run that spent its own allowance.
 	replace := messageReplaces(r, "")
 	blocked, err := recoveryDeliveryBlocked(ctx, tx, uid, r, replace, out)
 	if err != nil || blocked {
 		return err
 	}
-	if replace {
-		// The wallet has funds, so the next message continues this conversation
-		// in a new run. An empty wallet is reported as a blocker above.
-		out.Status, out.NextAction = recoveryAcceptedStatus, recoverySendAction
-		return nil
-	}
-	if terminal {
+	if terminal || replace {
+		// The message would admit a new run.
+		if denial, denied := errors.AsType[*domain.Error](s.checkSuccessorAdmission(ctx, tx, p, uid, r)); denied {
+			blockRecovery(out, denial.Code)
+			return nil
+		}
 		out.NextAction = recoverySendAction
+		if replace {
+			out.Status = recoveryAcceptedStatus
+		}
 		return nil
 	}
-	// A run paused at its step limit worked without a result. The user decides;
-	// the next message wakes the run.
-	wakes, err := stepLimitWakes(ctx, tx, r)
-	if wakes {
-		out.Status, out.NextAction = recoveryAcceptedStatus, recoveryAskUserAction
+	// The next message wakes a run paused at its step limit or for an empty wallet.
+	wakes, err := inputWakes(ctx, tx, r)
+	if !wakes {
+		return err
+	}
+	out.Status, out.NextAction = recoveryAcceptedStatus, recoverySendAction
+	if r.Reason == stepLimitReason {
+		// The run worked without a result. The user decides whether to continue.
+		out.NextAction = recoveryAskUserAction
 	}
 	return err
 }
