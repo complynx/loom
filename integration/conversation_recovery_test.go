@@ -42,7 +42,7 @@ func TestConversationRecoveryHTTPRetainsContextAndReplays(t *testing.T) {
 	require.Equal(t, 202, code, string(raw))
 	require.Equal(t, receipt.MessageID, decode[domain.RecoveryReceipt](t, raw).MessageID)
 	require.Equal(t, receipt.RunID, decode[domain.RecoveryReceipt](t, raw).RunID)
-	// A post-completion message continues the same allowance in one successor.
+	// A message after completion starts a new round, not a replacement.
 	code, raw = f.request(
 		t,
 		"alice",
@@ -55,7 +55,7 @@ func TestConversationRecoveryHTTPRetainsContextAndReplays(t *testing.T) {
 	continued := decode[domain.RecoveryReceipt](t, raw)
 	require.True(t, continued.Delivered)
 	require.NotEqual(t, receipt.RunID, continued.RunID)
-	require.Equal(t, receipt.RunID, f.run(t, continued.RunID).ReplacesRunID)
+	require.Empty(t, f.run(t, continued.RunID).ReplacesRunID)
 	require.False(t, f.run(t, receipt.RunID).CancelRequested)
 	code, raw = f.request(t, "bob", "GET", "/v1/chats/"+r.ChatID+"/active-run", "", nil)
 	require.Equal(t, 404, code, string(raw))

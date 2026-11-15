@@ -1,8 +1,11 @@
 package domain
 
+// MaxConversationReplacements bounds successive replacements of open runs.
+// A terminal run ends the chain.
 const MaxConversationReplacements = 3
 
-// RecoverMessage retries the same logical work. It never grants a new budget.
+// RecoverMessage is one user message for a chat. With ReplaceRunID it replaces
+// an open run and keeps the remaining allowance of that run.
 type RecoverMessage struct {
 	Text         string `json:"text"`
 	ReplaceRunID string `json:"replace_run_id,omitempty"`

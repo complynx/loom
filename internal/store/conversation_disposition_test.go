@@ -70,10 +70,12 @@ func TestRecoveryAbandonUnblocksWithoutDeliveringWithdrawnText(t *testing.T) {
 	}
 }
 
-func TestRecoveryPendingMessagesPreventNewAllowanceAdmission(t *testing.T) {
+// Each user message is a new interaction. After a terminal run it starts a new
+// round with the current run cap; the wallet is the shared limit of the owner.
+func TestRecoveryMessageAfterTerminalRunStartsNewRound(t *testing.T) {
 	t.Parallel()
 	s := testStore(t)
-	p := principal("allowance-boundary")
+	p := principal("new-round")
 	original := request()
 	original.Budget.MaxMicrocredits = 5
 	r, err := s.CreateRun(t.Context(), p, "original", original)
@@ -95,35 +97,38 @@ func TestRecoveryPendingMessagesPreventNewAllowanceAdmission(t *testing.T) {
 		),
 	)
 	require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Completed, "", "done"))
-	message := domain.RecoverMessage{Text: "continue original work"}
+	// An empty wallet blocks the new round. The locator reports the same blocker.
+	_, err = s.Pool().Exec(t.Context(), "UPDATE billing_accounts SET balance=0 WHERE owner_id=$1", r.OwnerID)
+	require.NoError(t, err)
+	message := domain.RecoverMessage{Text: "next question"}
 	blocked, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "retained", message)
 	require.NoError(t, err)
-	require.Equal(t, "budget_exhausted", blocked.Reason)
+	require.Equal(t, "credits_exhausted", blocked.Reason)
 	locator, err := s.ActiveChatRun(t.Context(), p, r.ChatID)
 	require.NoError(t, err)
-	require.Equal(t, "budget_exhausted", locator.Reason)
+	require.Equal(t, blocked.Reason, locator.Reason)
+	require.Equal(t, blocked.NextAction, locator.NextAction)
+	// Ordinary creation cannot pass a retained message.
 	fresh := request()
 	fresh.ChatID = r.ChatID
-	fresh.Input.Text = "Explicitly authorized distinct request"
+	fresh.Input.Text = "Later request"
 	_, err = s.CreateRun(t.Context(), p, "distinct", fresh)
 	code(t, err, "pending_conversation_messages")
 	replay, err := s.CreateRun(t.Context(), p, "original", original)
 	require.NoError(t, err)
 	require.Equal(t, r.ID, replay.ID)
-	_, err = s.AbandonChatMessage(t.Context(), p, r.ChatID, blocked.MessageID, "withdraw")
+	// The spent allowance of the completed run does not limit the new round.
+	_, err = s.Pool().Exec(t.Context(), "UPDATE billing_accounts SET balance=10000 WHERE owner_id=$1", r.OwnerID)
 	require.NoError(t, err)
-	next, err := s.CreateRun(t.Context(), p, "distinct", fresh)
+	delivered, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "retained", message)
+	require.NoError(t, err)
+	require.True(t, delivered.Delivered)
+	next, err := s.GetRun(t.Context(), p, delivered.RunID)
 	require.NoError(t, err)
 	require.NotEqual(t, r.ID, next.ID)
-	retained, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "retained", message)
-	require.NoError(t, err)
-	require.True(t, retained.Abandoned)
-	var inputs int
-	require.NoError(
-		t,
-		s.Pool().QueryRow(t.Context(), "SELECT count(*) FROM run_inputs WHERE run_id=$1", next.ID).Scan(&inputs),
-	)
-	require.Zero(t, inputs)
+	require.Empty(t, next.ReplacesRunID)
+	require.Zero(t, next.ReplacementCount)
+	require.Greater(t, next.MaxMicrocredits, r.MaxMicrocredits)
 }
 
 func TestRecoveryUsesAdmissionOrderAndRejectsStaleTargetBeforeAcceptance(t *testing.T) {
@@ -170,7 +175,9 @@ func TestRecoveryUsesAdmissionOrderAndRejectsStaleTargetBeforeAcceptance(t *test
 	require.True(t, next.Delivered)
 	successor, err := s.GetRun(t.Context(), p, next.RunID)
 	require.NoError(t, err)
-	require.Equal(t, r.ID, successor.ReplacesRunID)
+	// A terminal run ends the replacement chain.
+	require.Empty(t, successor.ReplacesRunID)
+	require.Zero(t, successor.ReplacementCount)
 	var rejected int
 	require.NoError(
 		t,
@@ -236,9 +243,16 @@ func TestRecoveryDeliveryIgnoresCallerKeysAndLocatorMatchesDelivery(t *testing.T
 	next, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
 	require.NoError(t, err)
 	require.Equal(t, "budget_exhausted", located.Reason)
-	require.Equal(t, "request_new_work_allowance", located.NextAction)
+	require.Equal(t, "cancel_run_then_retry", located.NextAction)
 	require.Equal(t, located.Reason, next.Reason)
 	require.Equal(t, located.NextAction, next.NextAction)
+	// After the run ends, the same message starts a new round.
+	_, err = s.Control(t.Context(), p, r.ID, "end-round", "cancel")
+	require.NoError(t, err)
+	next, err = s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
+	require.NoError(t, err)
+	require.True(t, next.Delivered)
+	require.NotEqual(t, r.ID, next.RunID)
 	var text string
 	require.NoError(
 		t,

@@ -87,13 +87,9 @@ func locateRecoveryBlocker(
 	terminal := r.State.Terminal()
 	if terminal {
 		out.NextAction = "send_message"
-		if r.ReplacementCount >= domain.MaxConversationReplacements {
-			blockRecovery(out, "replacement_limit")
-			return nil
-		}
 	}
-	// A message replaces a terminal run and steers any other run.
-	blocked, err := recoveryDeliveryBlocked(ctx, tx, uid, r, terminal, out)
+	// A message starts a new round after a terminal run and steers any other run.
+	blocked, err := recoveryDeliveryBlocked(ctx, tx, uid, r, false, out)
 	if err != nil || blocked || terminal {
 		return err
 	}

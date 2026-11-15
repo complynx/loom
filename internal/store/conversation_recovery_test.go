@@ -354,8 +354,14 @@ func TestRecoveryReplacementsNeverResetMoneyAndAreBounded(t *testing.T) {
 				domain.Usage{Microcredits: 2},
 			),
 		)
-		require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Failed, "unusable", ""))
-		receipt, e := s.RecoverChatMessage(t.Context(), p, r.ChatID, key, domain.RecoverMessage{Text: key})
+		require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, "unusable", ""))
+		receipt, e := s.RecoverChatMessage(
+			t.Context(),
+			p,
+			r.ChatID,
+			key,
+			domain.RecoverMessage{Text: key, ReplaceRunID: r.ID},
+		)
 		require.NoError(t, e)
 		require.Equal(t, "queued", receipt.Status)
 		r, err = s.GetRun(t.Context(), p, receipt.RunID)
@@ -449,9 +455,15 @@ func TestRecoveryUnknownPlatformExposurePreventsSuccessor(t *testing.T) {
 		t,
 		s.CompleteStep(t.Context(), r.ID, "worker", r.Fence, continued.ID, json.RawMessage(`{}`), domain.Usage{}),
 	)
-	require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Completed, "", "done"))
+	require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, "unusable", ""))
 	for range 2 {
-		out, e := s.RecoverChatMessage(t.Context(), p, r.ChatID, "recover", domain.RecoverMessage{Text: "continue"})
+		out, e := s.RecoverChatMessage(
+			t.Context(),
+			p,
+			r.ChatID,
+			"recover",
+			domain.RecoverMessage{Text: "continue", ReplaceRunID: r.ID},
+		)
 		require.NoError(t, e)
 		require.Equal(t, "inference_or_effect_uncertain", out.Reason)
 		require.False(t, out.Delivered)
@@ -474,7 +486,7 @@ func TestRecoveryUnknownPlatformExposurePreventsSuccessor(t *testing.T) {
 	after, err := s.GetRun(t.Context(), p, r.ID)
 	require.NoError(t, err)
 	require.Zero(t, after.ReservedMicrocredits)
-	require.Equal(t, domain.Completed, after.State)
+	require.Equal(t, domain.Paused, after.State)
 }
 
 func TestRecoverySteeringCanUseTheRunsExistingReservation(t *testing.T) {

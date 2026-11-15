@@ -122,7 +122,7 @@ func TestConversationMigrationDoesNotGuessPartialLegacyOrder(t *testing.T) {
 	located, err := s.ActiveChatRun(t.Context(), terminal, older.ChatID)
 	require.NoError(t, err)
 	require.Equal(t, "run_order_unavailable", located.Reason)
-	require.Equal(t, "request_new_work_allowance", located.NextAction)
+	require.Equal(t, "create_run", located.NextAction)
 	receipt, err := s.RecoverChatMessage(
 		t.Context(),
 		terminal,

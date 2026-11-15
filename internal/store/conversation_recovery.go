@@ -120,8 +120,11 @@ func blockRecovery(out *domain.RecoveryReceipt, reason string) {
 	switch reason {
 	case "credits_exhausted":
 		action = "fund_wallet_then_retry"
-	case "budget_exhausted", "replacement_limit", "run_order_unavailable":
-		action = "request_new_work_allowance"
+	case "budget_exhausted", "replacement_limit":
+		// The open run cannot do more work. A message after its end starts a new round.
+		action = "cancel_run_then_retry"
+	case "run_order_unavailable":
+		action = "create_run"
 	case "authorization_required":
 		action = "reauthorize_session"
 	case "model_not_allowed":
@@ -185,7 +188,10 @@ func (s *Store) deliverRecoveryMessage(
 		return domain.Forbidden()
 	}
 	out.RunID = r.ID
-	replace := in.ReplaceRunID == r.ID || r.State.Terminal()
+	// Each message is a new interaction. A terminal run ended its round, so the
+	// message starts a new round. An explicit target replaces a run that is open.
+	terminal := r.State.Terminal()
+	replace := !terminal && in.ReplaceRunID == r.ID
 	if replace {
 		if preflightErr := s.preflightRecoveryReplacement(ctx, tx, p, uid, in, r); preflightErr != nil {
 			return preflightErr
@@ -207,7 +213,7 @@ func (s *Store) deliverRecoveryMessage(
 		}
 	}
 	delivered := true
-	if replace {
+	if terminal || replace {
 		r, err = s.createRecoverySuccessor(ctx, tx, p, uid, cid, in, r, out.MessageID)
 	} else {
 		r, delivered, err = s.steerRecoveryRun(ctx, tx, p, in, r, out)
@@ -309,6 +315,11 @@ func (s *Store) attemptRecoveryDelivery(
 	return nil
 }
 
+// createRecoverySuccessor admits the run that receives the message.
+// After a terminal run it is a new round: an ordinary run with the current run
+// cap. The wallet is the shared money limit of the owner.
+// For an open run it is a replacement of the same work: Loom supersedes the
+// predecessor, and the successor keeps its remaining allowance and its receipts.
 func (s *Store) createRecoverySuccessor(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -318,7 +329,8 @@ func (s *Store) createRecoverySuccessor(
 	r domain.Run,
 	messageID string,
 ) (domain.Run, error) {
-	if !r.State.Terminal() {
+	replace := !r.State.Terminal()
+	if replace {
 		if terminationErr := terminateLifecycleRun(ctx, tx, r.ID, "cancelled", "superseded"); terminationErr != nil {
 			return domain.Run{}, terminationErr
 		}
@@ -331,24 +343,29 @@ func (s *Store) createRecoverySuccessor(
 		return domain.Run{}, err
 	}
 	creation := recoveryRunCreation(r, in.Text)
+	if !replace {
+		creation.Budget = domain.Budget{}
+	}
 	next, err := buildRecoveryRun(p, uid, cid, creation, settings, prefs, policy)
 	if err != nil {
 		return domain.Run{}, err
 	}
-	next.ReplacesRunID, next.ReplacementCount = r.ID, r.ReplacementCount+1
-	// Record the replacement before the successor's request. Model context then
-	// shows it as earlier history, not as input after the current request.
-	if _, err = chatEvent(
-		ctx,
-		tx,
-		cid,
-		r.ID,
-		"run.replaced",
-		"",
-		"system",
-		map[string]string{"predecessor_run_id": r.ID, "successor_run_id": next.ID},
-	); err != nil {
-		return domain.Run{}, err
+	if replace {
+		next.ReplacesRunID, next.ReplacementCount = r.ID, r.ReplacementCount+1
+		// Record the replacement before the successor's request. Model context then
+		// shows it as earlier history, not as input after the current request.
+		if _, err = chatEvent(
+			ctx,
+			tx,
+			cid,
+			r.ID,
+			"run.replaced",
+			"",
+			"system",
+			map[string]string{"predecessor_run_id": r.ID, "successor_run_id": next.ID},
+		); err != nil {
+			return domain.Run{}, err
+		}
 	}
 	if err = s.persistRun(ctx, tx, p, recoveryRunRoute, messageID, creation, next); err != nil {
 		return domain.Run{}, err
@@ -372,44 +389,56 @@ func recoveryDeliveryBlocked(
 	replace bool,
 	out *domain.RecoveryReceipt,
 ) (bool, error) {
-	// Never move work across a predecessor with unknown financial/business effects.
-	if r.State.Terminal() && r.AdmissionSequence == 0 {
+	terminal := r.State.Terminal()
+	if terminal && r.AdmissionSequence == 0 {
 		blockRecovery(out, "run_order_unavailable")
 		return true, nil
 	}
-	uncertain, err := runUncertainty(ctx, tx, r.ID)
-	if err != nil {
-		return false, err
-	}
-	if replace {
-		var sponsoredUnknown bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM platform_provider_attempts WHERE run_id=$1 AND status='unknown')", r.ID).
-			Scan(&sponsoredUnknown); err != nil {
+	// Never start new work across a predecessor with unknown financial/business effects.
+	if terminal || replace {
+		uncertain, err := predecessorUncertain(ctx, tx, r, replace)
+		if err != nil {
 			return false, err
 		}
-		uncertain = uncertain || sponsoredUnknown
-	}
-	if replace && (uncertain || r.ReservedMicrocredits > 0) {
-		blockRecovery(out, uncertainEffectReason)
-		return true, nil
+		if uncertain {
+			blockRecovery(out, uncertainEffectReason)
+			return true, nil
+		}
 	}
 	var available int64
-	if err = tx.QueryRow(ctx, "SELECT balance-reserved FROM billing_accounts WHERE owner_id=$1", uid).
+	if err := tx.QueryRow(ctx, "SELECT balance-reserved FROM billing_accounts WHERE owner_id=$1", uid).
 		Scan(&available); err != nil {
 		return false, err
 	}
-	if !replace {
+	if !terminal && !replace {
 		available += r.ReservedMicrocredits
 	}
 	if available <= 0 {
 		blockRecovery(out, "credits_exhausted")
 		return true, nil
 	}
-	if r.MaxMicrocredits-r.SpentMicrocredits <= 0 {
+	// The run allowance limits an open run only. A new round gets the current run cap.
+	if !terminal && r.MaxMicrocredits-r.SpentMicrocredits <= 0 {
 		blockRecovery(out, "budget_exhausted")
 		return true, nil
 	}
 	return false, nil
+}
+
+// predecessorUncertain reports an unknown step, write or reservation. A
+// replacement also carries the allowance, so an unknown sponsored attempt blocks it.
+func predecessorUncertain(ctx context.Context, tx pgx.Tx, r domain.Run, replace bool) (bool, error) {
+	uncertain, err := runUncertainty(ctx, tx, r.ID)
+	if err != nil || uncertain || r.ReservedMicrocredits > 0 {
+		return true, err
+	}
+	if !replace {
+		return false, nil
+	}
+	var sponsoredUnknown bool
+	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM platform_provider_attempts WHERE run_id=$1 AND status='unknown')", r.ID).
+		Scan(&sponsoredUnknown)
+	return sponsoredUnknown, err
 }
 
 func recoveryReplacementPending(

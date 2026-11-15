@@ -2,8 +2,10 @@
 
 [API index](../api.md) · [Runs and input](runs-input.md)
 
-Use this contract when a consumer loses its run pointer or must replace unusable
-work. `GET /v1/capabilities` advertises `conversation_recovery.version: 1`.
+Use this contract to send user messages to a retained chat, also after a consumer
+loses its run pointer or must replace unusable work. Each user message is a new
+interaction: it continues the open run, or it starts a new round of work after a
+terminal run. `GET /v1/capabilities` advertises `conversation_recovery.version: 1`.
 This version accepts text only and retains the existing chat. Create the first
 run with `POST /v1/runs`; persist its chat ID. No cross-chat context import exists.
 Posting a message to an owned chat with no runs returns `409 no_run` without
@@ -23,22 +25,20 @@ organization, actor and chat visibility. It does not expose another actor's run.
 The locator applies the same checks as message delivery. If a message sent now
 would meet a blocker, the locator reports that blocker with the same `reason` and
 `next_action`; see [Money and actionable blockers](#money-and-actionable-blockers).
-For example, a terminal run reports `blocked / run_order_unavailable`,
-`blocked / budget_exhausted` or `blocked / replacement_limit` with
-`next_action: request_new_work_allowance`, and a run whose allowance is spent
-reports `budget_exhausted` even while it is paused. The locator does not
-recommend an automatic reset.
+For example, a terminal run of a chat with removed legacy history reports
+`blocked / run_order_unavailable`, an empty wallet reports
+`blocked / credits_exhausted`, and an open run whose allowance is spent reports
+`blocked / budget_exhausted` with `next_action: cancel_run_then_retry`.
 A run paused at its step limit returns `accepted / step_limit` with
 `next_action: send_message`, because the next message wakes it. A pause request,
 a pending cancellation or an unknown outcome keeps that run `blocked`.
 Any other paused run that no message blocker applies to returns `blocked`, its
 own pause reason and `next_action: resolve_blocker_then_resume`.
 
-For a terminal run, `send_message` continues the same logical work: the message
-uses one replacement and the remaining allowance of that run. It is not the path
-for a distinct new user request. After a normally completed run, send a new
-request with `POST /v1/runs`; see
-[Replacement safety and context](#replacement-safety-and-context).
+For a terminal run, `send_message` starts a new round: an ordinary new run in
+the same chat with the current run cap. It is not a replacement and has no
+replacement count. `POST /v1/runs` remains available for a new request that needs
+its own creation parameters.
 
 A generic proxy 404 does not prove that a run disappeared. Keep the run pointer
 and original requests through transient routing errors. Apply bounded retries;
@@ -68,15 +68,19 @@ path. An eligible `step_limit` pause wakes automatically. Other pause reasons,
 authorization waits and protocol question/approval requirements remain in force.
 Input never grants consent merely because recovery accepted it.
 
-A terminal predecessor is eligible for replacement, including completed work
-continued under its remaining allowance. To replace another
-unusable state explicitly, supply its observed ID:
+After a terminal run (`completed`, `failed` or `cancelled`), the message starts a
+new round. The new run inherits the interaction settings of the latest run, gets
+the current configured run cap, and has no `replaces_run_id`. The wallet remains
+the shared money limit of the owner. To replace an open run that is unusable,
+supply its observed ID:
 
 ```json
 {"text":"Continue the same task","replace_run_id":"PREDECESSOR_UUID"}
 ```
 
-A replacement is for the same logical work. An explicit ID must identify the
+A replacement is for the same logical work of an open run. A `replace_run_id`
+that names a terminal latest run has no effect: the message starts a new round.
+An explicit ID must identify the
 latest run or its direct predecessor after a racing replacement. An invalid or
 stale target returns `409 replacement_target_changed` before first acceptance.
 Refresh the locator and submit a corrected request. If a previously accepted
@@ -136,29 +140,24 @@ in the same owner/organization/chat can withdraw it. The operation returns `200`
 with `accepted: true`, `abandoned: true`, `delivered: false`,
 `status: abandoned`, `reason: explicit_withdrawal` and
 `next_action: continue_or_create_new_request`: retry the other retained messages
-in order, or create a distinct request. Its original text, key, sequence and an audit record remain
+in order, or create a new request. Its original text, key, sequence and an audit record remain
 durable. Repeating abandonment is safe. Replaying the original message returns its
 abandoned receipt and never delivers it. Delivered messages return
 `409 message_already_delivered`; abandonment does not cancel a run.
 
 Explicit abandonment releases the ordering barrier. Use it when the user withdraws
-a request, a target is obsolete, or a terminal financial/replacement blocker cannot
-be resolved. Never abandon automatically just to bypass a budget or unknown effect.
+a request or a target is obsolete. Never abandon automatically just to bypass an
+unknown effect.
 Unknown steps, write receipts and reservations remain attached to their runs.
 
-For `budget_exhausted`, `replacement_limit` or `run_order_unavailable`: stop
-automatic retries, explain the blocker and obtain a distinct request/allowance
-from the user. Explicitly abandon
-the old undelivered inbox message before creating that new request with
-`POST /v1/runs`. Put the new request text only in that creation body. Do not replay
-the abandoned text or send it again as steering. Retry any other retained messages
-in acceptance order; they are distinct inputs, not duplicates of the new initial
-request. Existing active work must be stopped or completed before ordinary creation.
-The server enforces this boundary: ordinary `POST /v1/runs` returns
-`409 pending_conversation_messages` while the chat has any undelivered,
-unabandoned inbox message. An idempotent retry of a previously admitted creation
-still returns its original run. A retained continuation therefore cannot migrate
-silently onto a distinct request's fresh allowance.
+For `run_order_unavailable`: abandon the retained message, then create the
+request with `POST /v1/runs`. Put the request text in that creation body. Do not
+replay the abandoned text or send it again as steering. Retry any other retained
+messages in acceptance order.
+Ordinary `POST /v1/runs` returns `409 pending_conversation_messages` while the
+chat has any undelivered, unabandoned inbox message, so a later request cannot
+pass retained text. An idempotent retry of a previously admitted creation
+still returns its original run.
 
 ## Replacement safety and context
 
@@ -168,13 +167,9 @@ in-flight paid step, and returns
 backoff. The request and cancellation flag survive restart. The caller must
 bound its retry count and deadline; after that, show pending work and provide a
 manual continuation action. Loom creates at most three successive replacements
-in one recovery chain and reports `replacement_limit` after that. Continuation
-after a normally completed run also uses one replacement and the remaining
-allowance. This endpoint continues one logical request; it is not an unlimited
-new-request admission API.
-This finite boundary is intentional even if all predecessor runs completed
-normally. Exhaustion retains the text and requires an explicit user decision;
-it never grants a new monetary allowance automatically.
+of open runs in one chain and reports `replacement_limit` after that. A terminal
+run ends the chain: a message after it starts a new round with a count of zero.
+Loom never replaces a run by itself. One message creates at most one run.
 
 Before requesting cancellation, Loom checks remaining allowance, saved session
 and current model entitlement. A revoked session or disallowed model does not
@@ -194,10 +189,10 @@ reservation has been released. Existing sponsored continuation of the same run
 remains available; platform liability is not erased or moved to a new run.
 The sponsored retry limit counts attempts for each run. Loom itself never
 changes an attempt from `unknown`, so a predecessor with a sponsored attempt
-stays blocked for replacement. Recovery therefore cannot be used to obtain a new
-sponsored retry count.
+stays blocked for replacement. A new round after a terminal run is a new run and
+has its own count, as every ordinary run has.
 
-The successor has `replaces_run_id` and `replacement_count`; chat history also
+The successor of a replaced run has `replaces_run_id` and `replacement_count`; chat history also
 records `run.replaced` before the successor's request. The model receives that
 event as data, not as an instruction. It uses the same chat, owner and actor. Existing history,
 source roles, operation receipts and saved summaries stay in place; they are not
@@ -207,7 +202,10 @@ Existing artifact references remain subject to current ownership, expiry and
 authorization checks. Recovery does not copy artifact bytes or renew access.
 No paid handoff summary is required.
 
-Before inference, Loom also loads deterministic predecessor operation receipts
+A new round after a terminal run is an ordinary run. It reads the chat history
+and gets no receipt handoff.
+
+Before inference, a replacement successor also loads deterministic predecessor operation receipts
 across the recovery chain. It rechecks their module/method and identity bindings
 against current authority. The model receives historical call/tool-result pairs
 with original run/call/operation IDs and known states, arguments and results.
@@ -235,8 +233,8 @@ not retry them. A denied method permission or a rejected session uses
 `waiting_auth / recovery_authorization_required`.
 Restore current authority/context access and resume or reauthorize explicitly;
 do not drop receipts or blindly repeat an effect. A size denial
-(`recovery_context_too_large`) has no consumer remedy: cancel that run and obtain
-a distinct new request from the user. Custom engine integrations
+(`recovery_context_too_large`) has no consumer remedy: cancel that run. The next
+message then starts a new round. Custom engine integrations
 without a receipt-authorizing callback can continue only chains with no operations.
 Receipts whose predecessor admission event has been removed by retention/deletion
 are not copied back into model context; recovery fails closed in that case too.
@@ -253,16 +251,25 @@ admission rolls back cancellation/creation while retaining the message.
 
 ## Money and actionable blockers
 
-Replacement keeps the same wallet. With no outstanding or unknown exposure,
-the new per-run allowance is at most:
+The wallet is the shared money limit of the owner. Every run of the owner uses
+it, and every paid step checks it. The per-run allowance only bounds one run.
+
+A new round after a terminal run gets the current configured run cap, as
+`POST /v1/runs` without a `budget` does. The allowance that the terminal run
+spent does not limit it.
+
+A replacement of an open run continues the same work. With no outstanding or
+unknown exposure, the allowance of the successor is at most:
 
 ```text
 min(current configured run cap, predecessor cap - predecessor spent)
 ```
 
-Repeated replacements therefore cannot replenish the original allowance. Spent
+Repeated replacements therefore cannot replenish the allowance of unfinished
+work. Spent
 credits remain on the original runs/ledger. Unknown exposure and reservations
-must be reconciled before replacement; they are never erased or silently freed.
+must be reconciled before a replacement or a new round; they are never erased or
+silently freed. An unknown sponsored attempt blocks a replacement only.
 Every later paid step still checks the wallet and current policy atomically.
 The step allowance renewed by a message is separate from money.
 Steering counts the target run's existing reservation as available for that run;
@@ -274,8 +281,8 @@ locator both use this table:
 | Reason | `next_action` | Consumer action |
 | --- | --- | --- |
 | `credits_exhausted` | `fund_wallet_then_retry` | Fund the existing wallet, then retry the same message. No inference is required to report this condition. |
-| `budget_exhausted`, `replacement_limit` | `request_new_work_allowance` | Stop automatic retries. Obtain a distinct new request from the user; do not automatically create a fresh allowance for the same work. |
-| `run_order_unavailable` | `request_new_work_allowance` | Retention removed legacy admission events, so the latest run of this chat is not proven. Do not guess a predecessor. Obtain a distinct new request from the user. |
+| `budget_exhausted`, `replacement_limit` | `cancel_run_then_retry` | The open run spent its allowance, or it is the third successive replacement. Stop automatic retries. For a real user message, end that run with the run control `cancel`, then retry the same message; it starts a new round. |
+| `run_order_unavailable` | `create_run` | Retention removed legacy admission events, so the latest run of this chat is not proven. Do not guess a predecessor. Abandon the retained message and create the request with `POST /v1/runs`. |
 | `authorization_required` | `reauthorize_session` | Reauthorize the retained session with the same owner and actor, then retry. |
 | `model_not_allowed` | `select_allowed_model_or_restore_access` | Select an allowed model/effort or restore model entitlement, then retry; running work is not cancelled by this preflight denial. |
 | `inference_or_effect_uncertain` | `reconcile_predecessor` | Reconcile the predecessor's unknown outcome; do not repeat its effect. |
@@ -291,8 +298,6 @@ with `next_action: resolve_blocker_then_resume`: resolve the cause, then resume
 that run. For example, a run paused with `credits_exhausted` reports
 `fund_wallet_then_retry` while the wallet is empty. After funding, it reports
 `resolve_blocker_then_resume` until it is resumed.
-For `request_new_work_allowance`, follow the procedure in
-[Explicitly withdraw an undelivered message](#explicitly-withdraw-an-undelivered-message).
 
 `accepted: true, delivered: false` distinguishes retained text from an applied
 input. `blocked` can also accompany `delivered: true` when the receiving run has
@@ -300,9 +305,9 @@ a lifecycle blocker. Read that run and resolve its existing control/session flow
 Do not resubmit delivered text with a new key. Authentication/permission failures
 before acceptance return ordinary 401/403/404 and do not accept a message.
 
-Ordinary `POST /v1/runs` remains the explicit boundary for a distinct user request
-with a fresh per-run allowance. Consumers must not use it as an automatic recovery
-fallback. No new monthly cap or funding policy is introduced.
+Do not create runs or cancel work in an automatic loop after a transport error.
+Use the locator and retry the original message. No new monthly cap or funding
+policy is introduced.
 
 ## Upgrade and rollback
 
