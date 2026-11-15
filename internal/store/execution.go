@@ -122,8 +122,12 @@ func (s *Store) BeginStep(
 			r.State = domain.Reconciling
 			return domain.Conflict("inference_uncertain")
 		}
-		if reserve > r.MaxMicrocredits-r.SpentMicrocredits-r.ReservedMicrocredits {
-			return domain.NewError(http.StatusTooManyRequests, "budget_exhausted")
+		// The progress note reports that the run allowance is used, so only the
+		// wallet limits it. The note can leave the run above its allowance; a step
+		// with no reservation spends nothing and still fits.
+		if kind != domain.LimitNoteStepKind && reserve > 0 &&
+			reserve > r.MaxMicrocredits-r.SpentMicrocredits-r.ReservedMicrocredits {
+			return domain.NewError(http.StatusTooManyRequests, budgetExhaustedReason)
 		}
 		tag, e := tx.Exec(
 			ctx,
@@ -602,8 +606,8 @@ func (s *Store) transition(
 		if err := validateCompletion(ctx, tx, r, result); err != nil {
 			return err
 		}
-	} else if state != domain.Paused || reason != stepLimitReason {
-		// Only a completed run and a step-limit pause carry text.
+	} else if state != domain.Paused || (reason != stepLimitReason && reason != budgetExhaustedReason) {
+		// Only a completed run and a pause with a progress note carry text.
 		result = ""
 	}
 	if state == domain.WaitingAuth {

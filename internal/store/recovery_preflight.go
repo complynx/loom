@@ -106,20 +106,29 @@ func (s *Store) locateRecoveryBlocker(
 ) error {
 	terminal := r.State.Terminal()
 	// A message without a target replaces only a run that spent its own allowance.
-	replace := messageReplaces(r, "")
+	replace, err := allowanceSpent(ctx, tx, r)
+	if err != nil {
+		return err
+	}
 	blocked, err := recoveryDeliveryBlocked(ctx, tx, uid, r, replace, out)
 	if err != nil || blocked {
 		return err
 	}
 	if terminal || replace {
 		// The message would admit a new run.
-		if denial, denied := errors.AsType[*domain.Error](s.checkSuccessorAdmission(ctx, tx, p, uid, r)); denied {
+		admissionErr := s.checkSuccessorAdmission(ctx, tx, p, uid, r)
+		if denial, denied := errors.AsType[*domain.Error](admissionErr); denied {
 			blockRecovery(out, denial.Code)
 			return nil
 		}
+		if admissionErr != nil {
+			return admissionErr
+		}
 		out.NextAction = recoverySendAction
 		if replace {
-			out.Status = recoveryAcceptedStatus
+			// The run used its own allowance without a result. The user decides
+			// whether to continue; the wallet has funds.
+			out.Status, out.NextAction = recoveryAcceptedStatus, recoveryAskUserAction
 		}
 		return nil
 	}

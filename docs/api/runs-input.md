@@ -67,6 +67,14 @@ event and a `message.progress` run event; the run is `paused / step_limit`, not
 completed. The note is optional: without funds for it, or after a provider
 failure, the run pauses without a note.
 
+The same note is written when a model request does not fit in the remaining
+`budget.max_microcredits` of the run; the run is then `paused / budget_exhausted`.
+The note is the one request that the run allowance does not limit: its cost can
+exceed `max_microcredits` by one request of at most 1024 output tokens. The
+wallet still limits it. A run with no completed step writes no note. A run also
+writes no note when the request that does not fit is a history summary, because
+the context for a note does not exist yet.
+
 A new input automatically queues a run paused with `step_limit`, unless a
 pause/cancel request or unresolved outcome blocks execution. The same applies to
 a run paused with `credits_exhausted`: it tries its step again, and it pauses

@@ -34,19 +34,24 @@ entitlement. It does not check the run capacity limits. For example, a terminal
 run of a chat with removed legacy history reports
 `blocked / run_order_unavailable`, and an empty wallet reports
 `blocked / credits_exhausted`.
-A run paused at its step limit worked without a final result. It returns
-`accepted / step_limit` with `next_action: ask_user_to_continue`. The run `result`
-then holds a short progress note that the model wrote: what is done and where the
-work stopped. Show the note, ask the user whether to continue or what to do next,
-and send the reply as a message; that message wakes the run. A pause request,
-a pending cancellation or an unknown outcome keeps that run `blocked`.
-Money is different: it is never a question to continue. An empty wallet returns
-`blocked / credits_exhausted`; tell the user that the budget is used. A run that
-is paused for money (`budget_exhausted` or `credits_exhausted`) while the wallet
-has funds returns `accepted` with `next_action: send_message`: the next message
-continues the conversation. This wallet check is only `available > 0`. If the
-funds cannot cover the next step, the run pauses again with `credits_exhausted`;
-that pause is the signal that the budget is used.
+A run that used its work allowance worked without a final result. This is a run
+paused at its step limit (`step_limit`), or a run that spent its own money
+allowance while the wallet has funds (`budget_exhausted`). It returns `accepted`
+with `next_action: ask_user_to_continue`. The run `result` then usually holds a
+short progress note that the model wrote: what is done and where the work
+stopped. The note is optional, so `result` can be empty; then ask without it.
+Show the note, ask the user whether to continue or what to do next, and send the
+reply as a message. That message wakes a `step_limit` run and replaces a
+`budget_exhausted` run. It also replaces a `step_limit` run whose remaining money
+allowance cannot pay another model request. A pause request, a pending cancellation or an unknown
+outcome keeps the run `blocked`.
+The budget of the owner is different: it is never a question to continue. An
+empty wallet returns `blocked / credits_exhausted`; tell the user that the budget
+is used. A run paused with `credits_exhausted` while the wallet has funds returns
+`accepted` with `next_action: send_message`: the next message wakes it. This
+wallet check is only `available > 0`. If the funds cannot cover the next step,
+the run pauses again with `credits_exhausted`; that pause is the signal that the
+budget is used.
 Any other paused run that no message blocker applies to returns `blocked`, its
 own pause reason and `next_action: resolve_blocker_then_resume`.
 
@@ -79,7 +84,8 @@ Changing the body under the same key returns `409 idempotency_conflict`.
 
 The endpoint finds the latest run in the retained chat. It submits steering to
 usable nonterminal work and renews its step allowance through the ordinary input
-path. An eligible `step_limit` pause wakes automatically. Other pause reasons,
+path. An eligible `step_limit` or `credits_exhausted` pause wakes automatically.
+Other pause reasons,
 authorization waits and protocol question/approval requirements remain in force.
 Input never grants consent merely because recovery accepted it.
 
@@ -90,7 +96,8 @@ the shared money limit of the owner.
 
 A run allowance bounds one action; it does not stop the conversation. If the open
 run is paused because its own allowance could not pay the next step
-(`budget_exhausted`), the message replaces that run: Loom supersedes it and
+(`budget_exhausted`), it wrote a progress note and the consumer asked the user
+whether to continue. The message then replaces that run: Loom supersedes it and
 admits a linked successor. If the run is paused because the wallet could not pay
 (`credits_exhausted`), the message wakes the same run, and the run tries its step
 again. In both cases an empty wallet returns `blocked / credits_exhausted`.

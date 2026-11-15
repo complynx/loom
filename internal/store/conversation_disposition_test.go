@@ -255,7 +255,12 @@ func TestRecoveryMessageContinuesRunPausedForMoney(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, r.ID, located.RunID)
 		require.Equal(t, "accepted", located.Status)
-		require.Equal(t, "send_message", located.NextAction)
+		// A spent run allowance is work without a result: the user decides.
+		action := "send_message"
+		if replaced {
+			action = "ask_user_to_continue"
+		}
+		require.Equal(t, action, located.NextAction)
 		receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
 		require.NoError(t, err)
 		require.True(t, receipt.Delivered)
@@ -275,4 +280,37 @@ func TestRecoveryMessageContinuesRunPausedForMoney(t *testing.T) {
 		require.Equal(t, r.ID, next.ReplacesRunID)
 		require.GreaterOrEqual(t, next.MaxMicrocredits, r.MaxMicrocredits)
 	}
+}
+
+// The progress note can leave a run above its own allowance. Such a run must
+// still accept a step that spends nothing, and the reply of the user must
+// continue in a successor instead of waking a run that cannot pay a request.
+func TestRecoveryReplacesStepLimitRunWithoutAllowanceForAnotherRequest(t *testing.T) {
+	t.Parallel()
+	s := testStore(t)
+	p := principal("step-limit-near-cap")
+	r, err := s.CreateRun(t.Context(), p, "create", request())
+	require.NoError(t, err)
+	r, err = s.ClaimRun(t.Context(), r.ID, "worker", time.Minute)
+	require.NoError(t, err)
+	spend := func(kind string, amount int64) {
+		step, e := s.BeginStep(t.Context(), r.ID, "worker", r.Fence, kind, json.RawMessage(`{}`), amount)
+		require.NoError(t, e)
+		usage := domain.Usage{Microcredits: amount}
+		require.NoError(t, s.CompleteStep(t.Context(), r.ID, "worker", r.Fence, step.ID, json.RawMessage(`{}`), usage))
+	}
+	spend("model", 600)
+	// The note is not limited by the run allowance of 1000.
+	spend(domain.LimitNoteStepKind, 700)
+	spend("input", 0)
+	_, err = s.Pool().
+		Exec(t.Context(), "UPDATE runs SET state='paused',reason='step_limit',lease_owner='',lease_until=NULL WHERE id=$1", r.ID)
+	require.NoError(t, err)
+	receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "reply", domain.RecoverMessage{Text: "Yes"})
+	require.NoError(t, err)
+	require.True(t, receipt.Delivered)
+	require.NotEqual(t, r.ID, receipt.RunID)
+	successor, err := s.GetRun(t.Context(), p, receipt.RunID)
+	require.NoError(t, err)
+	require.Equal(t, r.ID, successor.ReplacesRunID)
 }

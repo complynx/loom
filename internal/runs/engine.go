@@ -263,7 +263,7 @@ func (e *Engine) admissionFailure(ctx context.Context, run domain.Run, err error
 		return err
 	}
 	switch failure.Code {
-	case "budget_exhausted", "credits_exhausted":
+	case budgetExhaustedReason, domain.CreditsExhaustedReason:
 		return e.finish(ctx, run, domain.Paused, failure.Code, "")
 	case "stop_requested":
 		fresh, loadErr := e.store.ExecutionRun(ctx, run.ID)
@@ -391,7 +391,7 @@ func (e *Engine) executeReadyTurn(
 		return e.completeTurn(ctx, run, turn.finalCandidate)
 	}
 	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-		return e.pauseAtStepLimit(ctx, run, principal, token, model, turn)
+		return e.pauseWithNote(ctx, run, principal, token, model, turn, stepLimitReason)
 	}
 
 	handled, callErr := e.handlePending(ctx, run, principal, token, settings, turn)
@@ -579,9 +579,10 @@ func (e *Engine) inferTurn(
 	principal domain.Principal,
 	token string,
 	model domain.Model,
-	items []provider.Item,
+	turn *turnState,
 ) (bool, error) {
 	id := run.ID
+	items := turn.items
 	tools, toolsErr := e.turnTools(ctx, run, principal, token)
 	if toolsErr != nil {
 		return stoppedTurn(toolsErr)
@@ -624,6 +625,10 @@ func (e *Engine) inferTurn(
 	}{hex.EncodeToString(digest[:]), model, run.Effort, run.Input.ArtifactIDs, inputBound, model.MaxOutputTokens})
 	step, err := e.store.BeginStep(ctx, id, e.opts.Owner, run.Fence, "model", intent, reserve)
 	if err != nil {
+		if denial, denied := errors.AsType[*domain.Error](err); denied && denial.Code == budgetExhaustedReason {
+			// The run used its own allowance. Report the progress before the pause.
+			return e.pauseWithNote(ctx, run, principal, token, model, turn, budgetExhaustedReason)
+		}
 		return false, e.admissionFailure(ctx, run, err)
 	}
 	return e.performInference(ctx, run, model, request, step)

@@ -23,8 +23,9 @@ const (
 	recoveryInputRoute    = "recovery-input"
 
 	uncertainEffectReason      = "inference_or_effect_uncertain"
-	stepLimitReason            = "step_limit"
-	creditsExhaustedReason     = "credits_exhausted"
+	stepLimitReason            = domain.StepLimitReason
+	budgetExhaustedReason      = domain.BudgetExhaustedReason
+	creditsExhaustedReason     = domain.CreditsExhaustedReason
 	recoveryAskUserAction      = "ask_user_to_continue"
 	recoveryAcceptedStatus     = "accepted"
 	recoverySendAction         = "send_message"
@@ -205,7 +206,10 @@ func (s *Store) deliverRecoveryMessage(
 	// interaction: it steers the open run, replaces a run that cannot continue,
 	// or starts a new round after a terminal run.
 	terminal := r.State.Terminal()
-	replace := messageReplaces(r, in.ReplaceRunID)
+	replace, err := messageReplaces(ctx, tx, r, in.ReplaceRunID)
+	if err != nil {
+		return err
+	}
 	if replace {
 		if preflightErr := s.preflightRecoveryReplacement(ctx, tx, p, uid, r); preflightErr != nil {
 			return preflightErr
@@ -431,12 +435,35 @@ func recoveryDeliveryBlocked(
 }
 
 // messageReplaces reports whether a message supersedes the latest run with a
-// linked successor. The caller names the run, or the run stopped because its own
-// allowance cannot pay the next step. A run allowance bounds one action; it must
-// not stop the conversation. A run that stopped for an empty wallet is not
-// replaced: the message wakes it, and it tries its step again.
-func messageReplaces(r domain.Run, target string) bool {
-	return target == r.ID || r.State == domain.Paused && r.Reason == "budget_exhausted"
+// linked successor: the caller names the run, or the run spent its own allowance.
+func messageReplaces(ctx context.Context, tx pgx.Tx, r domain.Run, target string) (bool, error) {
+	if target == r.ID {
+		return true, nil
+	}
+	return allowanceSpent(ctx, tx, r)
+}
+
+// allowanceSpent reports a paused run whose own money allowance cannot pay
+// another model request. A message supersedes such a run with a linked successor:
+// a run allowance bounds one action; it must not stop the conversation.
+// This covers a budget_exhausted pause. It also covers a step_limit pause whose
+// remaining allowance is below the reservation of its latest model request,
+// because waking that run would only stop it again.
+// A run that stopped for an empty wallet is not covered: the message wakes it.
+func allowanceSpent(ctx context.Context, tx pgx.Tx, r domain.Run) (bool, error) {
+	if r.State != domain.Paused || (r.Reason != budgetExhaustedReason && r.Reason != stepLimitReason) {
+		return false, nil
+	}
+	if r.Reason == budgetExhaustedReason {
+		return true, nil
+	}
+	var latest int64
+	err := tx.QueryRow(ctx, "SELECT reserve FROM steps WHERE run_id=$1 AND kind='model' ORDER BY ordinal DESC LIMIT 1", r.ID).
+		Scan(&latest)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return r.MaxMicrocredits-r.SpentMicrocredits-r.ReservedMicrocredits < latest, err
 }
 
 func recoveryReplacementPending(

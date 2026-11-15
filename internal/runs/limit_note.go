@@ -13,39 +13,46 @@ import (
 )
 
 const (
-	stepLimitReason       = "step_limit"
+	stepLimitReason       = domain.StepLimitReason
+	budgetExhaustedReason = domain.BudgetExhaustedReason
 	limitNoteKind         = domain.LimitNoteStepKind
 	limitNoteOutputTokens = 1024
-	limitNoteInstruction  = "The step allowance for this request is used. Do not continue the work now and do not call tools. Write a short note in the language of the user: what is done, where the work stopped and what remains. State verified results only. Then ask whether to continue."
+	limitNoteInstruction  = "The work allowance for this request is used. Do not continue the work now and do not call tools. Write a short note in the language of the user: what is done, where the work stopped and what remains. State verified results only. Then ask whether to continue."
 )
 
-// pauseAtStepLimit stops a run that used its step allowance without a final
-// result. Before the pause, the model writes one short progress note. The
-// consumer shows the note and asks the user whether to continue. The note is
-// optional: a failure to write it never changes the pause.
-func (e *Engine) pauseAtStepLimit(
+// pauseWithNote stops a run that used its step allowance or its own money
+// allowance without a final result. Before the pause, the model writes one short
+// progress note. The consumer shows the note and asks the user whether to
+// continue. The note is one request that the run allowance does not limit; the
+// wallet still limits it. The note is optional: a failure to write it never
+// changes the pause. A run with no completed step has no progress to report.
+func (e *Engine) pauseWithNote(
 	ctx context.Context,
 	run domain.Run,
 	principal domain.Principal,
 	token string,
 	model domain.Model,
 	turn *turnState,
+	reason string,
 ) (bool, error) {
 	if turn.limitNoteSaved {
-		return false, e.finish(ctx, run, domain.Paused, stepLimitReason, turn.limitNote)
+		return false, e.finish(ctx, run, domain.Paused, reason, turn.limitNote)
+	}
+	if len(turn.steps) == 0 {
+		return false, e.finish(ctx, run, domain.Paused, reason, "")
 	}
 	request, ready := e.limitNoteRequest(ctx, run, principal, token, model, turn)
 	raw, _ := json.Marshal(request)
 	reserve, costErr := cost(int64(len(raw))+requestTokenOverhead, int64(request.MaxOutputTokens), model)
 	if !ready || costErr != nil || len(raw) > e.opts.MaxInputBytes {
-		return false, e.finish(ctx, run, domain.Paused, stepLimitReason, "")
+		return false, e.finish(ctx, run, domain.Paused, reason, "")
 	}
 	digest := sha256.Sum256(raw)
 	intent, _ := json.Marshal(map[string]string{"request_hash": hex.EncodeToString(digest[:])})
 	step, err := e.store.BeginStep(ctx, run.ID, e.opts.Owner, run.Fence, limitNoteKind, intent, reserve)
 	if err != nil {
 		// No funds for the note, or a control request. The transition applies the latter.
-		return false, e.finish(ctx, run, domain.Paused, stepLimitReason, "")
+		return false, e.finish(ctx, run, domain.Paused, reason, "")
 	}
 	request.ClientRequestID = step.ID
 	inferCtx, cancel := context.WithTimeout(ctx, e.opts.InferenceTimeout)
@@ -68,7 +75,7 @@ func (e *Engine) pauseAtStepLimit(
 	if err = e.completeLimitNote(ctx, run, model, step, response); err != nil {
 		return false, err
 	}
-	return false, e.finish(ctx, run, domain.Paused, stepLimitReason, note)
+	return false, e.finish(ctx, run, domain.Paused, reason, note)
 }
 
 // limitNoteRequest reuses the tools and items of the turn, so the provider can
@@ -90,7 +97,7 @@ func (e *Engine) limitNoteRequest(
 		if !turn.completed[call.ID] {
 			items = append(
 				items,
-				provider.CallOutput(call.ID, json.RawMessage(`{"status":"not_executed","reason":"step_limit"}`)),
+				provider.CallOutput(call.ID, json.RawMessage(`{"status":"not_executed","reason":"allowance_used"}`)),
 			)
 		}
 	}
