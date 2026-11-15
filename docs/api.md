@@ -9,6 +9,9 @@ Start with [authentication and routes](api/authentication-routes.md), then
 [create a run and submit input](api/runs-input.md). The server exposes wire schemas
 at `/openapi.json`. See [Contributing](../CONTRIBUTING.md) for the code map.
 
+For lost run pointers and safe replacement, use
+[conversation recovery](api/conversation-recovery.md).
+
 Persist an idempotency key before sending a command that requires one. Reuse that
 key and the same body after a lost response. Keys contain 1–128 bytes, no leading
 or trailing whitespace, NUL, CR or LF. A command receipt confirms durable

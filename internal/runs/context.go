@@ -28,40 +28,41 @@ type summaryPlan struct {
 }
 
 // contextItems compacts only complete earlier events; model/tool items of this run remain intact.
+// The int result is the index of the current request item.
 func (e *Engine) contextItems(
 	ctx context.Context,
 	run domain.Run,
 	settings domain.Settings,
 	model domain.Model,
-) ([]provider.Item, bool, error) {
+) ([]provider.Item, int, bool, error) {
 	if err := e.checkSponsoredLimit(ctx, run); err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	budget, err := e.contextBudget(model)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	store, ok := e.store.(summaryStore)
 	if !ok {
 		events, historyErr := e.store.ExecutionHistory(ctx, run.ID, settings.HistoryRecentLimit+1)
 		if historyErr != nil {
-			return nil, false, historyErr
+			return nil, 0, false, historyErr
 		}
-		items, buildErr := buildCurrentHistory(events, settings.HistoryRecentLimit, budget.trigger, run)
-		return items, false, buildErr
+		items, request, buildErr := buildCurrentHistory(events, settings.HistoryRecentLimit, budget.trigger, run)
+		return items, request, false, buildErr
 	}
 	summary, steps, err := e.restoreSummary(ctx, run, store)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
-	if cached, cacheErr := e.cachedContext(ctx, run, settings, budget, summary.ThroughSeq); cacheErr != nil {
-		return nil, false, cacheErr
+	if cached, request, cacheErr := e.cachedContext(ctx, run, settings, budget, summary.ThroughSeq); cacheErr != nil {
+		return nil, 0, false, cacheErr
 	} else if len(cached) > 0 {
-		return cached, false, nil
+		return cached, request, false, nil
 	}
 	events, err := store.ExecutionContextHistoryAfter(ctx, run.ID, summary.ThroughSeq, contextHistoryPageLimit)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	filtered := make([]domain.ChatEvent, 0, len(events))
 	for _, event := range events {
@@ -73,22 +74,25 @@ func (e *Engine) contextItems(
 	}
 	if items, ready := recentContext(summary, filtered, settings.HistoryRecentLimit, budget); ready {
 		if err = e.saveHistoryPrefix(ctx, run, events, items); err != nil {
-			return nil, false, err
+			return nil, 0, false, err
 		}
-		return currentRequestContext(items, filtered, run), false, nil
+		current, request := currentRequestContext(items, filtered, run)
+		return current, request, false, nil
 	}
 	if run.StepLimitReached(len(steps)) {
-		return nil, false, e.stopTurn(ctx, run, domain.Paused, "step_limit")
+		return nil, 0, false, e.stopTurn(ctx, run, domain.Paused, "step_limit")
 	}
 	prefix, err := summaryPrefix(filtered, settings.HistoryRecentLimit, budget, run.ID)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	plan, payload, err := makeSummaryPlan(run, model, summary, prefix, budget)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
-	return e.summarizeWithMemory(ctx, run, model, store, plan, payload, budget)
+	// A summary step never returns items; the caller rebuilds the context.
+	_, rebuilt, err := e.summarizeWithMemory(ctx, run, model, store, plan, payload, budget)
+	return nil, 0, rebuilt, err
 }
 
 func (e *Engine) summarize(
@@ -299,7 +303,8 @@ func recentContext(
 
 // currentRequestContext labels the originating event in place. The cached prefix stays neutral.
 // Match event identity, never text: two equal messages can be separate requests.
-func currentRequestContext(items []provider.Item, events []domain.ChatEvent, run domain.Run) []provider.Item {
+// It also returns the index of the current request item.
+func currentRequestContext(items []provider.Item, events []domain.ChatEvent, run domain.Run) ([]provider.Item, int) {
 	out := append([]provider.Item{}, items...)
 	offset := len(items) - len(events) // An optional conversation summary precedes the event items.
 	for i, event := range events {
@@ -313,19 +318,24 @@ func currentRequestContext(items []provider.Item, events []domain.ChatEvent, run
 					event.Seq,
 				), event),
 			)
-			return out
+			return out, offset + i
 		}
 	}
 	// An older summary can already cover the originating event. Keep the explicit request available.
-	return append(out, provider.Message("user", "Current explicit request: "+run.Input.Text))
+	return append(out, provider.Message("user", "Current explicit request: "+run.Input.Text)), len(out)
 }
 
-func buildCurrentHistory(events []domain.ChatEvent, maxEvents, maxBytes int, run domain.Run) ([]provider.Item, error) {
+func buildCurrentHistory(
+	events []domain.ChatEvent,
+	maxEvents, maxBytes int,
+	run domain.Run,
+) ([]provider.Item, int, error) {
 	items, err := history.Build(events, maxEvents, maxBytes)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return currentRequestContext(items, events, run), nil
+	current, request := currentRequestContext(items, events, run)
+	return current, request, nil
 }
 
 func summaryPrefix(
@@ -422,25 +432,25 @@ func (e *Engine) cachedContext(
 	settings domain.Settings,
 	budget contextBudget,
 	summaryThrough int64,
-) ([]provider.Item, error) {
+) ([]provider.Item, int, error) {
 	cache, ok := e.store.(contextCacheStore)
 	if !ok || run.PreviousRunID == "" {
-		return nil, nil
+		return nil, 0, nil
 	}
 	saved, err := cache.ExecutionCachedContext(ctx, run.ID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if len(saved.Items) == 0 || summaryThrough > saved.ThroughSeq {
-		return nil, nil
+		return nil, 0, nil
 	}
 	store, ok := e.store.(summaryStore)
 	if !ok {
-		return nil, nil
+		return nil, 0, nil
 	}
 	events, err := store.ExecutionContextHistoryAfter(ctx, run.ID, saved.ThroughSeq, contextHistoryPageLimit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	filtered := make([]domain.ChatEvent, 0, len(events))
 	for _, event := range events {
@@ -452,28 +462,28 @@ func (e *Engine) cachedContext(
 	}
 	delta, err := history.Build(filtered, settings.HistoryRecentLimit, budget.trigger/historyBudgetDivisor)
 	if errors.Is(err, history.ErrContextUnavailable) {
-		return nil, nil
+		return nil, 0, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	items := append(append([]provider.Item{}, saved.Items...), delta...)
-	current := currentRequestContext(items, filtered, run)
+	current, request := currentRequestContext(items, filtered, run)
 	size := 0
 	for _, item := range current {
 		size += len(item)
 	}
 	if size > budget.trigger/historyBudgetDivisor {
-		return nil, nil
+		return nil, 0, nil
 	}
 	through := saved.ThroughSeq
 	if len(events) > 0 {
 		through = events[len(events)-1].Seq
 	}
 	if err = cache.SaveRunContext(ctx, run.ID, e.opts.Owner, run.Fence, through, items); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return current, nil
+	return current, request, nil
 }
 
 func (e *Engine) saveHistoryPrefix(

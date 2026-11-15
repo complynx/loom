@@ -108,6 +108,9 @@ type CreateRun struct {
 	BillingAccountID string            `json:"billing_account_id,omitempty"`
 }
 type Run struct {
+	AdmissionSequence    int64             `json:"admission_sequence,omitempty"`
+	ReplacesRunID        string            `json:"replaces_run_id,omitempty"`
+	ReplacementCount     int               `json:"replacement_count,omitempty"`
 	StepBudgetStart      int               `json:"step_budget_start,omitempty"`
 	Skills               []SkillDefinition `json:"skills,omitempty"`
 	ExecutionProfile     ExecutionProfile  `json:"execution_profile,omitempty"`
@@ -235,16 +238,17 @@ type Approval struct {
 	ExpiresAt          time.Time       `json:"expires_at"`
 }
 type RunInput struct {
-	Presentation *InputPresentation `json:"presentation,omitempty"`
-	Context      *InputContext      `json:"context,omitempty"`
-	ID           string             `json:"id,omitempty"`
-	Kind         string             `json:"kind"`
-	Text         string             `json:"text,omitempty"`
-	QuestionID   string             `json:"question_id,omitempty"`
-	ChoiceIDs    []string           `json:"choice_ids,omitempty"`
-	ApprovalID   string             `json:"approval_id,omitempty"`
-	Decision     string             `json:"decision,omitempty"`
-	Applied      bool               `json:"applied"`
+	HistorySequence int64              `json:"history_sequence,omitempty"`
+	Presentation    *InputPresentation `json:"presentation,omitempty"`
+	Context         *InputContext      `json:"context,omitempty"`
+	ID              string             `json:"id,omitempty"`
+	Kind            string             `json:"kind"`
+	Text            string             `json:"text,omitempty"`
+	QuestionID      string             `json:"question_id,omitempty"`
+	ChoiceIDs       []string           `json:"choice_ids,omitempty"`
+	ApprovalID      string             `json:"approval_id,omitempty"`
+	Decision        string             `json:"decision,omitempty"`
+	Applied         bool               `json:"applied"`
 }
 
 // InputPresentation carries client observations, not authorization or commands.

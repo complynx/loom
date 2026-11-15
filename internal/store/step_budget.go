@@ -19,6 +19,12 @@ func renewStepBudget(ctx context.Context, tx pgx.Tx, r *domain.Run) (bool, error
 	if _, err = tx.Exec(ctx, "UPDATE runs SET doc=$2 WHERE id=$1", r.ID, document(r)); err != nil {
 		return false, err
 	}
+	return stepLimitWakes(ctx, tx, *r)
+}
+
+// stepLimitWakes reports whether a new input wakes a run paused at its step limit.
+// A pause request, a cancellation or an unknown outcome holds the run.
+func stepLimitWakes(ctx context.Context, tx pgx.Tx, r domain.Run) (bool, error) {
 	if r.State != domain.Paused || r.Reason != "step_limit" || r.PauseRequested || r.CancelRequested {
 		return false, nil
 	}

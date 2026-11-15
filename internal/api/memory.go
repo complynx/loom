@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	memoryPath         = "/v1/users/me/memory"
-	memoryLimitQuery   = "limit"
-	memoryPathLocation = "path"
+	memoryPath            = "/v1/users/me/memory"
+	memoryLimitQuery      = "limit"
+	pathParameterLocation = "path"
 )
 
 type memoryVersionRequest struct {
@@ -85,7 +85,12 @@ func (s *server) memoryRoute(
 	if strings.Contains(suffix, "{key}") {
 		op.Parameters = append(
 			op.Parameters,
-			&huma.Param{Name: "key", In: memoryPathLocation, Required: true, Schema: &huma.Schema{Type: schemaString}},
+			&huma.Param{
+				Name:     "key",
+				In:       pathParameterLocation,
+				Required: true,
+				Schema:   &huma.Schema{Type: schemaString},
+			},
 		)
 	}
 	if method == http.MethodGet && suffix != "" {

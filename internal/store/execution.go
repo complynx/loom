@@ -285,7 +285,8 @@ func (s *Store) PendingInputs(ctx context.Context, rid, owner string, fence int6
 	}
 	rows, e := s.pool.Query(
 		ctx,
-		"SELECT id::text,doc FROM run_inputs WHERE run_id=$1 AND NOT applied ORDER BY COALESCE((doc->'context'->>'revision')::bigint,0),created_at,id",
+		`SELECT id::text,doc FROM run_inputs WHERE run_id=$1 AND NOT applied
+ORDER BY COALESCE((doc->>'history_sequence')::bigint,0),COALESCE((doc->'context'->>'revision')::bigint,0),created_at,id`,
 		rid,
 	)
 	if e != nil {
@@ -377,7 +378,7 @@ func (s *Store) AddInput(
 		return r, domain.Forbidden()
 	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		return s.addInput(ctx, tx, p, rid, key, in, &r)
+		return s.addInput(ctx, tx, p, rid, inputIdempotencyRoute, key, in, &r)
 	})
 	return mutationReceipt(p, r), err
 }
@@ -794,11 +795,13 @@ func (s *Store) control(
 	return e
 }
 
+// addInput stores one run input. The route selects the idempotency key space:
+// caller keys and internal recovery keys must not share one.
 func (s *Store) addInput(
 	ctx context.Context,
 	tx pgx.Tx,
 	p domain.Principal,
-	rid, key string,
+	rid, route, key string,
 	in domain.RunInput,
 	r *domain.Run,
 ) error {
@@ -822,7 +825,7 @@ func (s *Store) addInput(
 		return e
 	}
 	requested := in
-	existing, e := idem(ctx, tx, scope(p, "input:"+rid), key, requested)
+	existing, e := idem(ctx, tx, scope(p, route+":"+rid), key, requested)
 	if e != nil {
 		return e
 	}
@@ -857,7 +860,12 @@ func (s *Store) addInput(
 	if e != nil {
 		return e
 	}
-	if _, e = chatEvent(ctx, tx, r.ChatID, rid, "input."+in.Kind, in.Text, actor(p), in); e != nil {
+	event, e := chatEvent(ctx, tx, r.ChatID, rid, "input."+in.Kind, in.Text, actor(p), in)
+	if e != nil {
+		return e
+	}
+	in.HistorySequence = event.Seq
+	if _, e = tx.Exec(ctx, "UPDATE run_inputs SET doc=$2 WHERE id=$1", in.ID, document(in)); e != nil {
 		return e
 	}
 	if wake {
@@ -865,7 +873,7 @@ func (s *Store) addInput(
 			return e
 		}
 	}
-	if e = saveIdem(ctx, tx, scope(p, "input:"+rid), key, in.ID, requested); e != nil {
+	if e = saveIdem(ctx, tx, scope(p, route+":"+rid), key, in.ID, requested); e != nil {
 		return e
 	}
 	*r, e = scanRun(tx.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1", rid))
@@ -988,7 +996,7 @@ func (s *Store) applyControl(ctx context.Context, tx pgx.Tx, r *domain.Run, comm
 			}
 			next, reason := domain.Paused, clientPauseReason
 			if uncertain {
-				next, reason = domain.Reconciling, "inference_or_effect_uncertain"
+				next, reason = domain.Reconciling, uncertainEffectReason
 			}
 			_, e = tx.Exec(ctx, "UPDATE runs SET state=$2,reason=$3 WHERE id=$1", rid, next, reason)
 		}
@@ -1061,7 +1069,7 @@ func reconcilePausedState(ctx context.Context, tx pgx.Tx, rid string, state *dom
 			return err
 		}
 		if uncertain {
-			*state, *reason = domain.Reconciling, "inference_or_effect_uncertain"
+			*state, *reason = domain.Reconciling, uncertainEffectReason
 		}
 	}
 	return nil

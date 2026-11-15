@@ -45,6 +45,13 @@ same run; a different body returns `409 idempotency_conflict`. Existing retries
 are checked before `chat_busy`. One nonterminal run owns a chat: submit subsequent
 messages to that run.
 
+If the consumer loses that pointer or needs a safe successor, use
+[conversation recovery](conversation-recovery.md). Its durable message endpoint
+preserves the existing logical work's financial allowance.
+Ordinary new-run admission returns `409 pending_conversation_messages` until
+undelivered inbox messages are delivered or explicitly abandoned. Existing
+idempotent creation retries still return their original run.
+
 `max_steps` bounds work since the latest accepted input, rather than the complete
 conversation. Each new steering message, answer or approval callback renews this
 budget. A retry with the same idempotency key does not renew it. Steps still

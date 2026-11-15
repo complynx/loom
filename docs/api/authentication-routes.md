@@ -49,6 +49,9 @@ organization, lifecycle and additional handler checks still apply.
 | DELETE | `/auth/sessions/{id}` | Revoke local session; `chat.read` |
 | POST | `/chats` | Create separate chat; `chat.read` |
 | GET | `/chats/default` | Get or create default chat; `chat.read` |
+| GET | `/chats/{id}/active-run` | Locate active work for the current actor; `chat.read` |
+| POST | `/chats/{id}/messages` | Retain/steer/recover text; `chat.read`, `runs.control`, `runs.create`; see [recovery](conversation-recovery.md) |
+| POST | `/chats/{id}/messages/{message}/abandon` | Explicitly withdraw an undelivered message; `chat.read` and `runs.control` |
 | GET | `/chats/{id}/history` | Read event pages; `chat.read` |
 | POST | `/chats/{id}/events` | Append passive action; `chat.events.append` |
 | POST | `/chats/{id}/reactions` | Set or remove own passive reaction; `chat.events.append` and `chat.read` |

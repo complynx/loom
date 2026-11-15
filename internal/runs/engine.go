@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type Store interface {
 
 // Options configures execution boundaries. Authorize also runs before model-only turns.
 type Options struct {
+	RecoveryContext         func(context.Context, domain.Run) ([]provider.Item, error)
 	ObserveAction           func(context.Context, string, any) (context.Context, func(any, error))
 	TraceStep               func(context.Context, domain.Run) (context.Context, func(error), error)
 	PaidTool                PaidTool
@@ -312,7 +314,7 @@ func (e *Engine) executeAuthorizedTurn(
 	if modelErr != nil {
 		return false, e.finish(ctx, run, domain.Paused, "model_unavailable", "")
 	}
-	items, rebuilt, err := e.contextItems(ctx, run, settings, model)
+	items, request, rebuilt, err := e.contextItems(ctx, run, settings, model)
 	if errors.Is(err, errCheckpointedStop) {
 		return false, nil
 	}
@@ -325,6 +327,13 @@ func (e *Engine) executeAuthorizedTurn(
 	if rebuilt {
 		return true, nil
 	}
+	receipts, receiptErr := e.recoveryContext(ctx, run)
+	if receiptErr != nil {
+		return stoppedTurn(receiptErr)
+	}
+	// Historical receipts follow earlier history and precede the current request.
+	// They never impersonate calls of this run.
+	items = slices.Insert(items, request, receipts...)
 	if len(run.Input.ArtifactIDs) > 0 {
 		if e.opts.Artifacts == nil {
 			return false, e.finish(ctx, run, domain.Paused, "artifact_provider_unavailable", "")

@@ -300,7 +300,7 @@ func builtinHelpEffect(module, method string) string {
 	switch method {
 	case "audio_transcribe":
 		return "paid"
-	case "module_call":
+	case moduleCallToolName:
 		return "action"
 	case "question", "interaction_resolve", "message_react":
 		return "interaction"

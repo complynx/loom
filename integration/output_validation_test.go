@@ -246,7 +246,7 @@ func TestOutputValidationCapabilities(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	require.JSONEq(
 		t,
-		`{"output_validation":{"version":1,"disallow_custom_emoji":true},"execution_profiles":["native_files"]}`,
+		`{"output_validation":{"version":1,"disallow_custom_emoji":true},"execution_profiles":["native_files"],"conversation_recovery":{"version":1,"max_replacements":3,"text_only":true}}`,
 		string(raw),
 	)
 }

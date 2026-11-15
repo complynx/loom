@@ -47,11 +47,15 @@ func documentOperation(api huma.API, pattern, permission string) {
 	if strings.Contains(path, "{id}") {
 		op.Parameters = append(
 			op.Parameters,
-			&huma.Param{Name: "id", In: "path", Required: true, Schema: &huma.Schema{Type: schemaString}},
+			&huma.Param{
+				Name:     "id",
+				In:       pathParameterLocation,
+				Required: true,
+				Schema:   &huma.Schema{Type: schemaString},
+			},
 		)
 	}
-	if method == http.MethodPost &&
-		(path == runsPath || strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events") && !strings.HasSuffix(path, "/artifacts/handles") || strings.HasSuffix(path, "/adjustments") || strings.HasSuffix(path, "/reconcile") || strings.HasSuffix(path, "/recovery/prepare")) {
+	if operationNeedsIdempotencyKey(method, path) {
 		op.Parameters = append(
 			op.Parameters,
 			&huma.Param{
@@ -65,7 +69,23 @@ func documentOperation(api huma.API, pattern, permission string) {
 	if strings.Contains(path, "{step}") {
 		op.Parameters = append(
 			op.Parameters,
-			&huma.Param{Name: "step", In: "path", Required: true, Schema: &huma.Schema{Type: schemaString}},
+			&huma.Param{
+				Name:     "step",
+				In:       pathParameterLocation,
+				Required: true,
+				Schema:   &huma.Schema{Type: schemaString},
+			},
+		)
+	}
+	if strings.Contains(path, "{message}") {
+		op.Parameters = append(
+			op.Parameters,
+			&huma.Param{
+				Name:     "message",
+				In:       pathParameterLocation,
+				Required: true,
+				Schema:   &huma.Schema{Type: schemaString},
+			},
 		)
 	}
 	if path == "/v1/admin/diagnostics/runs" {
@@ -163,7 +183,32 @@ func operationTypes(method, path string) (any, any, string) {
 	return nil, nil, status
 }
 
+func operationNeedsIdempotencyKey(method, path string) bool {
+	if method != http.MethodPost {
+		return false
+	}
+	if path == runsPath {
+		return true
+	}
+	for _, suffix := range []string{"/messages", "/abandon", "/adjustments", "/reconcile", "/recovery/prepare"} {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return strings.HasPrefix(path, "/v1/runs/") && !strings.HasSuffix(path, "/events") &&
+		!strings.HasSuffix(path, "/artifacts/handles")
+}
+
 func sessionAndReadTypes(method, path string) (any, any, string, bool) {
+	if strings.HasSuffix(path, "/abandon") {
+		return nil, domain.RecoveryReceipt{}, "200", true
+	}
+	if strings.HasSuffix(path, "/active-run") {
+		return nil, domain.RecoveryReceipt{}, "200", true
+	}
+	if strings.HasSuffix(path, "/messages") {
+		return domain.RecoverMessage{}, domain.RecoveryReceipt{}, "202", true
+	}
 	if path == "/v1/admin/settings/monthly-funding" {
 		return patchRequest(
 			method,
