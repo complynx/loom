@@ -348,6 +348,106 @@ func TestTrustReadinessDistinguishesEmptyFromUnknown(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	require.ErrorIs(t, registry.TrustReady(), modules.ErrUnavailable)
 }
+func TestRejectedManifestDoesNotBlockTrustOrKeepOldRegistration(t *testing.T) {
+	t.Parallel()
+	for _, brokenJSON := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing-write-status", true: "malformed-json"}[brokenJSON], func(t *testing.T) {
+			t.Parallel()
+			manifest := example(t)
+			manifest.Modules = manifest.Modules[:1]
+			invalid := example(t)
+			invalid.Modules = invalid.Modules[:1]
+			invalid.Modules[0].Methods[0].Effect = "write"
+			invalid.Modules[0].Methods[0].Idempotency = true
+			invalid.Modules[0].Methods[0].DeduplicationWindowSeconds = 86400
+			invalid.Modules[0].Methods[0].StatusPath = ""
+			valid := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if valid {
+					_ = json.NewEncoder(w).Encode(manifest)
+					return
+				}
+				if brokenJSON {
+					_, _ = w.Write([]byte(`{"protocol_version":`))
+					return
+				}
+				_ = json.NewEncoder(w).Encode(invalid)
+			}))
+			defer server.Close()
+			var persisted []modules.CallerBinding
+			var rejected int
+			registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
+				return []modules.Endpoint{endpoint(t, server.URL, "one")}, nil
+			}), modules.Options{
+				OnCallerBindings: func(_ context.Context, bindings []modules.CallerBinding) error {
+					persisted = bindings
+					return nil
+				},
+				OnManifestRejected: func(_ context.Context, ep modules.Endpoint, err error) {
+					require.Equal(t, "one", ep.ContainerID)
+					require.Error(t, err)
+					rejected++
+				},
+			})
+			require.NoError(t, err)
+			// Cold start and valid -> invalid replacement must both remain ready.
+			for _, accept := range []bool{false, true, false, true} {
+				valid = accept
+				refreshErr := registry.Refresh(context.Background())
+				require.Equal(t, accept, refreshErr == nil)
+				require.Equal(t, accept, registry.CheckCaller(manifest.ServiceID) == nil)
+				wantCount := map[bool]int{false: 0, true: 1}[accept]
+				require.Len(t, persisted, wantCount)
+				require.NoError(t, registry.TrustReady())
+				tools, listErr := registry.List(context.Background(), principal())
+				require.NoError(t, listErr)
+				require.Len(t, tools, wantCount)
+			}
+			require.Equal(t, 2, rejected)
+		})
+	}
+}
+
+func TestRejectedManifestKeepsHealthyServiceAvailable(t *testing.T) {
+	t.Parallel()
+	manifest := example(t)
+	manifest.Modules = manifest.Modules[:1]
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest" {
+			_ = json.NewEncoder(w).Encode(manifest)
+			return
+		}
+		var request struct {
+			OperationID string `json:"operation_id"`
+		}
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "succeeded", "operation_id": request.OperationID, "result": map[string]any{"slots": []any{}},
+		})
+	}))
+	defer healthy.Close()
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer broken.Close()
+	registry, err := modules.NewRegistry(modules.SourceFunc(func(context.Context) ([]modules.Endpoint, error) {
+		return []modules.Endpoint{endpoint(t, broken.URL, "broken"), endpoint(t, healthy.URL, "healthy")}, nil
+	}), modules.Options{})
+	require.NoError(t, err)
+	require.Error(t, registry.Refresh(context.Background()))
+	require.NoError(t, registry.TrustReady())
+	require.NoError(t, registry.CheckCaller(manifest.ServiceID))
+	tools, err := registry.List(context.Background(), principal())
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	result, err := registry.Broker(principal(), "run", nil).Call(context.Background(), "massage", "list_slots",
+		json.RawMessage(`{"specialist_id":"andrey"}`))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"slots":[]}`, string(result))
+}
+
 func TestConfiguredManifestTimeout(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

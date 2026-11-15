@@ -154,7 +154,9 @@ func (f SourceFunc) Discover(ctx context.Context) ([]Endpoint, error) { return f
 type Options struct {
 	WrapTransport func(http.RoundTripper) http.RoundTripper
 	// OnCallerBindings persists trusted identities before publishing the snapshot.
-	OnCallerBindings                    func(context.Context, []CallerBinding) error
+	OnCallerBindings func(context.Context, []CallerBinding) error
+	// OnManifestRejected reports invalid endpoint contracts without closing registry trust.
+	OnManifestRejected                  func(context.Context, Endpoint, error)
 	RequestTimeout, DynamicCacheCeiling time.Duration
 	ImportArtifact                      ArtifactImporter
 	FreshTTL, PollInterval              time.Duration
@@ -304,7 +306,6 @@ func (r *Registry) Refresh(ctx context.Context) error {
 	next := map[string]registered{}
 	conflicts := map[string]bool{}
 	observed := map[string]string{}
-	var failures []error
 	// A successful source list removes disappeared containers even if another fetch fails.
 	present := map[string]Endpoint{}
 	for _, ep := range endpoints {
@@ -315,7 +316,7 @@ func (r *Registry) Refresh(ctx context.Context) error {
 			next[id] = s
 		}
 	}
-	failures = r.refreshEndpoints(ctx, endpoints, next, conflicts, observed)
+	failures, rejected := r.refreshEndpoints(ctx, endpoints, next, conflicts, observed)
 	for id := range conflicts {
 		delete(next, id)
 		failures = append(failures, fmt.Errorf("manifest replica conflict: %s", id))
@@ -347,7 +348,7 @@ func (r *Registry) Refresh(ctx context.Context) error {
 		r.lastSuccess = time.Now()
 	}
 	r.mu.Unlock()
-	return errors.Join(failures...)
+	return errors.Join(append(failures, rejected...)...)
 }
 func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	var m Manifest
@@ -1044,8 +1045,9 @@ func checkGuard(ctx context.Context, guard func(context.Context) error) error {
 }
 
 func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
-	next map[string]registered, conflicts map[string]bool, observed map[string]string) []error {
+	next map[string]registered, conflicts map[string]bool, observed map[string]string) ([]error, []error) {
 	var failures []error
+	var rejected []error
 	for _, ep := range endpoints {
 		u, e := validateURI(ep.URI)
 		if e != nil {
@@ -1078,7 +1080,9 @@ func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
 		}
 		manifest, inspectPath, e := r.decodeEndpointManifest(response.Header, raw)
 		if e != nil {
-			failures = append(failures, e)
+			// Invalid contracts revoke this endpoint without blocking unrelated services.
+			r.rejectEndpoint(ctx, next, ep, e)
+			rejected = append(rejected, e)
 			continue
 		}
 		// A valid replacement retires the prior identity at this deployment endpoint.
@@ -1098,7 +1102,18 @@ func (r *Registry) refreshEndpoints(ctx context.Context, endpoints []Endpoint,
 			client:      client,
 		}
 	}
-	return failures
+	return failures, rejected
+}
+
+func (r *Registry) rejectEndpoint(ctx context.Context, next map[string]registered, ep Endpoint, err error) {
+	for id, prior := range next {
+		if prior.endpoint == ep {
+			delete(next, id)
+		}
+	}
+	if r.opts.OnManifestRejected != nil {
+		r.opts.OnManifestRejected(ctx, ep, err)
+	}
 }
 
 func sortTools(tools []Tool) {

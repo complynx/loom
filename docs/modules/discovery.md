@@ -23,6 +23,10 @@ Use unique module IDs across services. Replicas of one `service_id` must publish
 
 Each poll fetches the full manifest with GET; conditional ETag requests are not implemented. A valid document replaces the prior registration atomically. Example configuration uses `discovery.poll_seconds: 300` and `freshness_ttl_seconds: 3600`; these are example settings, not immediate update guarantees. A failed fetch can retain a previous registration until its freshness TTL expires, provided the endpoint is still registered. A successful container list removes missing endpoints. If Docker discovery is unavailable, existing entries expire by TTL. Durable operation records outlive registry entries.
 
+A received manifest with invalid JSON, an invalid contract or an unsafe operation-inspection path is rejected. The endpoint's previous tools and caller binding are removed immediately. Loom logs `module manifest rejected` with the container ID and validation error. Rejection does not block discovery readiness or valid services; the endpoint can register again on a later successful poll. `Registry.Refresh` still returns the validation error for diagnostics. Docker discovery failures, manifest fetch failures, replica conflicts and caller identity persistence failures still block discovery trust readiness.
+
+A rejected replica is excluded from manifest conflict checks. Other replicas with valid, matching manifests can still register that service.
+
 ## Caller registration
 
 Caller registration authorizes delegation for a user. For machine-owned tasks,
