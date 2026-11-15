@@ -47,7 +47,7 @@ messages to that run.
 
 If the consumer loses that pointer or needs a safe successor, use
 [conversation recovery](conversation-recovery.md). Its durable message endpoint
-continues the open run, replaces it with its remaining allowance, or starts a new
+continues the open run, replaces a run that cannot continue, or starts a new
 round after a terminal run.
 Ordinary new-run admission returns `409 pending_conversation_messages` until
 undelivered inbox messages are delivered or explicitly abandoned. Existing

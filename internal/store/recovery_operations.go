@@ -32,8 +32,8 @@ func (s *Store) RecoveryOperations(ctx context.Context, rid string) ([]operation
 	var ancestors []domain.Run
 	previousID := current.ReplacesRunID
 	for previousID != "" {
-		if len(ancestors) >= domain.MaxConversationReplacements {
-			return nil, domain.Conflict("invalid_recovery_chain")
+		if len(ancestors) >= domain.MaxReceiptChainRuns {
+			break
 		}
 		previous, e := s.ExecutionRun(ctx, previousID)
 		if e != nil {

@@ -110,7 +110,6 @@ type CreateRun struct {
 type Run struct {
 	AdmissionSequence    int64             `json:"admission_sequence,omitempty"`
 	ReplacesRunID        string            `json:"replaces_run_id,omitempty"`
-	ReplacementCount     int               `json:"replacement_count,omitempty"`
 	StepBudgetStart      int               `json:"step_budget_start,omitempty"`
 	Skills               []SkillDefinition `json:"skills,omitempty"`
 	ExecutionProfile     ExecutionProfile  `json:"execution_profile,omitempty"`

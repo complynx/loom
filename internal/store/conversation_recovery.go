@@ -22,6 +22,9 @@ const (
 	recoveryInputRoute    = "recovery-input"
 
 	uncertainEffectReason      = "inference_or_effect_uncertain"
+	budgetExhaustedReason      = "budget_exhausted"
+	recoveryAcceptedStatus     = "accepted"
+	recoverySendAction         = "send_message"
 	recoveryPendingStatus      = "recovery_pending"
 	recoveryCancelCommand      = "cancel"
 	recoveryRetryAction        = "retry_same_message"
@@ -120,9 +123,6 @@ func blockRecovery(out *domain.RecoveryReceipt, reason string) {
 	switch reason {
 	case "credits_exhausted":
 		action = "fund_wallet_then_retry"
-	case "budget_exhausted", "replacement_limit":
-		// The open run cannot do more work. A message after its end starts a new round.
-		action = "cancel_run_then_retry"
 	case "run_order_unavailable":
 		action = "create_run"
 	case "authorization_required":
@@ -142,7 +142,7 @@ func blockRecovery(out *domain.RecoveryReceipt, reason string) {
 }
 
 func recoveryRunReceipt(r domain.Run) domain.RecoveryReceipt {
-	out := domain.RecoveryReceipt{RunID: r.ID, Status: "accepted", Reason: r.Reason, NextAction: "read_run"}
+	out := domain.RecoveryReceipt{RunID: r.ID, Status: recoveryAcceptedStatus, Reason: r.Reason, NextAction: "read_run"}
 	switch {
 	case r.State.Terminal():
 		out.Status, out.NextAction = "terminal", "read_run"
@@ -188,10 +188,11 @@ func (s *Store) deliverRecoveryMessage(
 		return domain.Forbidden()
 	}
 	out.RunID = r.ID
-	// Each message is a new interaction. A terminal run ended its round, so the
-	// message starts a new round. An explicit target replaces a run that is open.
+	// A chat is one long conversation of small actions. Each message is a new
+	// interaction: it steers the open run, replaces a run that cannot continue,
+	// or starts a new round after a terminal run.
 	terminal := r.State.Terminal()
-	replace := !terminal && in.ReplaceRunID == r.ID
+	replace := messageReplaces(r, in.ReplaceRunID)
 	if replace {
 		if preflightErr := s.preflightRecoveryReplacement(ctx, tx, p, uid, in, r); preflightErr != nil {
 			return preflightErr
@@ -214,7 +215,7 @@ func (s *Store) deliverRecoveryMessage(
 	}
 	delivered := true
 	if terminal || replace {
-		r, err = s.createRecoverySuccessor(ctx, tx, p, uid, cid, in, r, out.MessageID)
+		r, err = s.createRecoverySuccessor(ctx, tx, p, uid, cid, in, r, replace, out.MessageID)
 	} else {
 		r, delivered, err = s.steerRecoveryRun(ctx, tx, p, in, r, out)
 	}
@@ -315,11 +316,10 @@ func (s *Store) attemptRecoveryDelivery(
 	return nil
 }
 
-// createRecoverySuccessor admits the run that receives the message.
-// After a terminal run it is a new round: an ordinary run with the current run
-// cap. The wallet is the shared money limit of the owner.
-// For an open run it is a replacement of the same work: Loom supersedes the
-// predecessor, and the successor keeps its remaining allowance and its receipts.
+// createRecoverySuccessor admits the run that receives the message. Every such
+// run gets the current run cap; the wallet is the shared money limit of the owner.
+// A replacement links the successor to its predecessor, so the successor gets
+// the operation receipts of the unfinished work. A new round has no link.
 func (s *Store) createRecoverySuccessor(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -327,10 +327,10 @@ func (s *Store) createRecoverySuccessor(
 	uid, cid string,
 	in domain.RecoverMessage,
 	r domain.Run,
+	replace bool,
 	messageID string,
 ) (domain.Run, error) {
-	replace := !r.State.Terminal()
-	if replace {
+	if !r.State.Terminal() {
 		if terminationErr := terminateLifecycleRun(ctx, tx, r.ID, "cancelled", "superseded"); terminationErr != nil {
 			return domain.Run{}, terminationErr
 		}
@@ -343,15 +343,12 @@ func (s *Store) createRecoverySuccessor(
 		return domain.Run{}, err
 	}
 	creation := recoveryRunCreation(r, in.Text)
-	if !replace {
-		creation.Budget = domain.Budget{}
-	}
 	next, err := buildRecoveryRun(p, uid, cid, creation, settings, prefs, policy)
 	if err != nil {
 		return domain.Run{}, err
 	}
 	if replace {
-		next.ReplacesRunID, next.ReplacementCount = r.ID, r.ReplacementCount+1
+		next.ReplacesRunID = r.ID
 		// Record the replacement before the successor's request. Model context then
 		// shows it as earlier history, not as input after the current request.
 		if _, err = chatEvent(
@@ -396,11 +393,11 @@ func recoveryDeliveryBlocked(
 	}
 	// Never start new work across a predecessor with unknown financial/business effects.
 	if terminal || replace {
-		uncertain, err := predecessorUncertain(ctx, tx, r, replace)
+		uncertain, err := runUncertainty(ctx, tx, r.ID)
 		if err != nil {
 			return false, err
 		}
-		if uncertain {
+		if uncertain || r.ReservedMicrocredits > 0 {
 			blockRecovery(out, uncertainEffectReason)
 			return true, nil
 		}
@@ -417,28 +414,19 @@ func recoveryDeliveryBlocked(
 		blockRecovery(out, "credits_exhausted")
 		return true, nil
 	}
-	// The run allowance limits an open run only. A new round gets the current run cap.
-	if !terminal && r.MaxMicrocredits-r.SpentMicrocredits <= 0 {
-		blockRecovery(out, "budget_exhausted")
-		return true, nil
-	}
 	return false, nil
 }
 
-// predecessorUncertain reports an unknown step, write or reservation. A
-// replacement also carries the allowance, so an unknown sponsored attempt blocks it.
-func predecessorUncertain(ctx context.Context, tx pgx.Tx, r domain.Run, replace bool) (bool, error) {
-	uncertain, err := runUncertainty(ctx, tx, r.ID)
-	if err != nil || uncertain || r.ReservedMicrocredits > 0 {
-		return true, err
+// messageReplaces reports whether a message supersedes the latest run with a
+// linked successor. The caller names the run, or the run stopped for money: its
+// own allowance or the wallet could not pay the next step. A run allowance bounds
+// one action; a money pause must not stop the conversation. The wallet check
+// still applies to the successor.
+func messageReplaces(r domain.Run, target string) bool {
+	if target == r.ID {
+		return true
 	}
-	if !replace {
-		return false, nil
-	}
-	var sponsoredUnknown bool
-	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM platform_provider_attempts WHERE run_id=$1 AND status='unknown')", r.ID).
-		Scan(&sponsoredUnknown)
-	return sponsoredUnknown, err
+	return r.State == domain.Paused && (r.Reason == budgetExhaustedReason || r.Reason == "credits_exhausted")
 }
 
 func recoveryReplacementPending(
@@ -448,10 +436,6 @@ func recoveryReplacementPending(
 	out *domain.RecoveryReceipt,
 ) (bool, error) {
 	var err error
-	if r.ReplacementCount >= domain.MaxConversationReplacements {
-		blockRecovery(out, "replacement_limit")
-		return true, nil
-	}
 	if r.State == domain.Running {
 		if r.CancelRequested {
 			out.Status, out.Reason, out.NextAction = recoveryPendingStatus, recoveryCancellationReason, recoveryRetryAction
@@ -574,6 +558,5 @@ func recoveryRunCreation(r domain.Run, text string) domain.CreateRun {
 		Skills:           r.Skills,
 		Discovery:        r.Discovery,
 		DisconnectPolicy: r.DisconnectPolicy,
-		Budget:           domain.Budget{MaxMicrocredits: r.MaxMicrocredits - r.SpentMicrocredits},
 	}
 }

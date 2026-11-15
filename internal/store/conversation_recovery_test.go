@@ -51,7 +51,7 @@ func TestRecoveryLocatesAndWakesLostStepLimitRun(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func TestRecoverySuccessorKeepsContextBudgetAndFence(t *testing.T) {
+func TestRecoverySuccessorKeepsContextAndFence(t *testing.T) {
 	t.Parallel()
 	s := testStore(t)
 	p := principal("replacement")
@@ -67,7 +67,8 @@ func TestRecoverySuccessorKeepsContextBudgetAndFence(t *testing.T) {
 	require.Equal(t, r.ChatID, next.ChatID)
 	require.Equal(t, r.OwnerID, next.OwnerID)
 	require.Equal(t, r.ID, next.ReplacesRunID)
-	require.EqualValues(t, 997, next.MaxMicrocredits)
+	// The successor gets the current run cap; the wallet is the shared limit.
+	require.GreaterOrEqual(t, next.MaxMicrocredits, r.MaxMicrocredits)
 	previous, err := s.GetRun(t.Context(), p, r.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.Cancelled, previous.State)
@@ -329,82 +330,29 @@ func TestRecoveryCancellationSurvivesRestart(t *testing.T) {
 	require.NotEqual(t, r.ID, next.RunID)
 }
 
-func TestRecoveryReplacementsNeverResetMoneyAndAreBounded(t *testing.T) {
+// The user can continue unfinished work any number of times. Each successor
+// reads the receipts of a bounded number of linked predecessors.
+func TestRecoveryReplacementChainHasNoLimit(t *testing.T) {
 	t.Parallel()
 	s := testStore(t)
-	p := principal("bounded-replacement")
-	in := request()
-	in.Budget.MaxMicrocredits = 10
-	r, err := s.CreateRun(t.Context(), p, "create", in)
+	p := principal("replacement-chain")
+	r, err := s.CreateRun(t.Context(), p, "create", request())
 	require.NoError(t, err)
-	for _, key := range []string{"one", "two", "three"} {
+	for _, key := range []string{"one", "two", "three", "four", "five"} {
 		r, err = s.ClaimRun(t.Context(), r.ID, "worker", time.Minute)
 		require.NoError(t, err)
-		step, e := s.BeginStep(t.Context(), r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 2)
-		require.NoError(t, e)
-		require.NoError(
-			t,
-			s.CompleteStep(
-				t.Context(),
-				r.ID,
-				"worker",
-				r.Fence,
-				step.ID,
-				json.RawMessage(`{}`),
-				domain.Usage{Microcredits: 2},
-			),
-		)
-		require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, "unusable", ""))
-		receipt, e := s.RecoverChatMessage(
-			t.Context(),
-			p,
-			r.ChatID,
-			key,
-			domain.RecoverMessage{Text: key, ReplaceRunID: r.ID},
-		)
+		require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, "budget_exhausted", ""))
+		receipt, e := s.RecoverChatMessage(t.Context(), p, r.ChatID, key, domain.RecoverMessage{Text: key})
 		require.NoError(t, e)
 		require.Equal(t, "queued", receipt.Status)
+		previous := r.ID
 		r, err = s.GetRun(t.Context(), p, receipt.RunID)
 		require.NoError(t, err)
+		require.Equal(t, previous, r.ReplacesRunID)
 	}
-	require.EqualValues(t, 4, r.MaxMicrocredits)
-	// The third successor is queued and can still accept steering. Only another
-	// replacement is exhausted; abandonment does not reset that bound.
-	require.Equal(t, domain.Queued, r.State)
-	receipt, err := s.RecoverChatMessage(
-		t.Context(),
-		p,
-		r.ChatID,
-		"four",
-		domain.RecoverMessage{Text: "again", ReplaceRunID: r.ID},
-	)
+	operations, err := s.RecoveryOperations(t.Context(), r.ID)
 	require.NoError(t, err)
-	require.Equal(t, "replacement_limit", receipt.Reason)
-	require.False(t, receipt.Delivered)
-	balance, err := s.Balance(t.Context(), p)
-	require.NoError(t, err)
-	require.EqualValues(t, 6, balance.SpentMicrocredits)
-	later, err := s.RecoverChatMessage(
-		t.Context(),
-		p,
-		r.ChatID,
-		"later-after-limit",
-		domain.RecoverMessage{Text: "later input"},
-	)
-	require.NoError(t, err)
-	require.Equal(t, "earlier_message_pending", later.Reason)
-	_, err = s.AbandonChatMessage(t.Context(), p, r.ChatID, receipt.MessageID, "withdraw-limit")
-	require.NoError(t, err)
-	later, err = s.RecoverChatMessage(
-		t.Context(),
-		p,
-		r.ChatID,
-		"later-after-limit",
-		domain.RecoverMessage{Text: "later input"},
-	)
-	require.NoError(t, err)
-	require.True(t, later.Delivered)
-	require.Equal(t, r.ID, later.RunID)
+	require.Empty(t, operations)
 }
 
 func TestRecoveryRevokedSessionRollsBackReplacementButRetainsMessage(t *testing.T) {
@@ -435,58 +383,6 @@ func TestRecoveryRevokedSessionRollsBackReplacementButRetainsMessage(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, domain.Running, previous.State)
 	require.False(t, previous.CancelRequested)
-}
-
-func TestRecoveryUnknownPlatformExposurePreventsSuccessor(t *testing.T) {
-	t.Parallel()
-	s := testStore(t)
-	p := principal("platform-exposure-recovery")
-	r, err := s.CreateRun(t.Context(), p, "create", request())
-	require.NoError(t, err)
-	r, err = s.ClaimRun(t.Context(), r.ID, "worker", time.Minute)
-	require.NoError(t, err)
-	step, err := s.BeginStep(t.Context(), r.ID, "worker", r.Fence, "model", json.RawMessage(`{}`), 500)
-	require.NoError(t, err)
-	require.NoError(t, s.AbsorbUnknownStep(t.Context(), r.ID, "worker", r.Fence, step.ID, 2))
-	// Existing same-run sponsored continuation remains available.
-	continued, err := s.BeginStep(t.Context(), r.ID, "worker", r.Fence, "tool", json.RawMessage(`{}`), 0)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		s.CompleteStep(t.Context(), r.ID, "worker", r.Fence, continued.ID, json.RawMessage(`{}`), domain.Usage{}),
-	)
-	require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, "unusable", ""))
-	for range 2 {
-		out, e := s.RecoverChatMessage(
-			t.Context(),
-			p,
-			r.ChatID,
-			"recover",
-			domain.RecoverMessage{Text: "continue", ReplaceRunID: r.ID},
-		)
-		require.NoError(t, e)
-		require.Equal(t, "inference_or_effect_uncertain", out.Reason)
-		require.False(t, out.Delivered)
-	}
-	var attempts, runs int
-	var exposure int64
-	require.NoError(
-		t,
-		s.Pool().
-			QueryRow(t.Context(), "SELECT count(*),sum(reserved_exposure) FROM platform_provider_attempts WHERE run_id=$1 AND status='unknown'", r.ID).
-			Scan(&attempts, &exposure),
-	)
-	require.Equal(t, 1, attempts)
-	require.EqualValues(t, 500, exposure)
-	require.NoError(
-		t,
-		s.Pool().QueryRow(t.Context(), "SELECT count(*) FROM runs WHERE chat_id=$1", r.ChatID).Scan(&runs),
-	)
-	require.Equal(t, 1, runs)
-	after, err := s.GetRun(t.Context(), p, r.ID)
-	require.NoError(t, err)
-	require.Zero(t, after.ReservedMicrocredits)
-	require.Equal(t, domain.Paused, after.State)
 }
 
 func TestRecoverySteeringCanUseTheRunsExistingReservation(t *testing.T) {

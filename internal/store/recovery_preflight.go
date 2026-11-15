@@ -23,9 +23,6 @@ func (s *Store) preflightRecoveryReplacement(
 	if r.State != domain.Running {
 		return nil
 	}
-	if r.MaxMicrocredits-r.SpentMicrocredits <= 0 {
-		return domain.NewError(http.StatusTooManyRequests, "budget_exhausted")
-	}
 	if err := validateRecoverySession(ctx, tx, p, r.AuthSessionID); err != nil {
 		return err
 	}
@@ -85,18 +82,29 @@ func locateRecoveryBlocker(
 	out *domain.RecoveryReceipt,
 ) error {
 	terminal := r.State.Terminal()
-	if terminal {
-		out.NextAction = "send_message"
-	}
-	// A message starts a new round after a terminal run and steers any other run.
-	blocked, err := recoveryDeliveryBlocked(ctx, tx, uid, r, false, out)
-	if err != nil || blocked || terminal {
+	// A message without a target replaces only a run that is paused for money.
+	replace := messageReplaces(r, "")
+	blocked, err := recoveryDeliveryBlocked(ctx, tx, uid, r, replace, out)
+	if err != nil || blocked {
 		return err
+	}
+	if replace {
+		// The next message continues this conversation in a new run.
+		out.Status, out.NextAction = recoveryAcceptedStatus, recoverySendAction
+		if r.Reason == budgetExhaustedReason {
+			// The run worked to its allowance without a result. The user decides.
+			out.NextAction = "ask_user_to_continue"
+		}
+		return nil
+	}
+	if terminal {
+		out.NextAction = recoverySendAction
+		return nil
 	}
 	// The next message wakes a run paused at its step limit.
 	wakes, err := stepLimitWakes(ctx, tx, r)
 	if wakes {
-		out.Status, out.NextAction = "accepted", "send_message"
+		out.Status, out.NextAction = recoveryAcceptedStatus, recoverySendAction
 	}
 	return err
 }

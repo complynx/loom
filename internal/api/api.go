@@ -99,9 +99,8 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 					"output_validation":  map[string]any{"version": 1, "disallow_custom_emoji": true},
 					"execution_profiles": []domain.ExecutionProfile{domain.ProfileNativeFiles},
 					"conversation_recovery": map[string]any{
-						"version":          1,
-						"max_replacements": domain.MaxConversationReplacements,
-						"text_only":        true,
+						"version":   1,
+						"text_only": true,
 					},
 				},
 			)

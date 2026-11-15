@@ -127,7 +127,6 @@ func TestRecoveryMessageAfterTerminalRunStartsNewRound(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, r.ID, next.ID)
 	require.Empty(t, next.ReplacesRunID)
-	require.Zero(t, next.ReplacementCount)
 	require.Greater(t, next.MaxMicrocredits, r.MaxMicrocredits)
 }
 
@@ -175,9 +174,8 @@ func TestRecoveryUsesAdmissionOrderAndRejectsStaleTargetBeforeAcceptance(t *test
 	require.True(t, next.Delivered)
 	successor, err := s.GetRun(t.Context(), p, next.RunID)
 	require.NoError(t, err)
-	// A terminal run ends the replacement chain.
+	// A message without a target after a terminal run starts an unlinked new round.
 	require.Empty(t, successor.ReplacesRunID)
-	require.Zero(t, successor.ReplacementCount)
 	var rejected int
 	require.NoError(
 		t,
@@ -204,7 +202,7 @@ func TestRecoveryEmptyChatRequiresFirstRunWithoutAcceptingText(t *testing.T) {
 
 // A caller can learn a message ID and reuse it as an ordinary idempotency key.
 // That key must neither block nor satisfy the delivery of the inbox message.
-func TestRecoveryDeliveryIgnoresCallerKeysAndLocatorMatchesDelivery(t *testing.T) {
+func TestRecoveryDeliveryIgnoresCallerIdempotencyKeys(t *testing.T) {
 	t.Parallel()
 	s := testStore(t)
 	p := principal("key-spaces")
@@ -230,29 +228,6 @@ func TestRecoveryDeliveryIgnoresCallerKeysAndLocatorMatchesDelivery(t *testing.T
 	require.NoError(t, err)
 	require.True(t, delivered.Delivered)
 	require.NotEqual(t, other.ConversationInput.ID, delivered.InputID)
-	// The locator reports the blocker that the next message would meet. A resume
-	// cannot help a run whose allowance is spent.
-	_, err = s.Pool().Exec(
-		t.Context(),
-		"UPDATE runs SET state='paused',reason='budget_exhausted',spent_microcredits=max_microcredits WHERE id=$1",
-		r.ID,
-	)
-	require.NoError(t, err)
-	located, err := s.ActiveChatRun(t.Context(), p, r.ChatID)
-	require.NoError(t, err)
-	next, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
-	require.NoError(t, err)
-	require.Equal(t, "budget_exhausted", located.Reason)
-	require.Equal(t, "cancel_run_then_retry", located.NextAction)
-	require.Equal(t, located.Reason, next.Reason)
-	require.Equal(t, located.NextAction, next.NextAction)
-	// After the run ends, the same message starts a new round.
-	_, err = s.Control(t.Context(), p, r.ID, "end-round", "cancel")
-	require.NoError(t, err)
-	next, err = s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
-	require.NoError(t, err)
-	require.True(t, next.Delivered)
-	require.NotEqual(t, r.ID, next.RunID)
 	var text string
 	require.NoError(
 		t,
@@ -261,4 +236,42 @@ func TestRecoveryDeliveryIgnoresCallerKeysAndLocatorMatchesDelivery(t *testing.T
 			Scan(&text),
 	)
 	require.Equal(t, in.Text, text)
+}
+
+// A run allowance bounds one action. When a run stops because its own allowance
+// or the wallet cannot pay the next step, the next message continues the chat in
+// a new run.
+func TestRecoveryMessageReplacesRunPausedForMoney(t *testing.T) {
+	t.Parallel()
+	s := testStore(t)
+	for _, reason := range []string{"budget_exhausted", "credits_exhausted"} {
+		p := principal("paused-" + reason)
+		r, err := s.CreateRun(t.Context(), p, "create", request())
+		require.NoError(t, err)
+		r, err = s.ClaimRun(t.Context(), r.ID, "worker", time.Minute)
+		require.NoError(t, err)
+		require.NoError(t, s.Transition(t.Context(), r.ID, "worker", r.Fence, domain.Paused, reason, ""))
+		located, err := s.ActiveChatRun(t.Context(), p, r.ChatID)
+		require.NoError(t, err)
+		require.Equal(t, r.ID, located.RunID)
+		require.Equal(t, "accepted", located.Status)
+		// A spent run allowance means work without a result: the user decides.
+		action := "send_message"
+		if reason == "budget_exhausted" {
+			action = "ask_user_to_continue"
+		}
+		require.Equal(t, action, located.NextAction)
+		receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
+		require.NoError(t, err)
+		require.True(t, receipt.Delivered)
+		require.Equal(t, "queued", receipt.Status)
+		next, err := s.GetRun(t.Context(), p, receipt.RunID)
+		require.NoError(t, err)
+		// The unfinished run is superseded, and its successor gets its receipts.
+		require.Equal(t, r.ID, next.ReplacesRunID)
+		require.GreaterOrEqual(t, next.MaxMicrocredits, r.MaxMicrocredits)
+		previous, err := s.GetRun(t.Context(), p, r.ID)
+		require.NoError(t, err)
+		require.Equal(t, domain.Cancelled, previous.State)
+	}
 }

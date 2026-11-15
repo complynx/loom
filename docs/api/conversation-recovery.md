@@ -3,9 +3,12 @@
 [API index](../api.md) · [Runs and input](runs-input.md)
 
 Use this contract to send user messages to a retained chat, also after a consumer
-loses its run pointer or must replace unusable work. Each user message is a new
-interaction: it continues the open run, or it starts a new round of work after a
-terminal run. `GET /v1/capabilities` advertises `conversation_recovery.version: 1`.
+loses its run pointer or must replace unusable work. A chat is one long
+conversation; a run is one small action inside it. Each user message is a new
+interaction: it continues the open run, replaces a run that cannot continue, or
+starts a new round of work after a terminal run. A cancellation by the user is a
+stop of that run only; Loom does not use it to restart work.
+`GET /v1/capabilities` advertises `conversation_recovery.version: 1`.
 This version accepts text only and retains the existing chat. Create the first
 run with `POST /v1/runs`; persist its chat ID. No cross-chat context import exists.
 Posting a message to an owned chat with no runs returns `409 no_run` without
@@ -26,12 +29,17 @@ The locator applies the same checks as message delivery. If a message sent now
 would meet a blocker, the locator reports that blocker with the same `reason` and
 `next_action`; see [Money and actionable blockers](#money-and-actionable-blockers).
 For example, a terminal run of a chat with removed legacy history reports
-`blocked / run_order_unavailable`, an empty wallet reports
-`blocked / credits_exhausted`, and an open run whose allowance is spent reports
-`blocked / budget_exhausted` with `next_action: cancel_run_then_retry`.
+`blocked / run_order_unavailable`, and an empty wallet reports
+`blocked / credits_exhausted`.
 A run paused at its step limit returns `accepted / step_limit` with
 `next_action: send_message`, because the next message wakes it. A pause request,
 a pending cancellation or an unknown outcome keeps that run `blocked`.
+A run paused with `budget_exhausted` worked to its allowance without a result.
+It returns `accepted / budget_exhausted` with `next_action: ask_user_to_continue`:
+ask the user whether to continue or what to do next, and send the reply as a
+message. A run paused with `credits_exhausted` returns `accepted` with
+`next_action: send_message` when the wallet has funds again. In both cases the
+next message continues the conversation in a new run.
 Any other paused run that no message blocker applies to returns `blocked`, its
 own pause reason and `next_action: resolve_blocker_then_resume`.
 
@@ -71,15 +79,26 @@ Input never grants consent merely because recovery accepted it.
 After a terminal run (`completed`, `failed` or `cancelled`), the message starts a
 new round. The new run inherits the interaction settings of the latest run, gets
 the current configured run cap, and has no `replaces_run_id`. The wallet remains
-the shared money limit of the owner. To replace an open run that is unusable,
-supply its observed ID:
+the shared money limit of the owner.
+
+A run allowance bounds one action; it does not stop the conversation. A run that
+pauses with `budget_exhausted` worked to its allowance without a result. Ask the
+user whether to continue or what to do next; do not send a message for the user.
+The reply of the user is an ordinary message. If the open
+run is paused because its own allowance (`budget_exhausted`) or the wallet
+(`credits_exhausted`) could not pay the next step, the message replaces that run:
+Loom supersedes it and admits a linked successor. The wallet check applies to the
+successor, so an empty wallet still returns `blocked / credits_exhausted`.
+
+To replace an open run that is unusable for another reason, supply its observed ID:
 
 ```json
 {"text":"Continue the same task","replace_run_id":"PREDECESSOR_UUID"}
 ```
 
-A replacement is for the same logical work of an open run. A `replace_run_id`
-that names a terminal latest run has no effect: the message starts a new round.
+A replacement links the successor to its predecessor (`replaces_run_id`), so the
+successor gets the operation receipts of the unfinished work. A `replace_run_id`
+that names the terminal latest run also creates a linked successor.
 An explicit ID must identify the
 latest run or its direct predecessor after a racing replacement. An invalid or
 stale target returns `409 replacement_target_changed` before first acceptance.
@@ -166,12 +185,11 @@ in-flight paid step, and returns
 `recovery_pending / cancellation_pending`. Retry the same message after bounded
 backoff. The request and cancellation flag survive restart. The caller must
 bound its retry count and deadline; after that, show pending work and provide a
-manual continuation action. Loom creates at most three successive replacements
-of open runs in one chain and reports `replacement_limit` after that. A terminal
-run ends the chain: a message after it starts a new round with a count of zero.
-Loom never replaces a run by itself. One message creates at most one run.
+manual continuation action. Loom never replaces a run without a message, and one
+message creates at most one run. There is no limit on successive replacements:
+the user can continue unfinished work again.
 
-Before requesting cancellation, Loom checks remaining allowance, saved session
+Before requesting cancellation, Loom checks the saved session
 and current model entitlement. A revoked session or disallowed model does not
 cancel running work through this endpoint. The predecessor's own reservation is
 not treated as wallet exhaustion during that preflight. Funds and admission are
@@ -184,15 +202,11 @@ returns `blocked / inference_or_effect_uncertain` with
 procedure; cancellation is neither rollback nor proof of no effect. The old
 executor loses its lease and fence before the transaction commits. A successor
 cannot dispatch while that transaction is uncommitted.
-Unknown `platform_provider_attempts` also block replacement after their user
-reservation has been released. Existing sponsored continuation of the same run
-remains available; platform liability is not erased or moved to a new run.
-The sponsored retry limit counts attempts for each run. Loom itself never
-changes an attempt from `unknown`, so a predecessor with a sponsored attempt
-stays blocked for replacement. A new round after a terminal run is a new run and
-has its own count, as every ordinary run has.
+A sponsored `platform_provider_attempts` record does not block a replacement or
+a new round: the platform accepted that liability, and the record stays on its
+original run. The sponsored retry limit counts attempts for each run.
 
-The successor of a replaced run has `replaces_run_id` and `replacement_count`; chat history also
+The successor of a replaced run has `replaces_run_id`; chat history also
 records `run.replaced` before the successor's request. The model receives that
 event as data, not as an instruction. It uses the same chat, owner and actor. Existing history,
 source roles, operation receipts and saved summaries stay in place; they are not
@@ -206,7 +220,7 @@ A new round after a terminal run is an ordinary run. It reads the chat history
 and gets no receipt handoff.
 
 Before inference, a replacement successor also loads deterministic predecessor operation receipts
-across the recovery chain. It rechecks their module/method and identity bindings
+of at most three linked predecessors; older ones stay in chat history only. It rechecks their module/method and identity bindings
 against current authority. The model receives historical call/tool-result pairs
 with original run/call/operation IDs and known states, arguments and results.
 `requested_arguments` preserves the original request; `arguments` contains the
@@ -254,22 +268,15 @@ admission rolls back cancellation/creation while retaining the message.
 The wallet is the shared money limit of the owner. Every run of the owner uses
 it, and every paid step checks it. The per-run allowance only bounds one run.
 
-A new round after a terminal run gets the current configured run cap, as
-`POST /v1/runs` without a `budget` does. The allowance that the terminal run
-spent does not limit it.
+Every run that this endpoint admits, a new round or a replacement, gets the
+current configured run cap, as `POST /v1/runs` without a `budget` does. The
+allowance that an earlier run spent does not limit it. A narrower `budget` of
+the first `POST /v1/runs` is not copied.
 
-A replacement of an open run continues the same work. With no outstanding or
-unknown exposure, the allowance of the successor is at most:
-
-```text
-min(current configured run cap, predecessor cap - predecessor spent)
-```
-
-Repeated replacements therefore cannot replenish the allowance of unfinished
-work. Spent
-credits remain on the original runs/ledger. Unknown exposure and reservations
+Spent
+credits remain on the original runs/ledger. Unknown steps, writes and reservations
 must be reconciled before a replacement or a new round; they are never erased or
-silently freed. An unknown sponsored attempt blocks a replacement only.
+silently freed.
 Every later paid step still checks the wallet and current policy atomically.
 The step allowance renewed by a message is separate from money.
 Steering counts the target run's existing reservation as available for that run;
@@ -281,7 +288,6 @@ locator both use this table:
 | Reason | `next_action` | Consumer action |
 | --- | --- | --- |
 | `credits_exhausted` | `fund_wallet_then_retry` | Fund the existing wallet, then retry the same message. No inference is required to report this condition. |
-| `budget_exhausted`, `replacement_limit` | `cancel_run_then_retry` | The open run spent its allowance, or it is the third successive replacement. Stop automatic retries. For a real user message, end that run with the run control `cancel`, then retry the same message; it starts a new round. |
 | `run_order_unavailable` | `create_run` | Retention removed legacy admission events, so the latest run of this chat is not proven. Do not guess a predecessor. Abandon the retained message and create the request with `POST /v1/runs`. |
 | `authorization_required` | `reauthorize_session` | Reauthorize the retained session with the same owner and actor, then retry. |
 | `model_not_allowed` | `select_allowed_model_or_restore_access` | Select an allowed model/effort or restore model entitlement, then retry; running work is not cancelled by this preflight denial. |
@@ -295,9 +301,8 @@ locator both use this table:
 `retry_same_message`. A paused run is a different condition from a blocked
 message. When no blocker in the table applies, it reports its own pause reason
 with `next_action: resolve_blocker_then_resume`: resolve the cause, then resume
-that run. For example, a run paused with `credits_exhausted` reports
-`fund_wallet_then_retry` while the wallet is empty. After funding, it reports
-`resolve_blocker_then_resume` until it is resumed.
+that run. Money pauses are the exception: the next message replaces a run paused
+with `budget_exhausted` or `credits_exhausted`, as described above.
 
 `accepted: true, delivered: false` distinguishes retained text from an applied
 input. `blocked` can also accompany `delivered: true` when the receiving run has
