@@ -64,7 +64,7 @@ func (e *Engine) rejectFinalOutput(
 	pending *domain.Approval,
 ) (bool, error) {
 	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-		return false, e.finish(ctx, run, domain.Paused, "step_limit", "")
+		return false, e.finish(ctx, run, domain.Paused, stepLimitReason, "")
 	}
 	err := e.saveOutputRejection(ctx, run, pending)
 	return err == nil, err

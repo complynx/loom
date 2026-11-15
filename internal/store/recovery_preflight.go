@@ -89,22 +89,20 @@ func locateRecoveryBlocker(
 		return err
 	}
 	if replace {
-		// The next message continues this conversation in a new run.
+		// The wallet has funds, so the next message continues this conversation
+		// in a new run. An empty wallet is reported as a blocker above.
 		out.Status, out.NextAction = recoveryAcceptedStatus, recoverySendAction
-		if r.Reason == budgetExhaustedReason {
-			// The run worked to its allowance without a result. The user decides.
-			out.NextAction = "ask_user_to_continue"
-		}
 		return nil
 	}
 	if terminal {
 		out.NextAction = recoverySendAction
 		return nil
 	}
-	// The next message wakes a run paused at its step limit.
+	// A run paused at its step limit worked without a result. The user decides;
+	// the next message wakes the run.
 	wakes, err := stepLimitWakes(ctx, tx, r)
 	if wakes {
-		out.Status, out.NextAction = recoveryAcceptedStatus, recoverySendAction
+		out.Status, out.NextAction = recoveryAcceptedStatus, recoveryAskUserAction
 	}
 	return err
 }

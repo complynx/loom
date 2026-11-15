@@ -82,6 +82,8 @@ Common types include `run.status`, `input.applied`, `question.created`,
 `usage.updated` and `run.resumable`. Recovery/retry can emit additional types.
 Clients advertising reactions also receive bot `message.reaction` events.
 `message.completed` includes the final message's chat `message_seq` beside `text`.
+`message.progress` has the same data for a progress note of a run that paused at
+its step limit; it is not a final message.
 The stream contains saved run events, not provider token deltas. It reads bounded
 database batches; slow writes have a deadline. Reconnect to recover saved events.
 

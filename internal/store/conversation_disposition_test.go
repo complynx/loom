@@ -255,12 +255,7 @@ func TestRecoveryMessageReplacesRunPausedForMoney(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, r.ID, located.RunID)
 		require.Equal(t, "accepted", located.Status)
-		// A spent run allowance means work without a result: the user decides.
-		action := "send_message"
-		if reason == "budget_exhausted" {
-			action = "ask_user_to_continue"
-		}
-		require.Equal(t, action, located.NextAction)
+		require.Equal(t, "send_message", located.NextAction)
 		receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "next", domain.RecoverMessage{Text: "next"})
 		require.NoError(t, err)
 		require.True(t, receipt.Delivered)

@@ -59,6 +59,14 @@ budget. A retry with the same idempotency key does not renew it. Steps still
 include model, tool, input and context-maintenance checkpoints. Unused steps do
 not accumulate. Run history and completed effects remain intact.
 
+When the agent loop reaches this limit without a final answer, the model writes
+one short progress note before the pause: what is done, where the work stopped,
+and a question whether to continue. This is one more paid model request with no
+tool execution. The note becomes the run `result`, a `message.assistant` chat
+event and a `message.progress` run event; the run is `paused / step_limit`, not
+completed. The note is optional: without funds for it, or after a provider
+failure, the run pauses without a note.
+
 A new input automatically queues a run paused with `step_limit`, unless a
 pause/cancel request or unresolved outcome blocks execution. Other pauses still
 require their normal recovery procedure. Authorization, spending limits, active

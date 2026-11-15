@@ -17,9 +17,14 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 	input := runRequest("", "", "Reply")
 	input.OutputPolicy = &domain.OutputPolicy{DisallowCustomEmoji: true}
 	r := f.createRun(t, input, "budget")
+	const note = "Two replies were rejected. Continue?"
 	model, engine := fakeModel(t, f, func(n int) any {
-		if n < 4 {
+		switch {
+		case n < 4:
 			return finalResponse(`<tg-emoji emoji-id="12">😀</tg-emoji>`)
+		case n == 4:
+			// The run reached its step limit: the model writes a progress note.
+			return finalResponse(note)
 		}
 		return finalResponse("Done")
 	})
@@ -35,6 +40,19 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 	require.Equal(t, domain.Paused, paused.State)
 	require.Equal(t, "step_limit", paused.Reason)
 	require.Equal(t, 3, paused.StepBudgetStart)
+	// The pause carries the note as an assistant message, not as a final answer.
+	require.Equal(t, note, paused.Result)
+	var progress, final int
+	require.NoError(
+		t,
+		f.pool.QueryRow(
+			t.Context(),
+			"SELECT count(*) FILTER(WHERE type='message.progress'),count(*) FILTER(WHERE type='message.completed') FROM run_events WHERE run_id=$1",
+			r.ID,
+		).Scan(&progress, &final),
+	)
+	require.Equal(t, 1, progress)
+	require.Zero(t, final)
 
 	// Replaying the same request must neither wake the run nor grant more steps.
 	sendConversationText(t, f, r.ID, "continue-1", "Try again")
@@ -49,6 +67,9 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 	require.Equal(t, "Done", done.Result)
 	model.mu.Lock()
 	defer model.mu.Unlock()
-	require.Len(t, model.requests, 4)
-	require.Contains(t, string(model.requests[3]), "Continue")
+	require.Len(t, model.requests, 5)
+	require.Contains(t, string(model.requests[3]), "step allowance")
+	// The continued run sees its own note and the reply of the user.
+	require.Contains(t, string(model.requests[4]), note)
+	require.Contains(t, string(model.requests[4]), "Continue")
 }

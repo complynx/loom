@@ -80,7 +80,7 @@ func (e *Engine) contextItems(
 		return current, request, false, nil
 	}
 	if run.StepLimitReached(len(steps)) {
-		return nil, 0, false, e.stopTurn(ctx, run, domain.Paused, "step_limit")
+		return nil, 0, false, e.stopTurn(ctx, run, domain.Paused, stepLimitReason)
 	}
 	prefix, err := summaryPrefix(filtered, settings.HistoryRecentLimit, budget, run.ID)
 	if err != nil {

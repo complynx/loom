@@ -602,6 +602,9 @@ func (s *Store) transition(
 		if err := validateCompletion(ctx, tx, r, result); err != nil {
 			return err
 		}
+	} else if state != domain.Paused || reason != stepLimitReason {
+		// Only a completed run and a step-limit pause carry text.
+		result = ""
 	}
 	if state == domain.WaitingAuth {
 		var err error
@@ -624,31 +627,37 @@ func (s *Store) transition(
 	if e != nil {
 		return e
 	}
-	if state == domain.Completed {
-		var message domain.ChatEvent
-		if message, e = chatEvent(
-			ctx,
-			tx,
-			r.ChatID,
-			rid,
-			"message.assistant",
-			result,
-			"agent",
-			map[string]string{eventTextKey: result},
-		); e != nil {
-			return e
-		}
-		if e = runEvent(
-			ctx,
-			tx,
-			rid,
-			"message.completed",
-			map[string]any{eventTextKey: result, "message_seq": message.Seq},
-		); e != nil {
-			return e
-		}
+	if e = publishRunText(ctx, tx, r, result); e != nil {
+		return e
 	}
 	return s.recordTransition(ctx, tx, r)
+}
+
+// publishRunText records the text of a transition as an assistant message.
+// A completed run publishes its final message. A paused run publishes a
+// progress note, which is not a final message.
+func publishRunText(ctx context.Context, tx pgx.Tx, r domain.Run, text string) error {
+	event := "message.completed"
+	if r.State != domain.Completed {
+		if text == "" {
+			return nil
+		}
+		event = "message.progress"
+	}
+	message, err := chatEvent(
+		ctx,
+		tx,
+		r.ChatID,
+		r.ID,
+		"message.assistant",
+		text,
+		"agent",
+		map[string]string{eventTextKey: text},
+	)
+	if err != nil {
+		return err
+	}
+	return runEvent(ctx, tx, r.ID, event, map[string]any{eventTextKey: text, "message_seq": message.Seq})
 }
 
 func (s *Store) recordTransition(ctx context.Context, tx pgx.Tx, r domain.Run) error {

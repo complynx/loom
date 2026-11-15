@@ -98,7 +98,7 @@ func (e *Engine) dispatchBinaryReply(ctx context.Context, run domain.Run, p doma
 		}
 	}
 	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-		return true, e.stopTurn(ctx, run, domain.Paused, "step_limit")
+		return true, e.stopTurn(ctx, run, domain.Paused, stepLimitReason)
 	}
 	copyTurn := *turn
 	copyTurn.steeringAfterModel = a.ConsentRevision != run.ConversationRevision

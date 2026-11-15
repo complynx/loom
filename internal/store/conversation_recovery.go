@@ -22,7 +22,8 @@ const (
 	recoveryInputRoute    = "recovery-input"
 
 	uncertainEffectReason      = "inference_or_effect_uncertain"
-	budgetExhaustedReason      = "budget_exhausted"
+	stepLimitReason            = "step_limit"
+	recoveryAskUserAction      = "ask_user_to_continue"
 	recoveryAcceptedStatus     = "accepted"
 	recoverySendAction         = "send_message"
 	recoveryPendingStatus      = "recovery_pending"
@@ -426,7 +427,7 @@ func messageReplaces(r domain.Run, target string) bool {
 	if target == r.ID {
 		return true
 	}
-	return r.State == domain.Paused && (r.Reason == budgetExhaustedReason || r.Reason == "credits_exhausted")
+	return r.State == domain.Paused && (r.Reason == "budget_exhausted" || r.Reason == "credits_exhausted")
 }
 
 func recoveryReplacementPending(

@@ -31,15 +31,17 @@ would meet a blocker, the locator reports that blocker with the same `reason` an
 For example, a terminal run of a chat with removed legacy history reports
 `blocked / run_order_unavailable`, and an empty wallet reports
 `blocked / credits_exhausted`.
-A run paused at its step limit returns `accepted / step_limit` with
-`next_action: send_message`, because the next message wakes it. A pause request,
+A run paused at its step limit worked without a final result. It returns
+`accepted / step_limit` with `next_action: ask_user_to_continue`. The run `result`
+then holds a short progress note that the model wrote: what is done and where the
+work stopped. Show the note, ask the user whether to continue or what to do next,
+and send the reply as a message; that message wakes the run. A pause request,
 a pending cancellation or an unknown outcome keeps that run `blocked`.
-A run paused with `budget_exhausted` worked to its allowance without a result.
-It returns `accepted / budget_exhausted` with `next_action: ask_user_to_continue`:
-ask the user whether to continue or what to do next, and send the reply as a
-message. A run paused with `credits_exhausted` returns `accepted` with
-`next_action: send_message` when the wallet has funds again. In both cases the
-next message continues the conversation in a new run.
+Money is different: it is never a question to continue. An empty wallet returns
+`blocked / credits_exhausted`; tell the user that the budget is used. A run that
+is paused for money (`budget_exhausted` or `credits_exhausted`) while the wallet
+has funds returns `accepted` with `next_action: send_message`: the next message
+continues the conversation in a new run.
 Any other paused run that no message blocker applies to returns `blocked`, its
 own pause reason and `next_action: resolve_blocker_then_resume`.
 
@@ -81,10 +83,7 @@ new round. The new run inherits the interaction settings of the latest run, gets
 the current configured run cap, and has no `replaces_run_id`. The wallet remains
 the shared money limit of the owner.
 
-A run allowance bounds one action; it does not stop the conversation. A run that
-pauses with `budget_exhausted` worked to its allowance without a result. Ask the
-user whether to continue or what to do next; do not send a message for the user.
-The reply of the user is an ordinary message. If the open
+A run allowance bounds one action; it does not stop the conversation. If the open
 run is paused because its own allowance (`budget_exhausted`) or the wallet
 (`credits_exhausted`) could not pay the next step, the message replaces that run:
 Loom supersedes it and admits a linked successor. The wallet check applies to the
@@ -287,7 +286,7 @@ locator both use this table:
 
 | Reason | `next_action` | Consumer action |
 | --- | --- | --- |
-| `credits_exhausted` | `fund_wallet_then_retry` | Fund the existing wallet, then retry the same message. No inference is required to report this condition. |
+| `credits_exhausted` | `fund_wallet_then_retry` | The budget of the owner is used. Tell the user to add funds or to wait for the next funding, then retry the same message. Do not ask whether to continue. No inference is required to report this condition. |
 | `run_order_unavailable` | `create_run` | Retention removed legacy admission events, so the latest run of this chat is not proven. Do not guess a predecessor. Abandon the retained message and create the request with `POST /v1/runs`. |
 | `authorization_required` | `reauthorize_session` | Reauthorize the retained session with the same owner and actor, then retry. |
 | `model_not_allowed` | `select_allowed_model_or_restore_access` | Select an allowed model/effort or restore model entitlement, then retry; running work is not cancelled by this preflight denial. |

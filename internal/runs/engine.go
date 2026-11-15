@@ -288,6 +288,9 @@ type turnState struct {
 	completed          map[string]bool
 	checkpointedInputs map[string]bool
 	newInputSteps      int
+	// limitNote is the progress note of the latest step, if that step wrote one.
+	limitNote      string
+	limitNoteSaved bool
 }
 
 func checkpointed(err error) error {
@@ -388,7 +391,7 @@ func (e *Engine) executeReadyTurn(
 		return e.completeTurn(ctx, run, turn.finalCandidate)
 	}
 	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-		return false, e.finish(ctx, run, domain.Paused, "step_limit", "")
+		return e.pauseAtStepLimit(ctx, run, principal, token, model, turn)
 	}
 
 	handled, callErr := e.handlePending(ctx, run, principal, token, settings, turn)
@@ -415,7 +418,10 @@ func (e *Engine) replaySteps(ctx context.Context, run domain.Run, turn *turnStat
 
 func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState, step domain.Step) error {
 	var err error
+	turn.limitNote, turn.limitNoteSaved = "", false
 	switch step.Kind {
+	case limitNoteKind:
+		replayLimitNote(turn, step)
 	case outputValidationKind:
 		turn.items = append(turn.items, step.Result)
 		turn.finalCandidate = ""
@@ -492,7 +498,7 @@ func (e *Engine) applySteering(ctx context.Context, run domain.Run, turn *turnSt
 			continue
 		}
 		if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-			return e.stopTurn(ctx, run, domain.Paused, "step_limit")
+			return e.stopTurn(ctx, run, domain.Paused, stepLimitReason)
 		}
 		payload, _ := json.Marshal(input)
 		step, beginErr := e.store.BeginStep(ctx, id, e.opts.Owner, run.Fence, "input", payload, 0)
@@ -681,12 +687,26 @@ func (e *Engine) turnTools(
 	principal domain.Principal,
 	token string,
 ) ([]provider.Tool, error) {
+	tools, err := e.listTurnTools(ctx, run, principal, token)
+	if err != nil {
+		return nil, e.stopTurn(ctx, run, domain.Paused, "module_discovery_unavailable")
+	}
+	return tools, nil
+}
+
+// listTurnTools lists the tools of a turn. It does not change the run.
+func (e *Engine) listTurnTools(
+	ctx context.Context,
+	run domain.Run,
+	principal domain.Principal,
+	token string,
+) ([]provider.Tool, error) {
 	tools := append(standardTools(run.Interaction), presentationTools(run)...)
 
 	if e.opts.Tools != nil {
 		extra, listErr := e.opts.Tools(ctx, run, principal, token)
 		if listErr != nil {
-			return nil, e.stopTurn(ctx, run, domain.Paused, "module_discovery_unavailable")
+			return nil, listErr
 		}
 		for _, replacement := range extra {
 			if replacement.Name != toolScript && replacement.Name != toolQuestion &&

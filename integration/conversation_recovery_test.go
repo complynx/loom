@@ -80,13 +80,17 @@ func TestConversationRecoveryCarriesAuthorizedCompletedWriteReceipt(t *testing.T
 				},
 			)
 		}
+		if index == 2 {
+			// The step limit is reached: the model writes a progress note.
+			return finalResponse("The slot is booked. Continue?")
+		}
 		return finalResponse("The earlier operation already booked booking-15")
 	}
 	r := f.createRun(t, runRequest("", "", "Book the appointment"), "book")
 	require.NoError(t, engine.Execute(t.Context(), r.ID))
 	prior := f.run(t, r.ID)
 	require.Equal(t, "step_limit", prior.Reason)
-	require.Empty(t, prior.Result)
+	require.Equal(t, "The slot is booked. Continue?", prior.Result)
 	op, found, err := (&operations.Coordinator{Pool: f.pool}).FindByCall(t.Context(), r.ID, "original-book")
 	require.NoError(t, err)
 	require.True(t, found)
@@ -130,8 +134,8 @@ func TestConversationRecoveryCarriesAuthorizedCompletedWriteReceipt(t *testing.T
 	require.NoError(t, engine.Execute(t.Context(), next.ID))
 	require.Equal(t, domain.Completed, f.run(t, next.ID).State)
 	model.mu.Lock()
-	require.Len(t, model.requests, 2)
-	wire := string(model.requests[1])
+	require.Len(t, model.requests, 3)
+	wire := string(model.requests[2])
 	model.mu.Unlock()
 	require.Contains(t, wire, "function_call_output")
 	require.Contains(t, wire, "booking-15")

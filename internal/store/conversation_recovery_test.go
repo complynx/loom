@@ -28,7 +28,7 @@ func TestRecoveryLocatesAndWakesLostStepLimitRun(t *testing.T) {
 	require.Equal(t, r.ID, located.RunID)
 	require.Equal(t, "accepted", located.Status)
 	require.Equal(t, "step_limit", located.Reason)
-	require.Equal(t, "send_message", located.NextAction)
+	require.Equal(t, "ask_user_to_continue", located.NextAction)
 	in := domain.RecoverMessage{Text: "Please continue"}
 	receipt, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "msg-1", in)
 	require.NoError(t, err)
