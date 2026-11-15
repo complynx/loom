@@ -386,7 +386,10 @@ func runtimeRegistry(
 	registry, err := modules.NewRegistry(
 		sources,
 		modules.Options{
-			OnCallerBindings:    bindings,
+			OnCallerBindings: bindings,
+			OnManifestRejected: func(ctx context.Context, endpoint modules.Endpoint, err error) {
+				logger.WarnContext(ctx, "module manifest rejected", "container_id", endpoint.ContainerID, "error", err)
+			},
 			WrapTransport:       func(base http.RoundTripper) http.RoundTripper { return telemetry.TraceTransport{Base: base} },
 			ImportArtifact:      importArtifact,
 			RequestTimeout:      time.Duration(cfg.Discovery.RequestTimeoutMS) * time.Millisecond,
@@ -403,7 +406,7 @@ func runtimeRegistry(
 	err = registry.Refresh(refreshCtx)
 	refreshCancel()
 	if err != nil {
-		logger.WarnContext(ctx, "module discovery unavailable")
+		logger.WarnContext(ctx, "module discovery refresh incomplete")
 	}
 
 	return registry, nil
