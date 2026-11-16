@@ -98,6 +98,10 @@ func (e *Engine) executePaidTool(
 }
 
 func (e *Engine) paidAdmissionFailure(ctx context.Context, run domain.Run, err error) error {
+	if failure, ok := errors.AsType[*domain.Error](err); ok && failure.Code == budgetExhaustedReason {
+		// No dispatch occurred. The caller still has the turn needed for a note.
+		return err
+	}
 	if failure, ok := errors.AsType[*domain.Error](err); ok && failure.Code == "transcription_in_progress" {
 		return e.stopTurn(ctx, run, domain.Paused, failure.Code)
 	}

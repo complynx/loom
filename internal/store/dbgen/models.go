@@ -81,10 +81,11 @@ type AuthSession struct {
 }
 
 type BillingAccount struct {
-	OwnerID  pgtype.UUID `json:"owner_id"`
-	Balance  int64       `json:"balance"`
-	Spent    int64       `json:"spent"`
-	Reserved int64       `json:"reserved"`
+	OwnerID               pgtype.UUID `json:"owner_id"`
+	Balance               int64       `json:"balance"`
+	Spent                 int64       `json:"spent"`
+	Reserved              int64       `json:"reserved"`
+	MonthlyServiceAccount pgtype.Bool `json:"monthly_service_account"`
 }
 
 type Chat struct {
@@ -129,6 +130,21 @@ type ContextSummary struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type ConversationMessage struct {
+	ID        pgtype.UUID `json:"id"`
+	Seq       int64       `json:"seq"`
+	ChatID    pgtype.UUID `json:"chat_id"`
+	OwnerID   pgtype.UUID `json:"owner_id"`
+	OrgID     string      `json:"org_id"`
+	ActorID   string      `json:"actor_id"`
+	Key       string      `json:"key"`
+	Request   []byte      `json:"request"`
+	RunID     pgtype.UUID `json:"run_id"`
+	InputID   pgtype.UUID `json:"input_id"`
+	Delivered bool        `json:"delivered"`
+	Abandoned bool        `json:"abandoned"`
+}
+
 type CreditLedger struct {
 	ID            pgtype.UUID        `json:"id"`
 	OwnerID       pgtype.UUID        `json:"owner_id"`
@@ -165,6 +181,18 @@ type IdentityCacheState struct {
 type Membership struct {
 	OwnerID pgtype.UUID `json:"owner_id"`
 	OrgID   string      `json:"org_id"`
+}
+
+type MonthlyFundingPolicy struct {
+	OwnerID pgtype.UUID `json:"owner_id"`
+	Doc     []byte      `json:"doc"`
+	Version int64       `json:"version"`
+}
+
+type MonthlyFundingReceipt struct {
+	OwnerID pgtype.UUID `json:"owner_id"`
+	Period  pgtype.Date `json:"period"`
+	Doc     []byte      `json:"doc"`
 }
 
 type PassiveEventReceipt struct {
@@ -264,6 +292,16 @@ type Setting struct {
 	Singleton bool   `json:"singleton"`
 	Doc       []byte `json:"doc"`
 	Version   int64  `json:"version"`
+}
+
+type Skill struct {
+	OrgID   string `json:"org_id"`
+	Name    string `json:"name"`
+	Usecase string `json:"usecase"`
+	Body    string `json:"body"`
+	Require []byte `json:"require"`
+	Version int64  `json:"version"`
+	Deleted bool   `json:"deleted"`
 }
 
 type Step struct {

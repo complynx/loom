@@ -27,6 +27,7 @@ type bookingService struct {
 	executed []string
 	status   []string
 	server   *httptest.Server
+	revision string
 }
 
 func newBookingService(t *testing.T, lostReply bool) (*bookingService, *modules.Registry) {
@@ -59,7 +60,7 @@ func newBookingServiceConfirmation(
 	service := &bookingService{}
 	service.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/manifest" {
-			_ = json.NewEncoder(w).Encode(manifest)
+			_ = json.NewEncoder(w).Encode(service.currentManifest(manifest))
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer delegated-user-token" {
@@ -129,6 +130,15 @@ func newBookingServiceConfirmation(
 	return service, registry
 }
 
+func (s *bookingService) currentManifest(manifest modules.Manifest) modules.Manifest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.revision != "" {
+		manifest.Revision = s.revision
+	}
+	return manifest
+}
+
 func bookingConfirmationValid(mode string, confirmation map[string]any) bool {
 	return mode == "none" || confirmation["confirmation_id"] == "prepared-slot-confirmation"
 }
@@ -179,10 +189,11 @@ func mutationEngine(t *testing.T, f *fixture, registry *modules.Registry, model 
 		f.repository,
 		client,
 		runs.Options{
-			Owner:       "mutation-worker",
-			Authorize:   authorize,
-			ModuleCall:  bridge.Call,
-			DiscardCall: bridge.Discard,
+			Owner:           "mutation-worker",
+			Authorize:       authorize,
+			ModuleCall:      bridge.Call,
+			DiscardCall:     bridge.Discard,
+			RecoveryContext: bridge.RecoveryContext,
 			Tools: func(context.Context, domain.Run, domain.Principal, string) ([]provider.Tool, error) {
 				return []provider.Tool{
 					{

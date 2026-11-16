@@ -227,9 +227,16 @@ func reconciliationReserve(ctx context.Context, tx pgx.Tx, rid, sid string) (int
 		Scan(&state, &kind, &reserve); err != nil {
 		return 0, err
 	}
-	if (state != platformAttemptUnknown && state != stepPending) ||
-		(kind != "model" && kind != "summary" && kind != "compact") {
+	if (state != platformAttemptUnknown && state != stepPending) || !providerStep(kind) {
 		return 0, domain.Conflict("step_not_reconcilable")
 	}
 	return reserve, nil
+}
+
+// providerStepKinds lists the step kinds that are one paid provider inference.
+// Reconciliation, sponsored recovery, retry closure and diagnostics treat them alike.
+const providerStepKinds = "('model','summary','compact','" + domain.LimitNoteStepKind + "')"
+
+func providerStep(kind string) bool {
+	return kind == "model" || kind == "summary" || kind == "compact" || kind == domain.LimitNoteStepKind
 }

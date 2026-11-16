@@ -45,14 +45,55 @@ same run; a different body returns `409 idempotency_conflict`. Existing retries
 are checked before `chat_busy`. One nonterminal run owns a chat: submit subsequent
 messages to that run.
 
+If the consumer loses that pointer or needs a safe successor, use
+[conversation recovery](conversation-recovery.md). Its durable message endpoint
+continues the open run, replaces a run that cannot continue, or starts a new
+round after a terminal run.
+Ordinary new-run admission returns `409 pending_conversation_messages` until
+undelivered inbox messages are delivered or explicitly abandoned. Existing
+idempotent creation retries still return their original run.
+
 `max_steps` bounds work since the latest accepted input, rather than the complete
 conversation. Each new steering message, answer or approval callback renews this
 budget. A retry with the same idempotency key does not renew it. Steps still
 include model, tool, input and context-maintenance checkpoints. Unused steps do
 not accumulate. Run history and completed effects remain intact.
 
+When the agent loop reaches this limit without a final answer, the model writes
+one short progress note before the pause: what is done, where the work stopped,
+and a question whether to continue. This is one more paid model request with no
+tool execution. The note becomes the run `result`, a `message.assistant` chat
+event and a `message.progress` run event; the run is `paused / step_limit`, not
+completed. The note is optional: without funds for it, or after a provider
+failure, the run pauses without a note.
+An unknown provider outcome instead enters reconciliation and keeps its liability;
+it is not treated as a definite note failure or silently retried.
+The note uses the same token counting, artifact bounds and model-window checks
+as ordinary inference. If a safe input bound is unavailable, the optional note
+is omitted and the original allowance pause remains. A new input invalidates a
+previous note; it is never republished as fresh progress for the new interaction.
+An in-flight note belongs to the previous interaction and does not consume the
+new step allowance. If input renews the allowance before a step-limit note starts,
+the store skips that obsolete note and queues the renewed work.
+The note uses the lowest currently permitted effort configured for its model.
+
+The same note is written when a model, active compaction or paid-tool request does not fit in the remaining
+`budget.max_microcredits` of the run; the run is then `paused / budget_exhausted`.
+The note is the one request that the run allowance does not limit: its cost can
+exceed `max_microcredits` by one request of at most 1024 output tokens. The
+wallet still limits it. Its input may use the full model context window, so the
+cost is not bounded by the output allowance alone. A run with no completed step writes no note. A run also
+writes no note when the request that does not fit is a history summary, because
+the context for a note does not exist yet.
+Model-free protocol callbacks also pause without a model-generated note.
+A resumed run whose next model request cannot fit its money allowance can pause
+again with `budget_exhausted`. If only input followed its previous progress note,
+Loom omits another paid note. The earlier note remains in chat history.
+
 A new input automatically queues a run paused with `step_limit`, unless a
-pause/cancel request or unresolved outcome blocks execution. Other pauses still
+pause/cancel request or unresolved outcome blocks execution. The same applies to
+a run paused with `credits_exhausted`: it tries its step again, and it pauses
+again if the wallet still cannot pay. Other pauses still
 require their normal recovery procedure. Authorization, spending limits, active
 time and total lifetime limits continue to apply. The persisted
 `step_budget_start` records the completed step count at the latest input; old run
@@ -161,6 +202,9 @@ can coexist during clarification.
 `runs.control` and `Idempotency-Key`. Send no body or `{}`. The receipt contains only
 `run_id`, `status`, optional `reason` and `version`. Steering does not roll back
 completed effects; cancellation cannot guarantee rollback.
+Cancel also accepts a terminal run to withdraw its pending conversation
+continuations. It preserves the terminal state, result and version, and emits no
+new `run.status` event. Pause and resume still return `409 run_terminal`.
 
 ## Passive events
 

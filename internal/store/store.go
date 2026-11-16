@@ -442,7 +442,7 @@ func (s *Store) CreateRun(
 		if canonical.AutoAuthSession {
 			canonical.AuthSessionID = ""
 		}
-		rid, e := idem(ctx, tx, scope(p, "runs"), key, canonical)
+		rid, e := idem(ctx, tx, scope(p, runIdempotencyRoute), key, canonical)
 		if e != nil {
 			return e
 		}
@@ -462,7 +462,7 @@ func (s *Store) CreateRun(
 		if e != nil {
 			return e
 		}
-		if e = s.persistRun(ctx, tx, p, key, canonical, r); e != nil {
+		if e = s.persistRun(ctx, tx, p, runIdempotencyRoute, key, canonical, r); e != nil {
 			return e
 		}
 		r, e = scanRun(tx.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1", r.ID))
@@ -810,6 +810,9 @@ func (s *Store) admitRun(
 	if busy {
 		return domain.Run{}, domain.Conflict("chat_busy")
 	}
+	if e = checkPendingConversationMessages(ctx, tx, cid); e != nil {
+		return domain.Run{}, e
+	}
 
 	if in.AuthSessionID != "" {
 		var ok bool
@@ -826,11 +829,13 @@ func (s *Store) admitRun(
 	return buildRun(p, uid, cid, in, settings, prefs, policy)
 }
 
+// persistRun stores an admitted run. The route selects the idempotency key space:
+// caller keys and internal recovery keys must not share one.
 func (s *Store) persistRun(
 	ctx context.Context,
 	tx pgx.Tx,
 	p domain.Principal,
-	key string,
+	route, key string,
 	canonical domain.CreateRun,
 	r domain.Run,
 ) error {
@@ -851,13 +856,18 @@ func (s *Store) persistRun(
 	if e != nil {
 		return e
 	}
-	if _, e = chatEvent(ctx, tx, r.ChatID, r.ID, "message.user", in.Input.Text, r.ActorID, in.Input); e != nil {
+	event, e := chatEvent(ctx, tx, r.ChatID, r.ID, "message.user", in.Input.Text, r.ActorID, in.Input)
+	if e != nil {
+		return e
+	}
+	r.AdmissionSequence = event.Seq
+	if _, e = tx.Exec(ctx, "UPDATE runs SET doc=$2 WHERE id=$1", r.ID, document(r)); e != nil {
 		return e
 	}
 	if e = runEvent(ctx, tx, r.ID, "run.status", map[string]any{eventStatusKey: domain.Queued}); e != nil {
 		return e
 	}
-	if e = saveIdem(ctx, tx, scope(p, "runs"), key, r.ID, canonical); e != nil {
+	if e = saveIdem(ctx, tx, scope(p, route), key, r.ID, canonical); e != nil {
 		return e
 	}
 	if s.enqueue != nil {

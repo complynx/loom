@@ -94,6 +94,8 @@ paused, uncertain or `waiting_auth` runs do not bypass resume, reconciliation or
 reauthorization. The exception is `paused / step_limit`: a new input renews the
 [step budget](api/runs-input.md) and queues the same run if no control request or
 unresolved outcome blocks it. Idempotent input retries do not renew the budget.
+A new input also queues a run paused with `credits_exhausted`; it tries its step
+again and pauses again if the wallet still cannot pay.
 
 | Accepted input | Current wait | Continuation |
 |---|---|---|
@@ -102,6 +104,7 @@ unresolved outcome blocks it. Idempotent input retries do not renew the budget.
 | Native `approval` callback | Its protocol approval; possibly a follow-up question in agent mode | Decision is saved; the effect is queued without language interpretation |
 | Steering for `exact_text` | Pending critical action | Runtime accepts the valid exact phrase or rejects the action; then queues continuation |
 | Steering while paused with `step_limit` | Exhausted step budget | A new input renews the step budget and queues the same run unless another blocker applies |
+| Steering while paused with `credits_exhausted` | Empty wallet | A new input queues the same run; it pauses again if the wallet still cannot pay |
 | Steering during other pauses, reconciliation or waiting for auth | Lifecycle blocker | Input is saved; it does not itself clear that blocker |
 
 ## Ordinary actions

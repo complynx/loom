@@ -51,7 +51,7 @@ func (s *Store) DiagnosticsOverview(ctx context.Context, p domain.Principal) (do
 	}
 	err = s.pool.QueryRow(ctx, `SELECT
  (SELECT COALESCE(sum(reserved_microcredits),0) FROM runs WHERE org_id=$1),
- (SELECT count(*) FROM steps s JOIN runs r ON r.id=s.run_id WHERE r.org_id=$1 AND s.state='unknown' AND s.kind IN('model','summary','compact')),
+ (SELECT count(*) FROM steps s JOIN runs r ON r.id=s.run_id WHERE r.org_id=$1 AND s.state='unknown' AND s.kind IN`+providerStepKinds+`),
  (SELECT count(*) FROM write_operations w JOIN runs r ON r.id=w.run_id WHERE r.org_id=$1 AND w.state IN('dispatching','pending','unknown')),
  (SELECT count(*) FROM platform_provider_attempts a JOIN runs r ON r.id=a.run_id WHERE r.org_id=$1 AND a.org_id=$1 AND a.status='unknown'),
  (SELECT COALESCE(sum(a.reserved_exposure),0) FROM platform_provider_attempts a JOIN runs r ON r.id=a.run_id WHERE r.org_id=$1 AND a.org_id=$1 AND a.status='unknown'),

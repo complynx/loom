@@ -541,13 +541,14 @@ func runtimeEngine(
 			ModuleCall: func(c context.Context, r domain.Run, p domain.Principal, token string, call provider.Call) (json.RawMessage, *domain.Approval, error) {
 				started := time.Now()
 				var err error
-				c, finishTrace := observer.Start(c, "module_call", r.ID)
+				c, finishTrace := observer.Start(c, moduleCallToolName, r.ID)
 				defer func() { finishTrace(err) }()
-				defer func() { observer.Operation(c, "module_call", operationOutcome(err), r.ID, started) }()
+				defer func() { observer.Operation(c, moduleCallToolName, operationOutcome(err), r.ID, started) }()
 				result, approval, err := bridge.Call(c, r, p, token, call)
 				return result, approval, err
 			},
-			DiscardCall: bridge.Discard,
+			DiscardCall:     bridge.Discard,
+			RecoveryContext: bridge.RecoveryContext,
 		},
 	)
 

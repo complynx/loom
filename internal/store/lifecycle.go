@@ -128,6 +128,9 @@ func deleteChat(ctx context.Context, tx pgx.Tx, p domain.Principal, cid string) 
 	if _, e = tx.Exec(ctx, "DELETE FROM chat_events WHERE chat_id=$1", cid); e != nil {
 		return e
 	}
+	if _, e = tx.Exec(ctx, "DELETE FROM conversation_messages WHERE chat_id=$1", cid); e != nil {
+		return e
+	}
 	// Attachment takes a share lock before adding its reference. Acquire exclusive
 	// locks first, then use a fresh statement snapshot to see committed references.
 	if _, e = tx.Exec(

@@ -28,12 +28,26 @@ func (r *Registry) Describe(ctx context.Context, p Principal, module, method str
 	if err != nil {
 		return Descriptor{}, err
 	}
+	return methodDescriptor(s, module, m), nil
+}
+
+// DescribeFresh checks current method access without reusing dynamic discovery.
+// Receipt disclosure uses this check without authorizing an old write contract.
+func (r *Registry) DescribeFresh(ctx context.Context, p Principal, module, method string) (Descriptor, error) {
+	s, m, err := r.lookupFresh(ctx, p, module, method)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	return methodDescriptor(s, module, m), nil
+}
+
+func methodDescriptor(s registered, module string, m Method) Descriptor {
 	return Descriptor{
 		ServiceID:                 s.manifest.ServiceID,
 		ContractHash:              contractHash(s, module, m),
 		Method:                    m,
 		SupportsOperationAdoption: s.inspectPath != "",
-	}, nil
+	}
 }
 
 // WriteBackend is used only by operations.Coordinator, never a JavaScript proxy.

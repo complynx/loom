@@ -69,7 +69,7 @@ func (s *server) skillDelete(w http.ResponseWriter, r *http.Request, p domain.Pr
 func skillParameters(path string) []*huma.Param {
 	if path == skillPath {
 		return []*huma.Param{
-			{Name: "name", In: memoryPathLocation, Required: true, Schema: &huma.Schema{Type: schemaString}},
+			{Name: "name", In: pathParameterLocation, Required: true, Schema: &huma.Schema{Type: schemaString}},
 		}
 	}
 	if path != "/v1/skills" {

@@ -100,7 +100,7 @@ func closeProviderRetry(ctx context.Context, tx pgx.Tx, rid, sid string) error {
 	var retry domain.ProviderRetry
 	err := tx.QueryRow(
 		ctx,
-		"DELETE FROM provider_retries WHERE run_id=$1 AND EXISTS(SELECT 1 FROM steps WHERE id=$2 AND run_id=$1 AND kind IN ('model','summary','compact') AND state='completed' AND COALESCE(result->>'ErrorCode','')='' AND COALESCE(result->>'ID','')<>'') RETURNING attempts,next_attempt_at,deadline,code",
+		"DELETE FROM provider_retries WHERE run_id=$1 AND EXISTS(SELECT 1 FROM steps WHERE id=$2 AND run_id=$1 AND kind IN "+providerStepKinds+" AND state='completed' AND COALESCE(result->>'ErrorCode','')='' AND COALESCE(result->>'ID','')<>'') RETURNING attempts,next_attempt_at,deadline,code",
 		rid,
 		sid,
 	).Scan(&retry.Attempts, &retry.NextAttemptAt, &retry.Deadline, &retry.Code)
