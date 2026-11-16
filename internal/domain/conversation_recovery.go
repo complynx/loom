@@ -1,9 +1,5 @@
 package domain
 
-// MaxReceiptChainRuns bounds how many linked predecessors give their operation
-// receipts to a successor. Older predecessors stay in chat history only.
-const MaxReceiptChainRuns = 3
-
 // RecoverMessage is one user message for a chat. ReplaceRunID names a run that
 // the consumer found unusable; its successor gets the receipts of that run.
 type RecoverMessage struct {

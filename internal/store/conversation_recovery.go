@@ -29,6 +29,7 @@ const (
 	recoveryAskUserAction      = "ask_user_to_continue"
 	recoveryAcceptedStatus     = "accepted"
 	recoverySendAction         = "send_message"
+	recoveryReadAction         = "read_run"
 	recoveryPendingStatus      = "recovery_pending"
 	recoveryCancelCommand      = "cancel"
 	recoveryRetryAction        = "retry_same_message"
@@ -91,7 +92,8 @@ func (s *Store) RecoverChatMessage(
 	if !p.Has("chat.read") || !p.Has("runs.control") || !p.Has("runs.create") {
 		return out, domain.Forbidden()
 	}
-	if key == "" || len(key) > 128 || strings.TrimSpace(in.Text) == "" || len(in.Text) > 65536 {
+	if key == "" || len(key) > 128 || strings.TrimSpace(in.Text) == "" || len(in.Text) > 65536 ||
+		strings.ContainsRune(in.Text, 0) {
 		return out, domain.NewError(http.StatusUnprocessableEntity, "invalid_message")
 	}
 	if in.ReplaceRunID != "" {
@@ -117,7 +119,7 @@ func (s *Store) RecoverChatMessage(
 			return err
 		}
 		out.Accepted = true
-		done, replayErr := replayRecoveryMessage(ctx, tx, &out)
+		done, replayErr := s.replayRecoveryMessage(ctx, tx, p, uid, &out)
 		if replayErr != nil || done {
 			return replayErr
 		}
@@ -138,7 +140,9 @@ func blockRecovery(out *domain.RecoveryReceipt, reason string) {
 	case creditsExhaustedReason:
 		action = "fund_wallet_then_retry"
 	case "run_order_unavailable":
-		action = "create_run"
+		action = "stop_run_then_create_run"
+	case "recovery_context_too_large", "recovery_context_unavailable":
+		action = "stop_run_then_send_message"
 	case "authorization_required":
 		action = "reauthorize_session"
 	case "model_not_allowed":
@@ -156,12 +160,17 @@ func blockRecovery(out *domain.RecoveryReceipt, reason string) {
 }
 
 func recoveryRunReceipt(r domain.Run) domain.RecoveryReceipt {
-	out := domain.RecoveryReceipt{RunID: r.ID, Status: recoveryAcceptedStatus, Reason: r.Reason, NextAction: "read_run"}
+	out := domain.RecoveryReceipt{
+		RunID:      r.ID,
+		Status:     recoveryAcceptedStatus,
+		Reason:     r.Reason,
+		NextAction: recoveryReadAction,
+	}
 	switch {
 	case r.State.Terminal():
-		out.Status, out.NextAction = "terminal", "read_run"
+		out.Status, out.NextAction = "terminal", recoveryReadAction
 	case r.CancelRequested:
-		out.Status, out.NextAction = recoveryPendingStatus, recoveryRetryAction
+		out.Status, out.NextAction = "cancelling", recoveryReadAction
 	case r.State == domain.Queued || r.State == domain.Running:
 		out.Status = "queued"
 	case r.State == domain.WaitingAuth:
@@ -171,6 +180,9 @@ func recoveryRunReceipt(r domain.Run) domain.RecoveryReceipt {
 	case r.State == domain.Paused:
 		// A paused run keeps its own pause reason. Its action is to resume the run.
 		out.Status, out.NextAction = "blocked", "resolve_blocker_then_resume"
+		if r.Reason == "recovery_context_too_large" || r.Reason == "recovery_context_unavailable" {
+			blockRecovery(&out, r.Reason)
+		}
 	}
 	return out
 }
@@ -202,6 +214,9 @@ func (s *Store) deliverRecoveryMessage(
 		return domain.Forbidden()
 	}
 	out.RunID = r.ID
+	if in.ReplaceRunID != "" && in.ReplaceRunID != r.ID && in.ReplaceRunID != r.ReplacesRunID {
+		return domain.Conflict("replacement_target_changed")
+	}
 	// A chat is one long conversation of small actions. Each message is a new
 	// interaction: it steers the open run, replaces a run that cannot continue,
 	// or starts a new round after a terminal run.
@@ -224,12 +239,6 @@ func (s *Store) deliverRecoveryMessage(
 		return err
 	}
 
-	if in.ReplaceRunID != "" && in.ReplaceRunID != r.ID {
-		// A racing retry may already have created the direct successor.
-		if r.ReplacesRunID != in.ReplaceRunID {
-			return domain.Conflict("replacement_target_changed")
-		}
-	}
 	delivered := true
 	if terminal || replace {
 		r, err = s.createRecoverySuccessor(ctx, tx, p, uid, cid, in, r, replace, out.MessageID)
@@ -300,7 +309,13 @@ func insertRecoveryMessage(
 		return domain.Conflict("replacement_target_changed")
 	}
 	out.MessageID = id()
-	return tx.QueryRow(ctx, `INSERT INTO conversation_messages(id,chat_id,owner_id,org_id,actor_id,key,request) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING seq`, out.MessageID, cid, uid, p.OrgID, actor(p), key, document(in)).
+	// Until delivery, run_id binds a continuation to the work observed at
+	// acceptance. A terminal run's ordinary new round has no such binding.
+	origin := ""
+	if !r.State.Terminal() || in.ReplaceRunID != "" {
+		origin = r.ID
+	}
+	return tx.QueryRow(ctx, `INSERT INTO conversation_messages(id,chat_id,owner_id,org_id,actor_id,key,request,run_id) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid) RETURNING seq`, out.MessageID, cid, uid, p.OrgID, actor(p), key, document(in), origin).
 		Scan(&out.Sequence)
 }
 
@@ -366,6 +381,11 @@ func (s *Store) createRecoverySuccessor(
 	}
 	if replace {
 		next.ReplacesRunID = r.ID
+		next.RecoveryOperationIDs, err = captureRecoveryReceiptIDs(ctx, tx, r)
+		if err != nil {
+			return domain.Run{}, err
+		}
+		next.RecoveryReceiptVersion = recoveryReceiptVersion
 		// Record the replacement before the successor's request. Model context then
 		// shows it as earlier history, not as input after the current request.
 		if _, err = chatEvent(
@@ -382,6 +402,18 @@ func (s *Store) createRecoverySuccessor(
 		}
 	}
 	if err = s.persistRun(ctx, tx, p, recoveryRunRoute, messageID, creation, next); err != nil {
+		return domain.Run{}, err
+	}
+	// Later accepted continuations follow this handoff. Stopping the successor
+	// must also stop messages that were waiting behind the handoff message.
+	if _, err = tx.Exec(
+		ctx,
+		"UPDATE conversation_messages SET run_id=$4 WHERE chat_id=$1 AND actor_id=$2 AND run_id=$3 AND NOT delivered AND NOT abandoned",
+		cid,
+		r.ActorID,
+		r.ID,
+		next.ID,
+	); err != nil {
 		return domain.Run{}, err
 	}
 	// Terminal predecessors also lose any stale executor lease.
@@ -404,7 +436,7 @@ func recoveryDeliveryBlocked(
 	out *domain.RecoveryReceipt,
 ) (bool, error) {
 	terminal := r.State.Terminal()
-	if terminal && r.AdmissionSequence == 0 {
+	if (terminal || replace) && r.AdmissionSequence == 0 {
 		blockRecovery(out, "run_order_unavailable")
 		return true, nil
 	}
@@ -532,6 +564,9 @@ func (s *Store) steerRecoveryRun(
 	out *domain.RecoveryReceipt,
 ) (domain.Run, bool, error) {
 	var err error
+	if err = checkRecoveryContinuation(ctx, tx, p, r); err != nil {
+		return r, false, err
+	}
 	if r.CancelRequested {
 		out.Status, out.Reason, out.NextAction = recoveryPendingStatus, recoveryCancellationReason, recoveryRetryAction
 		return r, false, nil
@@ -554,7 +589,13 @@ func (s *Store) steerRecoveryRun(
 	return r, true, nil
 }
 
-func replayRecoveryMessage(ctx context.Context, tx pgx.Tx, out *domain.RecoveryReceipt) (bool, error) {
+func (s *Store) replayRecoveryMessage(
+	ctx context.Context,
+	tx pgx.Tx,
+	p domain.Principal,
+	uid string,
+	out *domain.RecoveryReceipt,
+) (bool, error) {
 	if out.Abandoned {
 		abandonedReceipt(out)
 		return true, nil
@@ -565,6 +606,9 @@ func replayRecoveryMessage(ctx context.Context, tx pgx.Tx, out *domain.RecoveryR
 			return false, e
 		}
 		setRecoveryRun(out, r)
+		if !r.State.Terminal() {
+			return true, s.locateRecoveryBlocker(ctx, tx, p, uid, r, out)
+		}
 		return true, nil
 	}
 

@@ -21,6 +21,9 @@ func (s *Store) preflightRecoveryReplacement(
 	uid string,
 	r domain.Run,
 ) error {
+	if r.AdmissionSequence == 0 {
+		return domain.Conflict("run_order_unavailable")
+	}
 	if r.State != domain.Running {
 		return nil
 	}
@@ -116,7 +119,7 @@ func (s *Store) locateRecoveryBlocker(
 	}
 	if terminal || replace {
 		// The message would admit a new run.
-		admissionErr := s.checkSuccessorAdmission(ctx, tx, p, uid, r)
+		admissionErr := s.checkLocatedSuccessor(ctx, tx, p, uid, r, replace)
 		if denial, denied := errors.AsType[*domain.Error](admissionErr); denied {
 			blockRecovery(out, denial.Code)
 			return nil
@@ -133,6 +136,13 @@ func (s *Store) locateRecoveryBlocker(
 		return nil
 	}
 	// The next message wakes a run paused at its step limit or for an empty wallet.
+	if continuationErr := checkRecoveryContinuation(ctx, tx, p, r); continuationErr != nil {
+		if denial, denied := errors.AsType[*domain.Error](continuationErr); denied {
+			blockRecovery(out, denial.Code)
+			return nil
+		}
+		return continuationErr
+	}
 	wakes, err := inputWakes(ctx, tx, r)
 	if !wakes {
 		return err
@@ -143,4 +153,45 @@ func (s *Store) locateRecoveryBlocker(
 		out.NextAction = recoveryAskUserAction
 	}
 	return err
+}
+
+func (s *Store) checkLocatedSuccessor(
+	ctx context.Context,
+	tx pgx.Tx,
+	p domain.Principal,
+	uid string,
+	r domain.Run,
+	replace bool,
+) error {
+	if replace {
+		if r.AdmissionSequence == 0 {
+			return domain.Conflict("run_order_unavailable")
+		}
+		if _, err := captureRecoveryReceiptIDs(ctx, tx, r); err != nil {
+			return err
+		}
+	}
+	return s.checkSuccessorAdmission(ctx, tx, p, uid, r)
+}
+
+// Check the immutable existing model, independently of successor preferences.
+func checkRecoveryContinuation(ctx context.Context, tx pgx.Tx, p domain.Principal, r domain.Run) error {
+	if err := validateRecoverySession(ctx, tx, p, r.AuthSessionID); err != nil {
+		return err
+	}
+	settings, _, policy, _, err := readRunSettings(ctx, tx, r.OwnerID, r.OrgID)
+	if err != nil {
+		return err
+	}
+	models := settings.Models
+	if policy.Models != nil {
+		models = effectiveModels(settings.Models, policy.Models)
+	}
+	for _, model := range models {
+		if model.ID == r.ModelID && allowedEffort(model, r.Effort) && model.Provider == r.Model.Provider &&
+			model.ProviderModel == r.Model.ProviderModel {
+			return nil
+		}
+	}
+	return domain.NewError(http.StatusForbidden, "model_not_allowed")
 }

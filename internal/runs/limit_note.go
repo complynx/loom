@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/complynx/loom/internal/domain"
@@ -41,14 +42,23 @@ func (e *Engine) pauseWithNote(
 	if len(turn.steps) == 0 {
 		return false, e.finish(ctx, run, domain.Paused, reason, "")
 	}
+	if reason == budgetExhaustedReason && !workSinceLimitNote(turn.steps) {
+		// A larger request may no longer fit after the user continues. Do not
+		// charge for another summary when only new input followed the last note.
+		return false, e.finish(ctx, run, domain.Paused, reason, "")
+	}
 	request, ready := e.limitNoteRequest(ctx, run, principal, token, model, turn)
 	raw, _ := json.Marshal(request)
-	reserve, costErr := cost(int64(len(raw))+requestTokenOverhead, int64(request.MaxOutputTokens), model)
-	if !ready || costErr != nil || len(raw) > e.opts.MaxInputBytes {
+	if !ready || len(raw) > e.opts.MaxInputBytes {
+		return false, e.finish(ctx, run, domain.Paused, reason, "")
+	}
+	bound, boundErr := e.requestInputBound(ctx, run, model, request, len(raw))
+	reserve, costErr := cost(bound, int64(request.MaxOutputTokens), model)
+	if boundErr != nil || costErr != nil {
 		return false, e.finish(ctx, run, domain.Paused, reason, "")
 	}
 	digest := sha256.Sum256(raw)
-	intent, _ := json.Marshal(map[string]string{"request_hash": hex.EncodeToString(digest[:])})
+	intent, _ := json.Marshal(map[string]string{"request_hash": hex.EncodeToString(digest[:]), "reason": reason})
 	step, err := e.store.BeginStep(ctx, run.ID, e.opts.Owner, run.Fence, limitNoteKind, intent, reserve)
 	if err != nil {
 		// No funds for the note, or a control request. The transition applies the latter.
@@ -78,6 +88,20 @@ func (e *Engine) pauseWithNote(
 	return false, e.finish(ctx, run, domain.Paused, reason, note)
 }
 
+func workSinceLimitNote(steps []domain.Step) bool {
+	for _, step := range slices.Backward(steps) {
+		switch step.Kind {
+		case limitNoteKind:
+			return false
+		case "input":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 // limitNoteRequest reuses the tools and items of the turn, so the provider can
 // reuse its cached prefix. Calls that did not run get an explicit output.
 func (e *Engine) limitNoteRequest(
@@ -104,12 +128,19 @@ func (e *Engine) limitNoteRequest(
 	return provider.Request{
 		Provider:        model.Provider,
 		Model:           model.ProviderModel,
-		Effort:          run.Effort,
+		Effort:          noteEffort(model, run.Effort),
 		Input:           append(items, provider.Message("developer", limitNoteInstruction)),
 		Tools:           tools,
 		MaxOutputTokens: min(model.MaxOutputTokens, limitNoteOutputTokens),
 		Instructions:    conversationInstructions(run),
 	}, true
+}
+
+func noteEffort(model domain.Model, fallback string) string {
+	if len(model.Efforts) > 0 {
+		return model.Efforts[0]
+	}
+	return fallback
 }
 
 func (e *Engine) completeLimitNote(
@@ -144,5 +175,8 @@ func replayLimitNote(turn *turnState, step domain.Step) {
 	turn.limitNoteSaved = true
 	if json.Unmarshal(step.Result, &response) == nil && response.ErrorCode == "" {
 		turn.limitNote = response.Text
+		if response.Text != "" {
+			turn.items = append(turn.items, provider.Message("assistant", response.Text))
+		}
 	}
 }

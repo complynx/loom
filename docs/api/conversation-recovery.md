@@ -30,7 +30,11 @@ would meet a blocker, the locator reports that blocker with the same `reason` an
 `next_action`; see [Money and actionable blockers](#money-and-actionable-blockers).
 It reports a retained undelivered message first, with `blocking_message_id`, then
 legacy order, unknown outcomes, the wallet, the saved session and the model
-entitlement. It does not check the run capacity limits. For example, a terminal
+entitlement. It does not check the run capacity limits. New runs
+and existing-run continuations both check the saved session. A continuing
+run must retain access to its immutable model and effort; changing preferences
+alone does not switch that model. Restore its access, or explicitly replace it
+using a currently allowed model selection. For example, a terminal
 run of a chat with removed legacy history reports
 `blocked / run_order_unavailable`, and an empty wallet reports
 `blocked / credits_exhausted`.
@@ -73,7 +77,7 @@ permissions: `chat.read`, `runs.control`, `runs.create`.
 {"text":"Please continue the appointment request"}
 ```
 
-Text must contain a non-whitespace character and fit in 65536 UTF-8 bytes;
+Text must contain a non-whitespace character, exclude U+0000, and fit in 65536 UTF-8 bytes;
 otherwise the endpoint returns `422 invalid_message`. A `replace_run_id` that is
 not a UUID returns `422 invalid_run_id`. The
 key is scoped to chat, owner, organization and actor. It is independent of the
@@ -140,6 +144,9 @@ waits for interaction. `status: queued` includes queued and currently executing
 work; it does not promise that the next paid reservation will fit. A retry of a
 delivered message returns its original IDs and the run's current status, including
 `terminal`; it never delivers the text again.
+For a nonterminal run, replay uses the same current blocker/action checks as the
+locator. A replay after an allowance pause therefore offers continuation with
+the current note instead of recommending an unrelated manual resume.
 
 Admission, text, run/job insertion and receipt commit together. If a policy blocks
 delivery, the inbox message still commits. Chat locking serializes acceptance and
@@ -179,9 +186,11 @@ abandoned receipt and never delivers it. Delivered messages return
 Explicit abandonment releases the ordering barrier. Use it when the user withdraws
 a request or a target is obsolete. Never abandon automatically just to bypass an
 unknown effect.
+Abandonment does not withdraw a cancellation that recovery already requested.
 Unknown steps, write receipts and reservations remain attached to their runs.
 
-For `run_order_unavailable`: abandon the retained message, then create the
+For `run_order_unavailable`: explicitly stop the run if it is nonterminal,
+abandon any retained message that remains, then create the
 request with `POST /v1/runs`. Put the request text in that creation body. Do not
 replay the abandoned text or send it again as steering. Retry any other retained
 messages in acceptance order.
@@ -201,6 +210,18 @@ manual continuation action. Loom never replaces a run without a message, and one
 message creates at most one run. There is no limit on successive replacements:
 the user can continue unfinished work again.
 
+An explicit run-cancel command also withdraws earlier undelivered continuations
+bound to that run for its actor. This also applies when the worker has already
+saved a terminal state; the command preserves that state and result. A pending
+continuation is bound to the run observed at acceptance and follows that run's
+handoff to a successor while it waits for delivery. An ordinary new round
+accepted after a terminal run, and messages for later runs, are not withdrawn.
+The text and idempotency receipts remain retained as abandoned. Retrying such a
+message cannot undo the user's stop.
+Recovery's own cancellation leaves its message pending for the handoff.
+During an explicit cancellation, the locator reports `cancelling / read_run`;
+it does not ask the consumer to retry a withdrawn message.
+
 Before requesting cancellation, Loom checks the wallet, the saved session
 and current model entitlement. An empty wallet, a revoked session or a disallowed
 model does not cancel running work through this endpoint. The predecessor's own
@@ -210,8 +231,10 @@ checked again after cancellation; later policy changes can still block a success
 Loom creates a successor only after there are no pending/unknown steps,
 dispatching/pending/unknown writes, or outstanding run reservations. Otherwise it
 returns `blocked / inference_or_effect_uncertain` with
-`next_action: reconcile_predecessor`. Use the existing receipt/reconciliation
-procedure; cancellation is neither rollback nor proof of no effect. The old
+`next_action: reconcile_predecessor`. Escalate to an operator with
+`operations.reconcile` for the existing `/v1/admin/...` reconciliation procedure.
+The consumer cannot reconcile this itself. Cancellation is neither rollback nor
+proof of no effect. The old
 executor loses its lease and fence before the transaction commits. A successor
 cannot dispatch while that transaction is uncommitted.
 A sponsored `platform_provider_attempts` record does not block a replacement or
@@ -231,8 +254,8 @@ No paid handoff summary is required.
 A new round after a terminal run is an ordinary run. It reads the chat history
 and gets no receipt handoff.
 
-Before inference, a replacement successor also loads deterministic predecessor operation receipts
-of at most three linked predecessors; older ones stay in chat history only. It rechecks their module/method and identity bindings
+Before inference, a replacement successor also loads deterministic operation receipts
+from the complete linked predecessor chain. It rechecks their module/method and identity bindings
 against current authority. The model receives historical call/tool-result pairs
 with original run/call/operation IDs and known states, arguments and results.
 `requested_arguments` preserves the original request; `arguments` contains the
@@ -243,6 +266,14 @@ predecessor's own request, and precede the successor's current request. Current
 method-access lookup is shared for matching module/method within
 one handoff; every receipt's identity binding is checked. Authority is not cached
 across turns or worker claims.
+Admission stores a versioned manifest of operation IDs, inherited from the
+predecessor plus that predecessor's own operations under the handoff lock.
+It stores references, never consent or copied receipt bodies. Normal turns load
+only these bounded references: empty ancestry is not walked again. Missing
+referenced operations or source history fail closed. A successor with a missing
+or unsupported manifest fails with `recovery_context_unavailable`.
+Active-context compaction cannot replace those receipts with a summary: replay
+restores the freshly authorized call/result pairs after each checkpoint.
 Disclosure does not require the old write contract to remain unchanged. A changed
 contract or confirmation mode is labeled `contract_changed: true`; it never
 authorizes redispatch or reuse of old consent. Any new effect needs the current
@@ -301,10 +332,12 @@ locator both use this table:
 | Reason | `next_action` | Consumer action |
 | --- | --- | --- |
 | `credits_exhausted` | `fund_wallet_then_retry` | The budget of the owner is used. Tell the user to add funds or to wait for the next funding, then retry the same message. Do not ask whether to continue. No inference is required to report this condition. |
-| `run_order_unavailable` | `create_run` | Retention removed legacy admission events, so the latest run of this chat is not proven. Do not guess a predecessor. Abandon the retained message and create the request with `POST /v1/runs`. |
+| `run_order_unavailable` | `stop_run_then_create_run` | Retention removed legacy admission events. Do not guess a predecessor. Stop the run if it is nonterminal, abandon any retained message that remains, then create the request with `POST /v1/runs`. |
+| `recovery_context_too_large` | `stop_run_then_send_message` | Stop this run before starting a new round; resuming the same oversized receipt handoff cannot resolve it. Do not repeat completed effects. |
+| `recovery_context_unavailable` | `stop_run_then_send_message` | The receipt manifest is missing or unsupported, or its source is unavailable. Escalate before starting distinct work; do not repeat completed effects. |
 | `authorization_required` | `reauthorize_session` | Reauthorize the retained session with the same owner and actor, then retry. |
 | `model_not_allowed` | `select_allowed_model_or_restore_access` | Select an allowed model/effort or restore model entitlement, then retry; running work is not cancelled by this preflight denial. |
-| `inference_or_effect_uncertain` | `reconcile_predecessor` | Reconcile the predecessor's unknown outcome; do not repeat its effect. |
+| `inference_or_effect_uncertain` | `reconcile_predecessor` | Escalate to an operator with `operations.reconcile`; do not repeat the unknown effect. |
 | `replacement_target_changed` | `abandon_message_or_inspect_run` | A previously accepted target is stale. Refresh the locator; abandon the message if it is obsolete. |
 | `earlier_message_pending` | `retry_earlier_message` | Retry the message in `blocking_message_id` first. |
 | `other_actor_message_pending` | `contact_original_actor` | Another actor must deliver or abandon its message. |
@@ -321,6 +354,10 @@ described above.
 `accepted: true, delivered: false` distinguishes retained text from an applied
 input. `blocked` can also accompany `delivered: true` when the receiving run has
 a lifecycle blocker. Read that run and resolve its existing control/session flow.
+If input arrives during a `budget_exhausted` note, the current run can still
+pause before applying it: the spent run allowance is not renewed. The durable
+text remains in chat history for the successor. Show the resulting pause and
+ask for continuation; `queued` never promises that paid execution will fit.
 Do not resubmit delivered text with a new key. Authentication/permission failures
 before acceptance return ordinary 401/403/404 and do not accept a message.
 
@@ -335,8 +372,10 @@ from retained chat events. It preserves existing run state, receipts and ledger
 amounts. A legacy run whose admission event retention removed has no known
 position. The order of the terminal runs in its chat is then not proven, so the
 migration gives none of them a sequence; recovery from such a terminal run returns
-`run_order_unavailable` instead of guessing. A nonterminal run is always the
-latest run of its chat and keeps its sequence. Every run admitted after the
+`run_order_unavailable` instead of guessing. A nonterminal run remains the
+current run, but only retains its sequence when its source event survives.
+It can still receive steering; replacement without that sequence is blocked
+with `run_order_unavailable` before cancellation. Every run admitted after the
 migration has a sequence, so one ordinary `POST /v1/runs` restores recovery for
 that chat.
 Apply migrations before API/workers as described in [operations](../operations.md).

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"slices"
 
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/operations"
@@ -14,8 +13,8 @@ const (
 	MaxRecoveryReceiptBytes = 65536
 )
 
-// RecoveryOperations reads bounded predecessor receipts only within the same
-// chat and identity. The caller must reauthorize each module before disclosure.
+// RecoveryOperations loads the successor's bounded receipt manifest.
+// The caller must reauthorize every module before disclosure.
 func (s *Store) RecoveryOperations(ctx context.Context, rid string) ([]operations.Operation, error) {
 	current, err := s.ExecutionRun(ctx, rid)
 	if err != nil {
@@ -29,55 +28,47 @@ func (s *Store) RecoveryOperations(ctx context.Context, rid string) ([]operation
 	if !live {
 		return nil, domain.NotFound()
 	}
-	var ancestors []domain.Run
-	previousID := current.ReplacesRunID
-	for previousID != "" {
-		if len(ancestors) >= domain.MaxReceiptChainRuns {
-			break
-		}
-		previous, e := s.ExecutionRun(ctx, previousID)
-		if e != nil {
-			return nil, e
-		}
-		if previous.ChatID != current.ChatID || previous.OwnerID != current.OwnerID ||
-			previous.ActorID != current.ActorID ||
-			previous.OrgID != current.OrgID ||
-			!previous.State.Terminal() ||
-			previous.ReservedMicrocredits != 0 {
-			return nil, domain.Forbidden()
-		}
-		ancestors = append(ancestors, previous)
-		previousID = previous.ReplacesRunID
+	if current.ReplacesRunID == "" {
+		return []operations.Operation{}, nil
 	}
-	out := []operations.Operation{}
-	for _, ancestor := range slices.Backward(ancestors) {
-		out, err = s.appendRecoveryOperations(ctx, ancestor, out)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
-func (s *Store) appendRecoveryOperations(
-	ctx context.Context,
-	run domain.Run,
-	out []operations.Operation,
-) ([]operations.Operation, error) {
-	var hasOperations, hasHistory bool
-	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM write_operations WHERE run_id=$1),EXISTS(SELECT 1 FROM chat_events WHERE chat_id=$2 AND seq=$3 AND run_id=$1 AND kind='message.user')`, run.ID, run.ChatID, run.AdmissionSequence).
-		Scan(&hasOperations, &hasHistory); err != nil {
+	ids, err := inheritedRecoveryReceiptIDs(current)
+	if err != nil {
 		return nil, err
 	}
-	if hasOperations && !hasHistory {
-		return nil, domain.Conflict("recovery_context_unavailable")
+	out := []operations.Operation{}
+	if len(ids) == 0 {
+		return out, nil
 	}
+	return s.readRecoveryReceipts(ctx, current, ids)
+}
+
+func (s *Store) readRecoveryReceipts(
+	ctx context.Context,
+	current domain.Run,
+	ids []string,
+) ([]operations.Operation, error) {
+	out := []operations.Operation{}
 	rows, err := s.pool.Query(
 		ctx,
-		"SELECT CASE WHEN octet_length(doc::text)<=$3 THEN doc ELSE NULL END,state FROM write_operations WHERE run_id=$1 ORDER BY created_at,id LIMIT $2",
-		run.ID,
-		MaxRecoveryOperations-len(out)+1,
+		`
+ SELECT w.id::text,w.run_id::text,
+ CASE WHEN octet_length(w.doc::text)<=$3 THEN w.doc ELSE NULL END,w.state,
+ (r.chat_id=$4::uuid AND r.owner_id=$5::uuid AND r.actor_id=$6 AND r.org_id=$7
+  AND r.state IN('completed','cancelled','failed') AND r.reserved_microcredits=0
+  AND COALESCE((r.doc->>'admission_sequence')::bigint,0)>0
+  AND (r.doc->>'admission_sequence')::bigint<$8),
+ EXISTS(SELECT 1 FROM chat_events e WHERE e.chat_id=$4::uuid AND e.seq=(r.doc->>'admission_sequence')::bigint AND e.run_id=r.id AND e.kind='message.user')
+ FROM write_operations w JOIN runs r ON r.id=w.run_id
+ WHERE w.id=ANY($1::uuid[])
+ ORDER BY (r.doc->>'admission_sequence')::bigint,w.created_at,w.id LIMIT $2`,
+		ids,
+		MaxRecoveryOperations+1,
 		MaxRecoveryReceiptBytes,
+		current.ChatID,
+		current.OwnerID,
+		current.ActorID,
+		current.OrgID,
+		current.AdmissionSequence,
 	)
 	if err != nil {
 		return nil, err
@@ -85,9 +76,16 @@ func (s *Store) appendRecoveryOperations(
 	defer rows.Close()
 	for rows.Next() {
 		var raw []byte
-		var state string
-		if err = rows.Scan(&raw, &state); err != nil {
+		var id, runID, state string
+		var valid, hasHistory bool
+		if err = rows.Scan(&id, &runID, &raw, &state, &valid, &hasHistory); err != nil {
 			return nil, err
+		}
+		if !valid {
+			return nil, domain.Forbidden()
+		}
+		if !hasHistory {
+			return nil, domain.Conflict("recovery_context_unavailable")
 		}
 		if len(raw) == 0 || len(out) >= MaxRecoveryOperations {
 			return nil, domain.Conflict("recovery_context_too_large")
@@ -99,8 +97,14 @@ func (s *Store) appendRecoveryOperations(
 		if err = json.Unmarshal(raw, &op); err != nil {
 			return nil, err
 		}
-		op.State = state
+		op.ID, op.RunID, op.State = id, runID, state
 		out = append(out, op)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) != len(ids) {
+		return nil, domain.Conflict("recovery_context_unavailable")
+	}
+	return out, nil
 }

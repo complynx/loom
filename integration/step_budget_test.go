@@ -21,16 +21,17 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 	const note = "Two replies were rejected. Continue?"
 	model, engine := fakeModel(t, f, func(n int) any {
 		switch {
-		case n < 4:
-			return finalResponse(`<tg-emoji emoji-id="12">😀</tg-emoji>`)
-		case n == 4:
+		case n == 3 || n == 5:
 			// The run reached its step limit: the model writes a progress note.
 			return finalResponse(note)
+		case n < 6:
+			return finalResponse(`<tg-emoji emoji-id="12">😀</tg-emoji>`)
 		}
 		return finalResponse("Done")
 	})
 	require.NoError(t, engine.Execute(t.Context(), r.ID))
 	require.Equal(t, "step_limit", f.run(t, r.ID).Reason)
+	require.Equal(t, note, f.run(t, r.ID).Result)
 
 	sendConversationText(t, f, r.ID, "continue-1", "Try again")
 	require.Equal(t, domain.Queued, f.run(t, r.ID).State)
@@ -40,7 +41,7 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 	paused := f.run(t, r.ID)
 	require.Equal(t, domain.Paused, paused.State)
 	require.Equal(t, "step_limit", paused.Reason)
-	require.Equal(t, 3, paused.StepBudgetStart)
+	require.Equal(t, 4, paused.StepBudgetStart)
 	// The pause carries the note as an assistant message, not as a final answer.
 	require.Equal(t, note, paused.Result)
 	var progress, final int
@@ -52,7 +53,7 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 			r.ID,
 		).Scan(&progress, &final),
 	)
-	require.Equal(t, 1, progress)
+	require.Equal(t, 2, progress)
 	require.Zero(t, final)
 
 	// Replaying the same request must neither wake the run nor grant more steps.
@@ -68,11 +69,11 @@ func TestInputRenewsStepBudgetAcrossRestart(t *testing.T) {
 	require.Equal(t, "Done", done.Result)
 	model.mu.Lock()
 	defer model.mu.Unlock()
-	require.Len(t, model.requests, 5)
-	require.Contains(t, string(model.requests[3]), "work allowance for this request is used")
+	require.Len(t, model.requests, 6)
+	require.Contains(t, string(model.requests[4]), "work allowance for this request is used")
 	// The continued run sees its own note and the reply of the user.
-	require.Contains(t, string(model.requests[4]), note)
-	require.Contains(t, string(model.requests[4]), "Continue")
+	require.Contains(t, string(model.requests[5]), note)
+	require.Contains(t, string(model.requests[5]), "Continue")
 }
 
 // A run that spends its own allowance, while the wallet has funds, reports its
@@ -135,4 +136,46 @@ func TestSpentRunAllowanceWritesNoteAndOffersToContinue(t *testing.T) {
 	// The successor sees the note of its predecessor and the reply of the user.
 	require.Contains(t, string(model.requests[2]), note)
 	require.Contains(t, string(model.requests[2]), "Yes, continue")
+}
+
+func TestNewInputDoesNotRepublishPreviousProgressNote(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	_, err := f.pool.Exec(t.Context(), `UPDATE settings SET doc=jsonb_set(doc,'{max_steps}','1')`)
+	require.NoError(t, err)
+	input := runRequest("", "", "Reply")
+	input.OutputPolicy = &domain.OutputPolicy{DisallowCustomEmoji: true}
+	r := f.createRun(t, input, "notes")
+	model, engine := fakeModel(t, f, func(n int) any {
+		switch n {
+		case 1:
+			return finalResponse(`<tg-emoji emoji-id="12">😀</tg-emoji>`)
+		case 2:
+			return finalResponse("The reply was rejected. Continue?")
+		default:
+			return finalResponse("Received your new direction. Continue?")
+		}
+	})
+	require.NoError(t, engine.Execute(t.Context(), r.ID))
+	require.Equal(t, "The reply was rejected. Continue?", f.run(t, r.ID).Result)
+	sendConversationText(t, f, r.ID, "new-direction", "Try a different approach")
+	require.Empty(t, f.run(t, r.ID).Result)
+	require.NoError(t, engine.Execute(t.Context(), r.ID))
+	require.Equal(t, "Received your new direction. Continue?", f.run(t, r.ID).Result)
+	// If the next model reservation cannot fit, accepting input alone is not
+	// new progress to summarize in another paid request.
+	_, err = f.pool.Exec(
+		t.Context(),
+		`UPDATE runs SET doc=jsonb_set(jsonb_set(doc,'{max_microcredits}',to_jsonb(spent_microcredits)),'{settings_snapshot,max_steps}','4') WHERE id=$1`,
+		r.ID,
+	)
+	require.NoError(t, err)
+	sendConversationText(t, f, r.ID, "continue-without-room", "Continue")
+	require.NoError(t, engine.Execute(t.Context(), r.ID))
+	paused := f.run(t, r.ID)
+	require.Equal(t, "budget_exhausted", paused.Reason)
+	require.Empty(t, paused.Result)
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	require.Len(t, model.requests, 3)
 }

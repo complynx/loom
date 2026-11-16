@@ -52,6 +52,29 @@ func TestRecoveryLocatesAndWakesLostStepLimitRun(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+func TestDeliveredRecoveryReplayUsesCurrentLocatorAction(t *testing.T) {
+	t.Parallel()
+	s := testStore(t)
+	p := principal("replay-action")
+	r, err := s.CreateRun(t.Context(), p, "create", request())
+	require.NoError(t, err)
+	in := domain.RecoverMessage{Text: "Continue"}
+	first, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "message", in)
+	require.NoError(t, err)
+	require.True(t, first.Delivered)
+	_, err = s.Pool().Exec(t.Context(), "UPDATE runs SET state='paused',reason='step_limit' WHERE id=$1", r.ID)
+	require.NoError(t, err)
+	locator, err := s.ActiveChatRun(t.Context(), p, r.ChatID)
+	require.NoError(t, err)
+	replay, err := s.RecoverChatMessage(t.Context(), p, r.ChatID, "message", in)
+	require.NoError(t, err)
+	require.Equal(t, locator.Status, replay.Status)
+	require.Equal(t, locator.Reason, replay.Reason)
+	require.Equal(t, locator.NextAction, replay.NextAction)
+	require.Equal(t, "ask_user_to_continue", replay.NextAction)
+	require.Equal(t, first.InputID, replay.InputID)
+}
+
 func TestRecoverySuccessorKeepsContextAndFence(t *testing.T) {
 	t.Parallel()
 	s := testStore(t)
@@ -339,12 +362,15 @@ func TestRecoveryCancellationSurvivesRestart(t *testing.T) {
 }
 
 // The user can continue unfinished work any number of times. Each successor
-// reads the receipts of a bounded number of linked predecessors.
+// keeps the receipts of the entire chain within the operation/byte bounds.
 func TestRecoveryReplacementChainHasNoLimit(t *testing.T) {
 	t.Parallel()
 	s := testStore(t)
 	p := principal("replacement-chain")
 	r, err := s.CreateRun(t.Context(), p, "create", request())
+	require.NoError(t, err)
+	_, err = s.Pool().
+		Exec(t.Context(), `INSERT INTO write_operations(id,run_id,call_id,state,doc) VALUES(gen_random_uuid(),$1,'oldest-write','succeeded','{"Result":{"booking_id":"root-booking"}}')`, r.ID)
 	require.NoError(t, err)
 	for _, key := range []string{"one", "two", "three", "four", "five"} {
 		r, err = s.ClaimRun(t.Context(), r.ID, "worker", time.Minute)
@@ -360,7 +386,8 @@ func TestRecoveryReplacementChainHasNoLimit(t *testing.T) {
 	}
 	operations, err := s.RecoveryOperations(t.Context(), r.ID)
 	require.NoError(t, err)
-	require.Empty(t, operations)
+	require.Len(t, operations, 1)
+	require.JSONEq(t, `{"booking_id":"root-booking"}`, string(operations[0].Result))
 }
 
 func TestRecoveryRevokedSessionRollsBackReplacementButRetainsMessage(t *testing.T) {

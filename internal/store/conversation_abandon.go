@@ -52,6 +52,7 @@ func (s *Store) AbandonChatMessage(
 }
 
 func abandonedReceipt(out *domain.RecoveryReceipt) {
+	out.RunID, out.InputID = "", ""
 	out.Status, out.Reason, out.NextAction = "abandoned", "explicit_withdrawal", "continue_or_create_new_request"
 }
 

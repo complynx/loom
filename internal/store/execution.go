@@ -81,6 +81,7 @@ func (s *Store) ExecutionModel(ctx context.Context, rid string) (domain.Model, e
 			return domain.Model{}, domain.Conflict("model_contract_changed")
 		}
 		model := r.Model
+		model.Efforts = current.Efforts
 		model.SupportsImages = model.SupportsImages && current.SupportsImages
 		if current.MaxOutputTokens < model.MaxOutputTokens {
 			model.MaxOutputTokens = current.MaxOutputTokens
@@ -113,6 +114,9 @@ func (s *Store) BeginStep(
 		if r.State != domain.Running || r.PauseRequested || r.CancelRequested {
 			return domain.Conflict("stop_requested")
 		}
+		if e = checkLimitNoteAdmission(ctx, tx, r, kind, input); e != nil {
+			return e
+		}
 		var pending bool
 		if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM steps WHERE run_id=$1 AND state IN('pending','unknown'))", rid).
 			Scan(&pending); e != nil {
@@ -122,12 +126,8 @@ func (s *Store) BeginStep(
 			r.State = domain.Reconciling
 			return domain.Conflict("inference_uncertain")
 		}
-		// The progress note reports that the run allowance is used, so only the
-		// wallet limits it. The note can leave the run above its allowance; a step
-		// with no reservation spends nothing and still fits.
-		if kind != domain.LimitNoteStepKind && reserve > 0 &&
-			reserve > r.MaxMicrocredits-r.SpentMicrocredits-r.ReservedMicrocredits {
-			return domain.NewError(http.StatusTooManyRequests, budgetExhaustedReason)
+		if e = checkStepAllowance(r, kind, reserve); e != nil {
+			return e
 		}
 		tag, e := tx.Exec(
 			ctx,
@@ -263,7 +263,7 @@ func (s *Store) Transition(
 	reason, result string,
 ) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		if state == domain.Completed {
+		if state == domain.Completed || result != "" {
 			if err := lockRunChat(ctx, tx, rid); err != nil {
 				return err
 			}
@@ -349,7 +349,7 @@ func (s *Store) ControlExistingUser(
 	p domain.Principal,
 	rid, key, command string,
 ) (domain.Run, error) {
-	if command != "cancel" {
+	if command != recoveryCancelCommand {
 		return domain.Run{}, domain.Forbidden()
 	}
 	return s.controlUser(ctx, p, rid, key, command, true)
@@ -772,6 +772,9 @@ func (s *Store) control(
 	if e != nil {
 		return e
 	}
+	if e = lockRunChat(ctx, tx, rid); e != nil {
+		return e
+	}
 	*r, e = scanRun(
 		tx.QueryRow(
 			ctx,
@@ -791,7 +794,7 @@ func (s *Store) control(
 	if old != "" {
 		return nil
 	}
-	if r.State.Terminal() {
+	if r.State.Terminal() && command != recoveryCancelCommand {
 		return domain.Conflict("run_terminal")
 	}
 	e = s.applyControl(ctx, tx, r, command)
@@ -800,6 +803,10 @@ func (s *Store) control(
 	}
 	if e = saveIdem(ctx, tx, scope(p, "control:"+rid), key, rid, command); e != nil {
 		return e
+	}
+	if r.State.Terminal() {
+		// Continuations were withdrawn; the completed run has no new status.
+		return nil
 	}
 	if e = runEvent(ctx, tx, rid, "run.status", map[string]string{"command": command}); e != nil {
 		return e
@@ -851,6 +858,7 @@ func (s *Store) addInput(
 	if err := s.applyInput(ctx, tx, r, &in); err != nil {
 		return err
 	}
+	r.Result = ""
 	stepLimitWake, e := renewStepBudget(ctx, tx, r)
 	if e != nil {
 		return e
@@ -1013,7 +1021,15 @@ func (s *Store) applyControl(ctx context.Context, tx pgx.Tx, r *domain.Run, comm
 			}
 			_, e = tx.Exec(ctx, "UPDATE runs SET state=$2,reason=$3 WHERE id=$1", rid, next, reason)
 		}
-	case "cancel":
+	case recoveryCancelCommand:
+		if e = abandonRunContinuations(ctx, tx, *r); e != nil {
+			return e
+		}
+		// A worker may have stopped before this explicit command arrived. The
+		// command still withdraws continuations, preserving the terminal result.
+		if r.State.Terminal() {
+			return nil
+		}
 		if r.State == domain.Running {
 			_, e = tx.Exec(ctx, "UPDATE runs SET cancel_requested=true WHERE id=$1", rid)
 		} else {
@@ -1025,6 +1041,19 @@ func (s *Store) applyControl(ctx context.Context, tx pgx.Tx, r *domain.Run, comm
 		return domain.NewError(http.StatusUnprocessableEntity, "invalid_command")
 	}
 	return e
+}
+
+// Recovery's own cancellation does not call this helper. Only an explicit stop
+// withdraws pending messages bound to this run, never a later unrelated round.
+func abandonRunContinuations(ctx context.Context, tx pgx.Tx, r domain.Run) error {
+	_, err := tx.Exec(
+		ctx,
+		"UPDATE conversation_messages SET abandoned=true WHERE chat_id=$1 AND actor_id=$2 AND run_id=$3 AND NOT delivered AND NOT abandoned",
+		r.ChatID,
+		r.ActorID,
+		r.ID,
+	)
+	return err
 }
 
 func (s *Store) applyInput(ctx context.Context, tx pgx.Tx, r *domain.Run, in *domain.RunInput) error {

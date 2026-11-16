@@ -144,7 +144,6 @@ func supportsNativeCompaction(client provider.Client, request provider.Request) 
 	return true
 }
 
-// Do not compact a checkpoint again until a later model step adds new context.
 // compactionDenied stops a turn whose compaction reservation was refused. A run
 // that used its own allowance reports its progress before the pause.
 func (e *Engine) compactionDenied(ctx context.Context, run domain.Run, model domain.Model,
@@ -161,6 +160,7 @@ func (e *Engine) compactionDenied(ctx context.Context, run domain.Run, model dom
 	return false, checkpointed(err)
 }
 
+// Do not compact a checkpoint again until a later model step adds new context.
 func hasActiveGrowth(steps []domain.Step) bool {
 	for _, step := range slices.Backward(steps) {
 		if step.Kind == activeCompactionKind {
@@ -223,6 +223,11 @@ func (e *Engine) restoreActiveCompaction(ctx context.Context, run domain.Run, tu
 		return e.stopTurn(ctx, run, domain.Failed, "checkpoint_invalid")
 	}
 	turn.items = append([]provider.Item{}, response.Output...)
+	if len(turn.recoveryReceipts) > 0 {
+		// A provider checkpoint is lossy. Restore the authoritative, freshly
+		// authorized receipts after it before replaying later steps or dispatch.
+		turn.items = restoreRecoveryReceipts(turn.items, turn.recoveryReceipts)
+	}
 	turn.pending = nil
 	turn.finalCandidate = ""
 	return nil

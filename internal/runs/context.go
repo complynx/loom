@@ -16,6 +16,8 @@ import (
 
 var errCheckpointedStop = errors.New("run already checkpointed to stop")
 
+const assistantMessageEvent = "message.assistant"
+
 type summaryStore interface {
 	ExecutionSummary(context.Context, string) (domain.ContextSummary, error)
 	ExecutionHistoryAfter(context.Context, string, int64, int) ([]domain.ChatEvent, error)
@@ -67,7 +69,7 @@ func (e *Engine) contextItems(
 	filtered := make([]domain.ChatEvent, 0, len(events))
 	for _, event := range events {
 		if event.RunID == run.ID &&
-			(event.Type == "input.steering" || event.Type == "input.answer" || event.Type == "question.created" || event.Type == "approval.created") {
+			(event.Type == assistantMessageEvent || event.Type == "input.steering" || event.Type == "input.answer" || event.Type == "question.created" || event.Type == "approval.created") {
 			continue
 		}
 		filtered = append(filtered, event)
@@ -330,6 +332,13 @@ func buildCurrentHistory(
 	maxEvents, maxBytes int,
 	run domain.Run,
 ) ([]provider.Item, int, error) {
+	filtered := make([]domain.ChatEvent, 0, len(events))
+	for _, event := range events {
+		if event.RunID != run.ID || event.Type != assistantMessageEvent {
+			filtered = append(filtered, event)
+		}
+	}
+	events = filtered
 	items, err := history.Build(events, maxEvents, maxBytes)
 	if err != nil {
 		return nil, 0, err
@@ -455,7 +464,7 @@ func (e *Engine) cachedContext(
 	filtered := make([]domain.ChatEvent, 0, len(events))
 	for _, event := range events {
 		if event.RunID == run.ID &&
-			(event.Type == "input.steering" || event.Type == "input.answer" || event.Type == "question.created" || event.Type == "approval.created") {
+			(event.Type == assistantMessageEvent || event.Type == "input.steering" || event.Type == "input.answer" || event.Type == "question.created" || event.Type == "approval.created") {
 			continue
 		}
 		filtered = append(filtered, event)
@@ -476,11 +485,7 @@ func (e *Engine) cachedContext(
 	if size > budget.trigger/historyBudgetDivisor {
 		return nil, 0, nil
 	}
-	through := saved.ThroughSeq
-	if len(events) > 0 {
-		through = events[len(events)-1].Seq
-	}
-	if err = cache.SaveRunContext(ctx, run.ID, e.opts.Owner, run.Fence, through, items); err != nil {
+	if err = e.saveHistoryPrefix(ctx, run, events, items); err != nil {
 		return nil, 0, err
 	}
 	return current, request, nil
@@ -495,6 +500,13 @@ func (e *Engine) saveHistoryPrefix(
 	cache, ok := e.store.(contextCacheStore)
 	if !ok || len(events) == 0 {
 		return nil
+	}
+	for _, event := range events {
+		if event.RunID == run.ID && event.Type == assistantMessageEvent {
+			// This run replays its notes from execution steps. Do not persist a
+			// neutral prefix that skips them for a later run using this cache.
+			return nil
+		}
 	}
 	return cache.SaveRunContext(ctx, run.ID, e.opts.Owner, run.Fence, events[len(events)-1].Seq, items)
 }

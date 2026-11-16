@@ -21,20 +21,28 @@ CREATE INDEX conversation_messages_pending ON conversation_messages(chat_id, seq
 -- removed the admission event of a legacy run. Such a run has no known position,
 -- so the order of the terminal runs in its chat is not proven. Leave those runs
 -- without a sequence; recovery then reports run_order_unavailable. A nonterminal
--- run is always the latest run in its chat and keeps its sequence.
+-- run keeps its sequence only where its source event survives. Use the first
+-- matching event when legacy history contains duplicate source events.
 WITH unordered AS (
     SELECT DISTINCT o.chat_id FROM runs o WHERE NOT EXISTS(
         SELECT 1 FROM chat_events oe
         WHERE oe.chat_id=o.chat_id AND oe.run_id=o.id AND oe.kind='message.user')
+), admissions AS (
+    SELECT chat_id,run_id,min(seq) AS seq FROM chat_events
+    WHERE kind='message.user' GROUP BY chat_id,run_id
 )
 UPDATE runs r SET doc=jsonb_set(r.doc,'{admission_sequence}',to_jsonb(ce.seq))
-FROM chat_events ce
-WHERE ce.chat_id=r.chat_id AND ce.run_id=r.id AND ce.kind='message.user'
+FROM admissions ce
+WHERE ce.chat_id=r.chat_id AND ce.run_id=r.id
 AND (r.state NOT IN('completed','cancelled','failed')
     OR NOT EXISTS(SELECT 1 FROM unordered u WHERE u.chat_id=r.chat_id));
 UPDATE run_inputs ri SET doc=jsonb_set(ri.doc,'{history_sequence}',to_jsonb(ce.seq))
-FROM chat_events ce WHERE ce.run_id=ri.run_id AND ce.doc->>'id'=ri.id::text
-AND ce.kind IN('input.steering','input.answer','input.approval');
+FROM (
+    SELECT e.run_id,e.doc->>'id' AS input_id,min(e.seq) AS seq
+    FROM chat_events e JOIN runs r ON r.id=e.run_id AND r.chat_id=e.chat_id
+    WHERE e.kind IN('input.steering','input.answer','input.approval')
+    GROUP BY e.run_id,e.doc->>'id'
+) ce WHERE ce.run_id=ri.run_id AND ce.input_id=ri.id::text;
 
 CREATE INDEX runs_chat_recovery_order ON runs (
     chat_id,

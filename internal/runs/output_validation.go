@@ -60,11 +60,14 @@ func (e *Engine) saveOutputRejection(ctx context.Context, run domain.Run, approv
 func (e *Engine) rejectFinalOutput(
 	ctx context.Context,
 	run domain.Run,
+	principal domain.Principal,
+	token string,
+	model domain.Model,
 	turn *turnState,
 	pending *domain.Approval,
 ) (bool, error) {
 	if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-		return false, e.finish(ctx, run, domain.Paused, stepLimitReason, "")
+		return e.pauseWithNote(ctx, run, principal, token, model, turn, stepLimitReason)
 	}
 	err := e.saveOutputRejection(ctx, run, pending)
 	return err == nil, err

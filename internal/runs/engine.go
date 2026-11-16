@@ -288,6 +288,7 @@ type turnState struct {
 	completed          map[string]bool
 	checkpointedInputs map[string]bool
 	newInputSteps      int
+	recoveryReceipts   []provider.Item
 	// limitNote is the progress note of the latest step, if that step wrote one.
 	limitNote      string
 	limitNoteSaved bool
@@ -317,6 +318,10 @@ func (e *Engine) executeAuthorizedTurn(
 	if modelErr != nil {
 		return false, e.finish(ctx, run, domain.Paused, "model_unavailable", "")
 	}
+	receipts, receiptErr := e.recoveryContext(ctx, run)
+	if receiptErr != nil {
+		return stoppedTurn(receiptErr)
+	}
 	items, request, rebuilt, err := e.contextItems(ctx, run, settings, model)
 	if errors.Is(err, errCheckpointedStop) {
 		return false, nil
@@ -329,10 +334,6 @@ func (e *Engine) executeAuthorizedTurn(
 	}
 	if rebuilt {
 		return true, nil
-	}
-	receipts, receiptErr := e.recoveryContext(ctx, run)
-	if receiptErr != nil {
-		return stoppedTurn(receiptErr)
 	}
 	// Historical receipts follow earlier history and precede the current request.
 	// They never impersonate calls of this run.
@@ -352,12 +353,22 @@ func (e *Engine) executeAuthorizedTurn(
 		return false, err
 	}
 
-	turn := turnState{items: items, steps: steps, completed: map[string]bool{}, checkpointedInputs: map[string]bool{}}
+	turn := turnState{
+		items:              items,
+		steps:              steps,
+		completed:          map[string]bool{},
+		checkpointedInputs: map[string]bool{},
+		recoveryReceipts:   receipts,
+	}
 	if replayErr := e.replaySteps(ctx, run, &turn); replayErr != nil {
 		return stoppedTurn(replayErr)
 	}
-	if inputErr := e.applySteering(ctx, run, &turn); inputErr != nil {
+	steerAgain, inputErr := e.applySteering(ctx, run, principal, token, model, &turn)
+	if inputErr != nil {
 		return stoppedTurn(inputErr)
+	}
+	if steerAgain {
+		return true, nil
 	}
 	ctx, finish, traceErr := e.traceStep(ctx, run)
 	if traceErr != nil {
@@ -386,7 +397,7 @@ func (e *Engine) executeReadyTurn(
 			return false, lookupErr
 		}
 		if run.OutputPolicy.InvalidText(turn.finalCandidate) || pending != nil {
-			return e.rejectFinalOutput(ctx, run, turn, pending)
+			return e.rejectFinalOutput(ctx, run, principal, token, model, turn, pending)
 		}
 		return e.completeTurn(ctx, run, turn.finalCandidate)
 	}
@@ -396,6 +407,9 @@ func (e *Engine) executeReadyTurn(
 
 	handled, callErr := e.handlePending(ctx, run, principal, token, settings, turn)
 	if handled {
+		if denial, ok := errors.AsType[*domain.Error](callErr); ok && denial.Code == budgetExhaustedReason {
+			return e.pauseWithNote(ctx, run, principal, token, model, turn, budgetExhaustedReason)
+		}
 		if errors.Is(callErr, errCheckpointedStop) {
 			return false, nil
 		}
@@ -474,11 +488,18 @@ func (e *Engine) replayStep(ctx context.Context, run domain.Run, turn *turnState
 	return nil
 }
 
-func (e *Engine) applySteering(ctx context.Context, run domain.Run, turn *turnState) error {
+func (e *Engine) applySteering(
+	ctx context.Context,
+	run domain.Run,
+	principal domain.Principal,
+	token string,
+	model domain.Model,
+	turn *turnState,
+) (bool, error) {
 	id := run.ID
 	inputs, err := e.store.PendingInputs(ctx, id, e.opts.Owner, run.Fence)
 	if err != nil {
-		return err
+		return false, err
 	}
 	turn.newInputSteps = 0
 	var consumed []string
@@ -486,7 +507,7 @@ func (e *Engine) applySteering(ctx context.Context, run domain.Run, turn *turnSt
 		if len(consumed) >= telemetry.MaxTraceInputs {
 			err = e.consumeInputBatch(ctx, run, consumed)
 			if err != nil {
-				return err
+				return false, err
 			}
 			consumed = nil
 		}
@@ -498,25 +519,30 @@ func (e *Engine) applySteering(ctx context.Context, run domain.Run, turn *turnSt
 			continue
 		}
 		if run.StepLimitReached(len(turn.steps) + turn.newInputSteps) {
-			return e.stopTurn(ctx, run, domain.Paused, stepLimitReason)
+			again, pauseErr := e.pauseWithNote(ctx, run, principal, token, model, turn, stepLimitReason)
+			if again {
+				return true, pauseErr
+			}
+			return false, checkpointed(pauseErr)
 		}
 		payload, _ := json.Marshal(input)
 		step, beginErr := e.store.BeginStep(ctx, id, e.opts.Owner, run.Fence, "input", payload, 0)
 		if beginErr != nil {
-			return checkpointed(e.admissionFailure(ctx, run, beginErr))
+			return false, checkpointed(e.admissionFailure(ctx, run, beginErr))
 		}
 		item := provider.Message("user", input.Text)
 		if err = e.store.CompleteStep(ctx, id, e.opts.Owner, run.Fence, step.ID, item, domain.Usage{}); err != nil {
-			return err
+			return false, err
 		}
 		consumed = append(consumed, input.ID)
 		turn.items = append(turn.items, item)
 		turn.newInputSteps++
+		turn.limitNote, turn.limitNoteSaved = "", false
 		turn.steeringAfterModel = true
 		turn.finalCandidate = ""
 	}
 
-	return e.consumeInputBatch(ctx, run, consumed)
+	return false, e.consumeInputBatch(ctx, run, consumed)
 }
 
 func consumedReply(run domain.Run, turn *turnState, input domain.RunInput) bool {
@@ -742,6 +768,21 @@ func (e *Engine) inputBound(
 	request provider.Request,
 	requestSize int,
 ) (int64, error) {
+	bound, err := e.requestInputBound(ctx, run, model, request, requestSize)
+	if suspension, ok := errors.AsType[*Suspension](err); ok {
+		return 0, e.stopTurn(ctx, run, suspension.State, suspension.Reason)
+	}
+	return bound, err
+}
+
+// requestInputBound also serves optional notes; it never changes durable state.
+func (e *Engine) requestInputBound(
+	ctx context.Context,
+	run domain.Run,
+	model domain.Model,
+	request provider.Request,
+	requestSize int,
+) (int64, error) {
 	inputLimit := e.inputTokenLimit(model)
 	inputBound := int64(requestSize) + requestTokenOverhead
 	hasArtifacts := len(run.Input.ArtifactIDs) > 0 || requestHasImages(request)
@@ -749,27 +790,27 @@ func (e *Engine) inputBound(
 	needsCount := hasArtifacts || hasCompaction || inputBound > inputLimit
 	if needsCount {
 		var err error
-		inputBound, err = e.countedInputBound(ctx, run, model, request, inputBound, hasArtifacts, hasCompaction)
+		inputBound, err = e.countedInputBound(ctx, model, request, inputBound, hasArtifacts, hasCompaction)
 		if err != nil {
 			return 0, err
 		}
 	}
 	if inputBound > inputLimit ||
-		(model.ContextTokens > 0 && inputBound+int64(model.MaxOutputTokens) > model.ContextTokens) {
-		return 0, e.stopTurn(ctx, run, domain.Paused, "context_unavailable")
+		(model.ContextTokens > 0 && inputBound+int64(request.MaxOutputTokens) > model.ContextTokens) {
+		return 0, &Suspension{State: domain.Paused, Reason: "context_unavailable"}
 	}
 	return inputBound, nil
 }
 
-func (e *Engine) countedInputBound(ctx context.Context, run domain.Run, model domain.Model,
+func (e *Engine) countedInputBound(ctx context.Context, model domain.Model,
 	request provider.Request, bound int64, hasArtifacts, hasCompaction bool,
 ) (int64, error) {
 	count, counted := e.countInput(ctx, request)
 	if hasCompaction && !counted {
-		return 0, e.stopTurn(ctx, run, domain.Paused, "compaction_token_count_unavailable")
+		return 0, &Suspension{State: domain.Paused, Reason: "compaction_token_count_unavailable"}
 	}
 	if hasCompaction && model.CompactionThresholdTokens > 0 && count >= model.CompactionThresholdTokens {
-		return 0, e.stopTurn(ctx, run, domain.Paused, "compaction_ineffective")
+		return 0, &Suspension{State: domain.Paused, Reason: "compaction_ineffective"}
 	}
 	if counted {
 		return count, nil
@@ -778,9 +819,9 @@ func (e *Engine) countedInputBound(ctx context.Context, run domain.Run, model do
 		return bound, nil
 	}
 	if model.ContextTokens <= 0 {
-		return 0, e.stopTurn(ctx, run, domain.Paused, "input_budget_bound_unavailable")
+		return 0, &Suspension{State: domain.Paused, Reason: "input_budget_bound_unavailable"}
 	}
-	return model.ContextTokens - int64(model.MaxOutputTokens), nil
+	return model.ContextTokens - int64(request.MaxOutputTokens), nil
 }
 
 func (e *Engine) performInference(

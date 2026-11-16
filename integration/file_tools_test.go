@@ -21,6 +21,37 @@ type audioReceiptFixture struct {
 	after func()
 }
 
+func TestPaidToolBudgetDenialWritesProgressWithoutDispatch(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	r := f.createRun(t, runRequest("", "", "Transcribe"), "tool-budget")
+	model, _ := fakeModel(t, f, func(n int) any {
+		if n == 1 {
+			_, err := f.pool.Exec(
+				t.Context(),
+				"UPDATE runs SET max_microcredits=100,doc=jsonb_set(doc,'{max_microcredits}','100') WHERE id=$1",
+				r.ID,
+			)
+			if err != nil {
+				t.Error(err)
+			}
+			return outputCall("audio_transcribe", "audio-budget", map[string]any{})
+		}
+		return finalResponse("The transcription did not start. Continue?")
+	})
+	paid := &audioReceiptFixture{}
+	engine := audioEngineFactory(t, f, model, paid)("tool-budget-worker")
+	require.NoError(t, engine.Execute(t.Context(), r.ID))
+	current := f.run(t, r.ID)
+	require.Equal(t, domain.Paused, current.State)
+	require.Equal(t, "budget_exhausted", current.Reason)
+	require.Equal(t, "The transcription did not start. Continue?", current.Result)
+	require.Zero(t, paid.calls.Load())
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	require.Len(t, model.requests, 2)
+}
+
 func (*audioReceiptFixture) Prepare(
 	_ context.Context,
 	_ domain.Run,

@@ -54,6 +54,12 @@ func TestConversationMigrationPreservesPopulatedV9AndRepeats(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.Pool().Exec(t.Context(), "UPDATE runs SET doc=doc-'admission_sequence' WHERE id=$1", r.ID)
 	require.NoError(t, err)
+	_, err = s.Pool().
+		Exec(t.Context(), `INSERT INTO chat_events(chat_id,seq,kind,action,text,doc,run_id,source_actor) SELECT chat_id,seq+1000000,kind,action,text,doc,run_id,source_actor FROM chat_events WHERE run_id=$1 AND kind IN('message.user','input.steering')`, r.ID)
+	require.NoError(t, err)
+	_, err = s.Pool().
+		Exec(t.Context(), "UPDATE chats SET next_seq=(SELECT max(seq)+1 FROM chat_events WHERE chat_id=$1) WHERE id=$1", r.ChatID)
+	require.NoError(t, err)
 	require.NoError(t, store.Migrate(t.Context(), dsn))
 	require.NoError(t, store.Migrate(t.Context(), dsn))
 	after, err := s.GetRun(t.Context(), p, r.ID)
@@ -61,6 +67,14 @@ func TestConversationMigrationPreservesPopulatedV9AndRepeats(t *testing.T) {
 	require.EqualValues(t, 20, after.ReservedMicrocredits)
 	require.Len(t, after.UnresolvedSteps, 1)
 	require.Positive(t, after.AdmissionSequence)
+	var firstAdmission, firstInput int64
+	require.NoError(
+		t,
+		s.Pool().
+			QueryRow(t.Context(), "SELECT min(seq) FROM chat_events WHERE run_id=$1 AND kind='message.user'", r.ID).
+			Scan(&firstAdmission),
+	)
+	require.Equal(t, firstAdmission, after.AdmissionSequence)
 	var inputSequence int64
 	require.NoError(
 		t,
@@ -69,6 +83,13 @@ func TestConversationMigrationPreservesPopulatedV9AndRepeats(t *testing.T) {
 			Scan(&inputSequence),
 	)
 	require.Positive(t, inputSequence)
+	require.NoError(
+		t,
+		s.Pool().
+			QueryRow(t.Context(), "SELECT min(seq) FROM chat_events WHERE run_id=$1 AND kind='input.steering'", r.ID).
+			Scan(&firstInput),
+	)
+	require.Equal(t, firstInput, inputSequence)
 	replay, err := s.CreateRun(t.Context(), p, "old-create", request())
 	require.NoError(t, err)
 	require.Equal(t, r.ID, replay.ID)
@@ -122,7 +143,7 @@ func TestConversationMigrationDoesNotGuessPartialLegacyOrder(t *testing.T) {
 	located, err := s.ActiveChatRun(t.Context(), terminal, older.ChatID)
 	require.NoError(t, err)
 	require.Equal(t, "run_order_unavailable", located.Reason)
-	require.Equal(t, "create_run", located.NextAction)
+	require.Equal(t, "stop_run_then_create_run", located.NextAction)
 	receipt, err := s.RecoverChatMessage(
 		t.Context(),
 		terminal,

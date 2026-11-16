@@ -66,14 +66,29 @@ tool execution. The note becomes the run `result`, a `message.assistant` chat
 event and a `message.progress` run event; the run is `paused / step_limit`, not
 completed. The note is optional: without funds for it, or after a provider
 failure, the run pauses without a note.
+An unknown provider outcome instead enters reconciliation and keeps its liability;
+it is not treated as a definite note failure or silently retried.
+The note uses the same token counting, artifact bounds and model-window checks
+as ordinary inference. If a safe input bound is unavailable, the optional note
+is omitted and the original allowance pause remains. A new input invalidates a
+previous note; it is never republished as fresh progress for the new interaction.
+An in-flight note belongs to the previous interaction and does not consume the
+new step allowance. If input renews the allowance before a step-limit note starts,
+the store skips that obsolete note and queues the renewed work.
+The note uses the lowest currently permitted effort configured for its model.
 
-The same note is written when a model request does not fit in the remaining
+The same note is written when a model, active compaction or paid-tool request does not fit in the remaining
 `budget.max_microcredits` of the run; the run is then `paused / budget_exhausted`.
 The note is the one request that the run allowance does not limit: its cost can
 exceed `max_microcredits` by one request of at most 1024 output tokens. The
-wallet still limits it. A run with no completed step writes no note. A run also
+wallet still limits it. Its input may use the full model context window, so the
+cost is not bounded by the output allowance alone. A run with no completed step writes no note. A run also
 writes no note when the request that does not fit is a history summary, because
 the context for a note does not exist yet.
+Model-free protocol callbacks also pause without a model-generated note.
+A resumed run whose next model request cannot fit its money allowance can pause
+again with `budget_exhausted`. If only input followed its previous progress note,
+Loom omits another paid note. The earlier note remains in chat history.
 
 A new input automatically queues a run paused with `step_limit`, unless a
 pause/cancel request or unresolved outcome blocks execution. The same applies to
@@ -187,6 +202,9 @@ can coexist during clarification.
 `runs.control` and `Idempotency-Key`. Send no body or `{}`. The receipt contains only
 `run_id`, `status`, optional `reason` and `version`. Steering does not roll back
 completed effects; cancellation cannot guarantee rollback.
+Cancel also accepts a terminal run to withdraw its pending conversation
+continuations. It preserves the terminal state, result and version, and emits no
+new `run.status` event. Pause and resume still return `409 run_terminal`.
 
 ## Passive events
 
