@@ -184,3 +184,22 @@ func TestClientInterruptionPreventsPlatformAbsorption(t *testing.T) {
 		})
 	}
 }
+
+// The progress note is a paid provider step. An unknown outcome must be
+// reconcilable, or its reservation would block the run.
+func TestUnknownLimitNoteStepIsAbsorbedAsProviderStep(t *testing.T) {
+	t.Parallel()
+	s := testStore(t)
+	ctx := context.Background()
+	p := principal("limit-note")
+	run, err := s.CreateRun(ctx, p, "run", request())
+	require.NoError(t, err)
+	run, err = s.ClaimRun(ctx, run.ID, "worker", time.Minute)
+	require.NoError(t, err)
+	step, err := s.BeginStep(ctx, run.ID, "worker", run.Fence, domain.LimitNoteStepKind, json.RawMessage(`{}`), 400)
+	require.NoError(t, err)
+	require.NoError(t, s.AbsorbUnknownStep(ctx, run.ID, "worker", run.Fence, step.ID, 2))
+	after, err := s.GetRun(ctx, p, run.ID)
+	require.NoError(t, err)
+	require.Zero(t, after.ReservedMicrocredits)
+}

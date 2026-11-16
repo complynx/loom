@@ -81,6 +81,7 @@ func (s *Store) ExecutionModel(ctx context.Context, rid string) (domain.Model, e
 			return domain.Model{}, domain.Conflict("model_contract_changed")
 		}
 		model := r.Model
+		model.Efforts = current.Efforts
 		model.SupportsImages = model.SupportsImages && current.SupportsImages
 		if current.MaxOutputTokens < model.MaxOutputTokens {
 			model.MaxOutputTokens = current.MaxOutputTokens
@@ -113,6 +114,9 @@ func (s *Store) BeginStep(
 		if r.State != domain.Running || r.PauseRequested || r.CancelRequested {
 			return domain.Conflict("stop_requested")
 		}
+		if e = checkLimitNoteAdmission(ctx, tx, r, kind, input); e != nil {
+			return e
+		}
 		var pending bool
 		if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM steps WHERE run_id=$1 AND state IN('pending','unknown'))", rid).
 			Scan(&pending); e != nil {
@@ -122,8 +126,8 @@ func (s *Store) BeginStep(
 			r.State = domain.Reconciling
 			return domain.Conflict("inference_uncertain")
 		}
-		if reserve > r.MaxMicrocredits-r.SpentMicrocredits-r.ReservedMicrocredits {
-			return domain.NewError(http.StatusTooManyRequests, "budget_exhausted")
+		if e = checkStepAllowance(r, kind, reserve); e != nil {
+			return e
 		}
 		tag, e := tx.Exec(
 			ctx,
@@ -259,7 +263,7 @@ func (s *Store) Transition(
 	reason, result string,
 ) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		if state == domain.Completed {
+		if state == domain.Completed || result != "" {
 			if err := lockRunChat(ctx, tx, rid); err != nil {
 				return err
 			}
@@ -285,7 +289,8 @@ func (s *Store) PendingInputs(ctx context.Context, rid, owner string, fence int6
 	}
 	rows, e := s.pool.Query(
 		ctx,
-		"SELECT id::text,doc FROM run_inputs WHERE run_id=$1 AND NOT applied ORDER BY COALESCE((doc->'context'->>'revision')::bigint,0),created_at,id",
+		`SELECT id::text,doc FROM run_inputs WHERE run_id=$1 AND NOT applied
+ORDER BY COALESCE((doc->>'history_sequence')::bigint,0),COALESCE((doc->'context'->>'revision')::bigint,0),created_at,id`,
 		rid,
 	)
 	if e != nil {
@@ -344,7 +349,7 @@ func (s *Store) ControlExistingUser(
 	p domain.Principal,
 	rid, key, command string,
 ) (domain.Run, error) {
-	if command != "cancel" {
+	if command != recoveryCancelCommand {
 		return domain.Run{}, domain.Forbidden()
 	}
 	return s.controlUser(ctx, p, rid, key, command, true)
@@ -377,7 +382,7 @@ func (s *Store) AddInput(
 		return r, domain.Forbidden()
 	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		return s.addInput(ctx, tx, p, rid, key, in, &r)
+		return s.addInput(ctx, tx, p, rid, inputIdempotencyRoute, key, in, &r)
 	})
 	return mutationReceipt(p, r), err
 }
@@ -601,6 +606,9 @@ func (s *Store) transition(
 		if err := validateCompletion(ctx, tx, r, result); err != nil {
 			return err
 		}
+	} else if state != domain.Paused || (reason != stepLimitReason && reason != budgetExhaustedReason) {
+		// Only a completed run and a pause with a progress note carry text.
+		result = ""
 	}
 	if state == domain.WaitingAuth {
 		var err error
@@ -623,31 +631,37 @@ func (s *Store) transition(
 	if e != nil {
 		return e
 	}
-	if state == domain.Completed {
-		var message domain.ChatEvent
-		if message, e = chatEvent(
-			ctx,
-			tx,
-			r.ChatID,
-			rid,
-			"message.assistant",
-			result,
-			"agent",
-			map[string]string{eventTextKey: result},
-		); e != nil {
-			return e
-		}
-		if e = runEvent(
-			ctx,
-			tx,
-			rid,
-			"message.completed",
-			map[string]any{eventTextKey: result, "message_seq": message.Seq},
-		); e != nil {
-			return e
-		}
+	if e = publishRunText(ctx, tx, r, result); e != nil {
+		return e
 	}
 	return s.recordTransition(ctx, tx, r)
+}
+
+// publishRunText records the text of a transition as an assistant message.
+// A completed run publishes its final message. A paused run publishes a
+// progress note, which is not a final message.
+func publishRunText(ctx context.Context, tx pgx.Tx, r domain.Run, text string) error {
+	event := "message.completed"
+	if r.State != domain.Completed {
+		if text == "" {
+			return nil
+		}
+		event = "message.progress"
+	}
+	message, err := chatEvent(
+		ctx,
+		tx,
+		r.ChatID,
+		r.ID,
+		"message.assistant",
+		text,
+		"agent",
+		map[string]string{eventTextKey: text},
+	)
+	if err != nil {
+		return err
+	}
+	return runEvent(ctx, tx, r.ID, event, map[string]any{eventTextKey: text, "message_seq": message.Seq})
 }
 
 func (s *Store) recordTransition(ctx context.Context, tx pgx.Tx, r domain.Run) error {
@@ -758,6 +772,9 @@ func (s *Store) control(
 	if e != nil {
 		return e
 	}
+	if e = lockRunChat(ctx, tx, rid); e != nil {
+		return e
+	}
 	*r, e = scanRun(
 		tx.QueryRow(
 			ctx,
@@ -777,7 +794,7 @@ func (s *Store) control(
 	if old != "" {
 		return nil
 	}
-	if r.State.Terminal() {
+	if r.State.Terminal() && command != recoveryCancelCommand {
 		return domain.Conflict("run_terminal")
 	}
 	e = s.applyControl(ctx, tx, r, command)
@@ -787,6 +804,10 @@ func (s *Store) control(
 	if e = saveIdem(ctx, tx, scope(p, "control:"+rid), key, rid, command); e != nil {
 		return e
 	}
+	if r.State.Terminal() {
+		// Continuations were withdrawn; the completed run has no new status.
+		return nil
+	}
 	if e = runEvent(ctx, tx, rid, "run.status", map[string]string{"command": command}); e != nil {
 		return e
 	}
@@ -794,11 +815,13 @@ func (s *Store) control(
 	return e
 }
 
+// addInput stores one run input. The route selects the idempotency key space:
+// caller keys and internal recovery keys must not share one.
 func (s *Store) addInput(
 	ctx context.Context,
 	tx pgx.Tx,
 	p domain.Principal,
-	rid, key string,
+	rid, route, key string,
 	in domain.RunInput,
 	r *domain.Run,
 ) error {
@@ -822,7 +845,7 @@ func (s *Store) addInput(
 		return e
 	}
 	requested := in
-	existing, e := idem(ctx, tx, scope(p, "input:"+rid), key, requested)
+	existing, e := idem(ctx, tx, scope(p, route+":"+rid), key, requested)
 	if e != nil {
 		return e
 	}
@@ -835,6 +858,7 @@ func (s *Store) addInput(
 	if err := s.applyInput(ctx, tx, r, &in); err != nil {
 		return err
 	}
+	r.Result = ""
 	stepLimitWake, e := renewStepBudget(ctx, tx, r)
 	if e != nil {
 		return e
@@ -857,7 +881,12 @@ func (s *Store) addInput(
 	if e != nil {
 		return e
 	}
-	if _, e = chatEvent(ctx, tx, r.ChatID, rid, "input."+in.Kind, in.Text, actor(p), in); e != nil {
+	event, e := chatEvent(ctx, tx, r.ChatID, rid, "input."+in.Kind, in.Text, actor(p), in)
+	if e != nil {
+		return e
+	}
+	in.HistorySequence = event.Seq
+	if _, e = tx.Exec(ctx, "UPDATE run_inputs SET doc=$2 WHERE id=$1", in.ID, document(in)); e != nil {
 		return e
 	}
 	if wake {
@@ -865,7 +894,7 @@ func (s *Store) addInput(
 			return e
 		}
 	}
-	if e = saveIdem(ctx, tx, scope(p, "input:"+rid), key, in.ID, requested); e != nil {
+	if e = saveIdem(ctx, tx, scope(p, route+":"+rid), key, in.ID, requested); e != nil {
 		return e
 	}
 	*r, e = scanRun(tx.QueryRow(ctx, "SELECT "+runColumns+" FROM runs WHERE id=$1", rid))
@@ -988,11 +1017,19 @@ func (s *Store) applyControl(ctx context.Context, tx pgx.Tx, r *domain.Run, comm
 			}
 			next, reason := domain.Paused, clientPauseReason
 			if uncertain {
-				next, reason = domain.Reconciling, "inference_or_effect_uncertain"
+				next, reason = domain.Reconciling, uncertainEffectReason
 			}
 			_, e = tx.Exec(ctx, "UPDATE runs SET state=$2,reason=$3 WHERE id=$1", rid, next, reason)
 		}
-	case "cancel":
+	case recoveryCancelCommand:
+		if e = abandonRunContinuations(ctx, tx, *r); e != nil {
+			return e
+		}
+		// A worker may have stopped before this explicit command arrived. The
+		// command still withdraws continuations, preserving the terminal result.
+		if r.State.Terminal() {
+			return nil
+		}
 		if r.State == domain.Running {
 			_, e = tx.Exec(ctx, "UPDATE runs SET cancel_requested=true WHERE id=$1", rid)
 		} else {
@@ -1004,6 +1041,19 @@ func (s *Store) applyControl(ctx context.Context, tx pgx.Tx, r *domain.Run, comm
 		return domain.NewError(http.StatusUnprocessableEntity, "invalid_command")
 	}
 	return e
+}
+
+// Recovery's own cancellation does not call this helper. Only an explicit stop
+// withdraws pending messages bound to this run, never a later unrelated round.
+func abandonRunContinuations(ctx context.Context, tx pgx.Tx, r domain.Run) error {
+	_, err := tx.Exec(
+		ctx,
+		"UPDATE conversation_messages SET abandoned=true WHERE chat_id=$1 AND actor_id=$2 AND run_id=$3 AND NOT delivered AND NOT abandoned",
+		r.ChatID,
+		r.ActorID,
+		r.ID,
+	)
+	return err
 }
 
 func (s *Store) applyInput(ctx context.Context, tx pgx.Tx, r *domain.Run, in *domain.RunInput) error {
@@ -1061,7 +1111,7 @@ func reconcilePausedState(ctx context.Context, tx pgx.Tx, rid string, state *dom
 			return err
 		}
 		if uncertain {
-			*state, *reason = domain.Reconciling, "inference_or_effect_uncertain"
+			*state, *reason = domain.Reconciling, uncertainEffectReason
 		}
 	}
 	return nil

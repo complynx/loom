@@ -10,6 +10,16 @@ import (
 	"github.com/complynx/loom/internal/domain"
 )
 
+// A progress note may exceed the used run allowance, but is still limited by
+// the wallet. Zero-reservation checkpoints spend nothing and always fit here.
+func checkStepAllowance(r domain.Run, kind string, reserve int64) error {
+	if kind != domain.LimitNoteStepKind && reserve > 0 &&
+		reserve > r.MaxMicrocredits-r.SpentMicrocredits-r.ReservedMicrocredits {
+		return domain.NewError(http.StatusTooManyRequests, budgetExhaustedReason)
+	}
+	return nil
+}
+
 const transcriptionStepKind = "transcription"
 
 // reconciliationReceiptReserve admits paid tools only for manual receipt settlement.

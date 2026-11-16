@@ -18,6 +18,8 @@ import (
 	"github.com/complynx/loom/internal/transcription"
 )
 
+const moduleCallToolName = "module_call"
+
 type runtimeTools struct {
 	transcriber transcription.Provider
 	observer    *telemetry.Telemetry
@@ -103,7 +105,7 @@ func (t runtimeTools) tools(
 			tools,
 			provider.Tool{
 				Type:        toolFunctionType,
-				Name:        "module_call",
+				Name:        moduleCallToolName,
 				Description: "Perform one durable external action discovered through modules.help.list. Read modules.help.read({module,method}) for its complete input schema, limits, confirmation and operation adoption contract before calling. Approval is collected separately when required. Current permissions and arguments are checked again at execution.",
 				Strict:      false,
 				Parameters: json.RawMessage(

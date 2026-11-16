@@ -98,6 +98,10 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 				map[string]any{
 					"output_validation":  map[string]any{"version": 1, "disallow_custom_emoji": true},
 					"execution_profiles": []domain.ExecutionProfile{domain.ProfileNativeFiles},
+					"conversation_recovery": map[string]any{
+						"version":   1,
+						"text_only": true,
+					},
 				},
 			)
 			return nil
@@ -173,6 +177,9 @@ func (s *server) registerRoutes(mux *http.ServeMux) {
 	s.route(mux, "DELETE /v1/auth/sessions/{id}", "chat.read", s.revokeSession)
 	s.route(mux, "POST /v1/chats", "chat.read", s.createChat)
 	s.route(mux, "GET /v1/chats/default", "chat.read", s.defaultChat)
+	s.route(mux, "GET /v1/chats/{id}/active-run", "chat.read", s.activeChatRun)
+	s.route(mux, "POST /v1/chats/{id}/messages", "runs.control", s.recoverChatMessage)
+	s.route(mux, "POST /v1/chats/{id}/messages/{message}/abandon", "runs.control", s.abandonChatMessage)
 	s.route(mux, "DELETE /v1/chats/{id}", "chat.delete", s.deleteChat)
 	s.route(mux, "GET /v1/chats/{id}/history", "chat.read", s.history)
 	s.route(mux, "POST /v1/chats/{id}/reactions", "chat.events.append", s.setReaction)

@@ -246,7 +246,7 @@ func TestOutputValidationCapabilities(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	require.JSONEq(
 		t,
-		`{"output_validation":{"version":1,"disallow_custom_emoji":true},"execution_profiles":["native_files"]}`,
+		`{"output_validation":{"version":1,"disallow_custom_emoji":true},"execution_profiles":["native_files"],"conversation_recovery":{"version":1,"text_only":true}}`,
 		string(raw),
 	)
 }
@@ -284,7 +284,8 @@ func TestOutputValidationLimitKeepsRejectedTextPrivate(t *testing.T) {
 	require.Equal(t, "step_limit", done.Reason)
 	require.Empty(t, done.Result)
 	model.mu.Lock()
-	require.Len(t, model.requests, 1)
+	// The optional note is also invalid and must remain private.
+	require.Len(t, model.requests, 2)
 	model.mu.Unlock()
 	code, raw := f.request(t, "alice", http.MethodGet, "/v1/runs/"+r.ID+"/events", "", nil)
 	require.Equal(t, http.StatusOK, code)

@@ -23,7 +23,7 @@ func (e *Engine) inferOrCompact(ctx context.Context, run domain.Run, principal d
 	if compacted || err != nil {
 		return compacted, checkpointedResult(err)
 	}
-	return e.inferTurn(ctx, run, principal, token, model, turn.items)
+	return e.inferTurn(ctx, run, principal, token, model, turn)
 }
 
 type compactCapability interface {
@@ -96,7 +96,7 @@ func (e *Engine) compactActive(ctx context.Context, run domain.Run, model domain
 	}
 	step, err := e.store.BeginStep(ctx, run.ID, e.opts.Owner, run.Fence, activeCompactionKind, intent, reserve)
 	if err != nil {
-		return false, checkpointed(e.admissionFailure(ctx, run, err))
+		return e.compactionDenied(ctx, run, model, principal, token, turn, err)
 	}
 	request.ClientRequestID = step.ID
 	request.Instructions = strings.Replace(request.Instructions, agentInstructions, compactionInstructions, 1)
@@ -142,6 +142,22 @@ func supportsNativeCompaction(client provider.Client, request provider.Request) 
 		return capable.SupportsCompaction(request)
 	}
 	return true
+}
+
+// compactionDenied stops a turn whose compaction reservation was refused. A run
+// that used its own allowance reports its progress before the pause.
+func (e *Engine) compactionDenied(ctx context.Context, run domain.Run, model domain.Model,
+	principal domain.Principal, token string, turn *turnState, denied error,
+) (bool, error) {
+	denial, ok := errors.AsType[*domain.Error](denied)
+	if !ok || denial.Code != budgetExhaustedReason {
+		return false, checkpointed(e.admissionFailure(ctx, run, denied))
+	}
+	again, err := e.pauseWithNote(ctx, run, principal, token, model, turn, budgetExhaustedReason)
+	if again {
+		return true, err
+	}
+	return false, checkpointed(err)
 }
 
 // Do not compact a checkpoint again until a later model step adds new context.
@@ -207,6 +223,11 @@ func (e *Engine) restoreActiveCompaction(ctx context.Context, run domain.Run, tu
 		return e.stopTurn(ctx, run, domain.Failed, "checkpoint_invalid")
 	}
 	turn.items = append([]provider.Item{}, response.Output...)
+	if len(turn.recoveryReceipts) > 0 {
+		// A provider checkpoint is lossy. Restore the authoritative, freshly
+		// authorized receipts after it before replaying later steps or dispatch.
+		turn.items = restoreRecoveryReceipts(turn.items, turn.recoveryReceipts)
+	}
 	turn.pending = nil
 	turn.finalCandidate = ""
 	return nil

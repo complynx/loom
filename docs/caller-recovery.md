@@ -1,5 +1,10 @@
 # Caller restart and delegated authorization
 
+For a lost run pointer or an unusable predecessor, use
+[conversation recovery](api/conversation-recovery.md). Keep the same chat, original
+message bodies and idempotency keys. A transport error alone is not a reason to
+create a new run or to cancel work.
+
 A delegated service needs a current trusted caller registration as well as valid
 tokens or a saved authorization session. Discovery removes a caller that is no
 longer registered. Loom does not borrow permissions from its old registration.
