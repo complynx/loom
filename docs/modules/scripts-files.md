@@ -49,6 +49,11 @@ include bounded declared top-level `fields`; raw values and backend messages
 are excluded. JavaScript failures can include a standard `exception` name.
 The same classification survives the worker IPC boundary.
 
+An invalid script envelope explains the nonempty `code` requirement and the
+65536-byte source limit. Help pagination failures retain `invalid_arguments`
+and explain which bound or cursor to correct. When a file refresh detects changed content, a
+`state_conflict` recovery instruction asks for the required version.
+
 A rejected module promise can be caught in JavaScript:
 
 ```js

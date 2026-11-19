@@ -132,7 +132,7 @@ func (e *Engine) limitNoteRequest(
 		Input:           append(items, provider.Message("developer", limitNoteInstruction)),
 		Tools:           tools,
 		MaxOutputTokens: min(model.MaxOutputTokens, limitNoteOutputTokens),
-		Instructions:    conversationInstructions(run),
+		Instructions:    conversationInstructions(run, ""),
 	}, true
 }
 

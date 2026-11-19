@@ -111,13 +111,22 @@ again and pauses again if the wallet still cannot pay.
 
 The prepared effect stays blocked while the agent interprets messages. Exact
 parameters, binding hash, operation ID, expiry, latest question and accepted message
-are supplied outside compacted history. The original model call gets a blocked
-result so the agent can continue talking without dispatching it.
+are supplied outside compacted history. The original model call gets a
+`pending_user_decision` result when it closes after steering. This result means
+the call was staged. The latest steering message may already answer the request.
+Loom supplies one resolution instruction with the current dialogue context in
+each request that can continue the action. Retained tool results stay unchanged
+as later actions wait for consent.
 
 The agent can ask a follow-up, discuss cost, refuse, or call
 `interaction_resolve({input_id,approval_id,argument_hash,decision})`, with
-`decision=approve|reject`. This is a model function, not a client endpoint or JS
-module. Its help is available through `modules.help.read`.
+`decision=approve|reject`. For explicit consent or refusal, call this function next.
+Copy `input_id` from `latest_input.id` and `approval_id` and `argument_hash` from
+`pending_action`. Ask a focused question when the reply is ambiguous or the binding
+is missing. If available, use an authorized service status read to check the
+outcome of a known prior attempt.
+Call `interaction_resolve` outside JavaScript. Read its card with
+`modules.help.read({module:"$tools",method:"interaction_resolve"})`.
 
 The runtime checks the running lease, exact proposal, expiry and accepted input
 revision. Messages from before that proposal or superseded by another accepted
@@ -221,7 +230,14 @@ Client HTTP errors include `422 unsupported_reply_mode`, `409 use_steering`,
 applicable to the input kind. The internal `interaction_resolve` tool returns errors
 as tool data, for example `interaction_conflict`, `input_conflict`,
 `consent_superseded`, `presentation_conflict`, `interaction_resolved`, or
-`approval_expired`. These do not approve or dispatch a replacement operation.
+`approval_expired`. Recoverable results can include one `recovery` instruction.
+After supersession, use a newer reply only if it explicitly addresses the current
+proposal. A conflicting presentation requires a fresh reply. These failures do
+not approve or dispatch a replacement operation.
+
+Use question text of 1 to 8000 UTF-8 bytes and no more than 20 choices. Each
+choice has a unique nonempty ID and a nonempty label. A choices-only client
+requires at least one choice.
 
 See [API](api.md), [trust boundaries](security.md), [storage](data.md) and
 [failure behavior](failures.md#inputs-and-retries).

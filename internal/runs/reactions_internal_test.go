@@ -66,7 +66,7 @@ func TestReactionAvailabilityMatchesExecutionCapability(t *testing.T) {
 					}
 				}
 				require.Equal(t, tc.available, found)
-				instructions := conversationInstructions(run)
+				instructions := conversationInstructions(run, pendingDecisionInstructions)
 				if tc.available {
 					require.Contains(
 						t,

@@ -95,8 +95,9 @@ Local caller-input failures before preparation return `error: "invalid_arguments
 with `validation.reason` (`schema_validation`, `invalid_json`, `too_large` or
 `too_complex`). When available, `validation.fields` contains at most eight declared
 top-level field names of at most 128 ASCII characters. Values, unknown property
-names, nested keys and raw validator messages are excluded. Read the full method
-contract with `help.read`, correct the arguments and use a new tool-call ID.
+names, nested keys and raw validator messages are excluded. The result includes a
+`recovery` instruction. Read the full method contract with `help.read`, correct
+the arguments and use a new tool-call ID.
 Loom does not automatically retry the mutation. A corrected call still follows
 normal preparation, authorization and exact consent. Invalid backend preparation
 data and actual dependency failures are not caller argument errors.

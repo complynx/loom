@@ -24,6 +24,23 @@ func SafeFailure(err error) *domain.ToolError {
 		switch known.Code {
 		case "skill_version_conflict", "memory_version_conflict":
 			return failure(known.Code, "Read the current version and resolve the conflict before editing again.")
+		case "help_page_too_small":
+			return failure("invalid_arguments", "Increase max_bytes (up to 32768). Keep the same filters and after_id.")
+		case "invalid_help_cursor":
+			return failure(
+				"invalid_arguments",
+				"Copy next_cursor from the previous card page. To read a fresh card, omit cursor.",
+			)
+		case "invalid_help_bounds":
+			return failure(
+				"invalid_arguments",
+				"Use integer limit 1 to 50 and max_bytes 256 to 32768, or omit them for defaults.",
+			)
+		case "file_version_changed":
+			return failure(
+				"state_conflict",
+				"Ask for an authorized reference to the required version. Do not substitute different file content.",
+			)
 		}
 		switch known.Status {
 		case http.StatusUnauthorized, http.StatusForbidden:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -46,6 +47,15 @@ func TestScriptFailuresAreActionableAndDoNotLeak(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"code":"tool_failed","module":"example","method":"read"}`, string(out))
+}
+
+func TestHelpPageFailureExplainsHowToRetry(t *testing.T) {
+	t.Parallel()
+	err := domain.NewError(http.StatusUnprocessableEntity, "help_page_too_small")
+	failure := sandbox.SafeFailure(err)
+	require.Equal(t, "invalid_arguments", failure.Code)
+	require.Contains(t, failure.Recovery, "Increase max_bytes")
+	require.Contains(t, failure.Recovery, "same filters and after_id")
 }
 
 func TestWorkerProtocolPreservesClassifiedFailures(t *testing.T) {

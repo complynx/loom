@@ -99,7 +99,9 @@ func (b *ModuleBridge) Call(
 	validArguments := decoder.Decode(&args) == nil
 	if !validArguments || args.Module == "" || args.Method == "" || !json.Valid(args.Arguments) ||
 		len(args.ResumeOperationID) > 256 {
-		return json.RawMessage(`{"error":"invalid_module_call"}`), nil, nil
+		return json.RawMessage(
+			`{"error":"invalid_module_call","recovery":"Check the module_call schema. Supply module, method, arguments and confirmation_text. Use resume_operation_id only to adopt a known original operation."}`,
+		), nil, nil
 	}
 	fresh, credential, err := b.authorize(ctx, run)
 	if err != nil {

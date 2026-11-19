@@ -42,7 +42,7 @@ func standardTools(interaction domain.Interaction) []provider.Tool {
 		tools = append(tools, provider.Tool{
 			Type:        toolFunctionType,
 			Name:        toolInteractionResolve,
-			Description: "Resolve an agent-mode pending action from explicit consent/refusal in the latest accepted user message. Exact proposal only. Never resolve protocol/exact_text actions. Clarifications: ask question instead. Changed parameters: reject then prepare a new action.",
+			Description: "Standalone model function. Apply explicit consent or refusal of the exact current pending agent-mode action using runtime dialogue context. Changed parameters: reject then prepare a new action. Protocol/exact_text actions require runtime confirmation.",
 			Parameters: json.RawMessage(
 				`{"type":"object","properties":{"input_id":{"type":"string"},"approval_id":{"type":"string"},"argument_hash":{"type":"string"},"decision":{"type":"string","enum":["approve","reject"]}},"required":["input_id","approval_id","argument_hash","decision"],"additionalProperties":false}`,
 			),
@@ -97,7 +97,9 @@ func (e *Engine) executeCall(
 		}
 		if err := decodeArguments(call.Arguments, &input); err != nil || input.HandleID == "" {
 			//nolint:nilerr // Invalid arguments are returned as model-visible data.
-			return json.RawMessage(`{"error":"invalid_handle"}`), false, nil
+			return json.RawMessage(
+				`{"error":"invalid_handle","recovery":"Pass a temporary handle_id from modules.artifacts.open or a supported file method."}`,
+			), false, nil
 		}
 		if e.opts.Attachment == nil {
 			return json.RawMessage(`{"error":"artifact_unavailable"}`), false, nil
@@ -135,7 +137,9 @@ func (e *Engine) executeModuleCall(
 ) (json.RawMessage, bool, error) {
 	if run.Interaction.ReplyMode == domain.ReplyModeAgent && run.Approval != nil && run.Approval.Decision == "" &&
 		run.Approval.Call != nil && run.Approval.Call.ID != call.ID {
-		return json.RawMessage(`{"error":"resolve_pending_action_first"}`), false, nil
+		return json.RawMessage(
+			`{"error":"resolve_pending_action_first","recovery":"Finish the current approval before starting another action. Check pending_action and its reply mode."}`,
+		), false, nil
 	}
 	if e.opts.ModuleCall == nil {
 		return json.RawMessage(`{"error":"module_call_unavailable"}`), false, nil
@@ -185,7 +189,7 @@ func (e *Engine) executeScriptCall(
 	if err := decodeArguments(call.Arguments, &args); err != nil || args.Code == "" || len(args.Code) > maxScriptBytes {
 		//nolint:nilerr // Invalid arguments are returned as structured model-visible results.
 		return json.RawMessage(
-			`{"error":"invalid_script"}`,
+			`{"error":"invalid_script","recovery":"Supply a nonempty code string of at most 65536 UTF-8 bytes. Split larger work across scripts."}`,
 		), false, nil
 	}
 	if e.opts.Script == nil {
@@ -223,13 +227,15 @@ func (e *Engine) executeQuestionCall(
 		len(args.Choices) > maxQuestionChoices {
 		//nolint:nilerr // Invalid arguments are returned as structured model-visible results.
 		return json.RawMessage(
-			`{"error":"invalid_question"}`,
+			`{"error":"invalid_question","recovery":"Supply text of 1 to 8000 UTF-8 bytes, up to 20 choices, and a boolean allow_text."}`,
 		), false, nil
 	}
 	seen := map[string]bool{}
 	for _, choice := range args.Choices {
 		if choice.ID == "" || choice.Label == "" || seen[choice.ID] {
-			return json.RawMessage(`{"error":"invalid_choices"}`), false, nil
+			return json.RawMessage(
+				`{"error":"invalid_choices","recovery":"Give each choice a unique nonempty id and a nonempty label."}`,
+			), false, nil
 		}
 		seen[choice.ID] = true
 	}
@@ -254,7 +260,9 @@ func (e *Engine) executeQuestionCall(
 		args.AllowText = true
 	}
 	if len(args.Choices) == 0 && !args.AllowText && run.Interaction.Questions == "choices" {
-		return json.RawMessage(`{"error":"choice_required"}`), false, nil
+		return json.RawMessage(
+			`{"error":"choice_required","recovery":"This client requires choices. Provide at least one selectable option."}`,
+		), false, nil
 	}
 	timeout := settings.QuestionTimeoutSeconds
 	if timeout <= 0 {
