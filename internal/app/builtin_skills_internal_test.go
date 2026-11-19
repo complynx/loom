@@ -110,6 +110,7 @@ func TestBuiltinSkillReadSurvivesRemoteDiscoveryFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, registry.Refresh(t.Context()))
 	p := domain.Principal{
+		Issuer:      "https://test.identity",
 		Subject:     "operator",
 		OrgID:       "org",
 		Permissions: map[string]bool{"chat.read": true, diagnosticsPermission: true},
@@ -146,6 +147,16 @@ func TestBuiltinSkillReadSurvivesRemoteDiscoveryFailure(t *testing.T) {
 	require.NoError(t, json.Unmarshal(result, &loaded))
 	require.Equal(t, "diagnose-run", loaded.Name)
 	require.NotEmpty(t, loaded.Body)
+	catalog, err := tools.help(
+		t.Context(), run, p, helpListMethod, json.RawMessage(`{"module":"offline"}`),
+	)
+	require.NoError(t, err)
+	var unavailable helpIndexResult[helpEntry]
+	require.NoError(t, json.Unmarshal(catalog, &unavailable))
+	require.Empty(t, unavailable.Items)
+	require.Len(t, unavailable.Warnings, 1)
+	require.Contains(t, unavailable.Warnings[0], "Remote methods can be missing")
+	require.Empty(t, unavailable.Recovery)
 	page, err := tools.skills(t.Context(), run, helpListMethod, json.RawMessage(`{}`))
 	require.NoError(t, err)
 	require.Contains(t, string(page), "diagnose-run")

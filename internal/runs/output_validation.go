@@ -112,7 +112,9 @@ func (e *Engine) presentApproval(
 	}
 	if decodeArguments(call.Arguments, &args) != nil || args.Text == "" || len(args.Text) > maxQuestionBytes {
 		//nolint:nilerr // Argument failures are bounded model-visible data.
-		return json.RawMessage(`{"error":"invalid_presentation"}`), false, nil
+		return json.RawMessage(
+			`{"error":"invalid_presentation","recovery":"Use the approval_id from validation feedback and replacement text of 1 to 8000 UTF-8 bytes."}`,
+		), false, nil
 	}
 	if run.OutputPolicy.InvalidText(args.Text) {
 		return outputValidationResult(), false, nil

@@ -34,17 +34,32 @@ Clients can [request service expansion](../api/runs-input.md#initial-discovery-e
 
 If even one complete escaped hint cannot fit its initial expansion share, that service returns an empty partial page with an `initial_expansion_page_too_small` warning. Start ordinary `help.list` for that service without a cursor and with a larger `max_bytes`. This presentation limit does not block the run or hide the capability from discovery.
 
-Use the index first:
+List the categories of a known service:
 
 ```javascript
 return await modules.help.list({level: "modules", service: "booking-service"});
-// Or search globally without first choosing a service/category:
+```
+
+If you know the category, list its methods by module ID:
+
+```javascript
+return await modules.help.list({module: "massage"});
+```
+
+To search all authorized methods, omit both filters:
+
+```javascript
 return await modules.help.list({query: "booking", limit: 10});
 ```
 
-`level` selects `services`, `modules` or `methods` (default, preserving existing calls). `service` and `module` optionally filter entries. `query` is a case-insensitive literal substring of IDs, service/category/method purpose hints and full method descriptions. Global search omits service/module; it searches every permitted method, including entries outside the initial pages. This is not an intent-specific allowlist or classifier. With query, group counts cover matching methods. Several relevant categories or full cards can be read in one script.
+`level` selects `services`, `modules` or `methods` (default, preserving existing calls). `service` and `module` optionally filter by service ID and category ID respectively. `query` is a case-insensitive literal substring of IDs, service/category/method purpose hints and full method descriptions. If a search is empty, check the IDs or omit `service` and `module` and search with a short term. Global search covers every permitted method, including entries outside the initial pages. With query, group counts cover matching methods. Several relevant categories or full cards can be read in one script.
 
-`limit` is 1..50 (default 20). `max_bytes` is 256..32768 (default 8192), including serialized items, cursors and warnings. Results contain `items`, `partial` and optional `next_cursor`; pass that cursor as `after_id` with the same level and filters. If a complete entry cannot fit, `help_page_too_small` asks the caller to raise `max_bytes`. Method entries include `service`, `module`, `method`, `id`, `summary` and `effect`. Group entries contain `id`, `summary` and `method_count`; categories also contain `service`, and services contain `module_count`.
+`limit` is 1..50 (default 20). `max_bytes` is 256..32768 (default 8192), including serialized items, cursors, warnings and recovery. Results contain `items`, `partial` and optional `next_cursor`; pass that cursor as `after_id` with the same level and filters. If a complete entry cannot fit, the script receives `invalid_arguments` with guidance to raise `max_bytes`. Method entries include `service`, `module`, `method`, `id`, `summary` and `effect`. Group entries contain `id`, `summary` and `method_count`; categories also contain `service`, and services contain `module_count`.
+
+An empty first page for a filtered search can include one `recovery` instruction.
+If `warnings` reports `remote_catalog_unavailable`, the results can omit remote
+methods. Built-in help remains available. Report the partial catalog before
+concluding that a capability is unavailable.
 
 Read a selected method:
 

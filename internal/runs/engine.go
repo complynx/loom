@@ -621,7 +621,7 @@ func (e *Engine) inferTurn(
 		Input:           items,
 		Tools:           tools,
 		MaxOutputTokens: model.MaxOutputTokens,
-		Instructions:    conversationInstructions(run),
+		Instructions:    conversationInstructions(run, pendingDecisionInstructions),
 	}
 	request.Instructions, toolsErr = e.userMemoryInstructions(ctx, run, principal, request.Instructions)
 	if toolsErr != nil {

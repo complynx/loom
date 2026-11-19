@@ -46,6 +46,23 @@ func TestLimitNoteUsesLowestAllowedEffort(t *testing.T) {
 	require.Equal(t, 1024, request.MaxOutputTokens)
 }
 
+func TestLimitNotePreservesPendingDecisionContext(t *testing.T) {
+	t.Parallel()
+	e := New(nil, nil, Options{})
+	run := domain.Run{
+		Interaction: domain.Interaction{ReplyMode: domain.ReplyModeAgent},
+		Approval: &domain.Approval{
+			ID: "held-approval", ArgumentHash: "held-hash", ReplyMode: domain.ReplyModeAgent,
+		},
+		ConversationInput: &domain.RunInput{ID: "latest-reply", Text: "Yes, book the slot."},
+	}
+	request, ready := e.limitNoteRequest(t.Context(), run, domain.Principal{}, "", domain.Model{}, &turnState{})
+	require.True(t, ready)
+	require.Contains(t, request.Instructions, "latest-reply")
+	require.Contains(t, request.Instructions, "held-approval")
+	require.NotContains(t, request.Instructions, "call interaction_resolve next")
+}
+
 type noteTokenCounter struct{}
 
 func (noteTokenCounter) Respond(context.Context, provider.Request) (provider.Response, error) {

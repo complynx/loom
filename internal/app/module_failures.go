@@ -45,6 +45,7 @@ func (b *ModuleBridge) moduleCallFailure(
 	response := map[string]any{moduleFailureKey: code}
 	if invalidArguments && code == invalidArgumentsCode {
 		response["validation"] = invalid
+		response["recovery"] = "Read the exact method contract with modules.help.read. Check validation.fields when present. Ask for any missing user choice. Use a new call for corrected arguments and follow its normal approval flow."
 	}
 	if found {
 		response["operation_id"] = op.ID

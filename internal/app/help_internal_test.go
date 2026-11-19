@@ -91,7 +91,11 @@ func TestHelpDiscoverReadAndPageWithCurrentRights(t *testing.T) {
 	require.Error(t, err)
 	raw, err = f.tools.builtin(t.Context(), f.run, helpModule, helpListMethod, json.RawMessage(`{"module":"files"}`))
 	require.NoError(t, err)
-	require.JSONEq(t, `{"items":[],"partial":false}`, string(raw))
+	var empty helpIndexResult[helpEntry]
+	require.NoError(t, json.Unmarshal(raw, &empty))
+	require.Empty(t, empty.Items)
+	require.False(t, empty.Partial)
+	require.Contains(t, empty.Recovery, "drop the filters")
 	f.tools.cfg.Search.SemanticEnabled = false
 	_, err = f.tools.builtin(
 		t.Context(),

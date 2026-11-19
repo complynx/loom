@@ -48,7 +48,10 @@ func TestSemanticToolIsHiddenWhenDisabled(t *testing.T) {
 		json.RawMessage(`{"module":"history","query":"semantic"}`),
 	)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"items":[],"partial":false}`, string(page))
+	var empty helpIndexResult[helpEntry]
+	require.NoError(t, json.Unmarshal(page, &empty))
+	require.Empty(t, empty.Items)
+	require.False(t, empty.Partial)
 	tools.cfg.Search.SemanticEnabled = true
 	catalog, err = tools.tools(t.Context(), domain.Run{}, p, "")
 	require.NoError(t, err)

@@ -60,7 +60,7 @@ func (e *Engine) compactActive(ctx context.Context, run domain.Run, model domain
 	}
 	request := provider.Request{Provider: model.Provider, Model: model.ProviderModel,
 		Effort: run.Effort, Input: turn.items, Tools: tools, MaxOutputTokens: model.MaxOutputTokens,
-		Instructions: conversationInstructions(run)}
+		Instructions: conversationInstructions(run, pendingDecisionInstructions)}
 	request, raw, err := e.encodeMemoryRequest(ctx, run, principal, request)
 	if err != nil {
 		return false, err
@@ -101,6 +101,8 @@ func (e *Engine) compactActive(ctx context.Context, run domain.Run, model domain
 	request.ClientRequestID = step.ID
 	request.Instructions = strings.Replace(request.Instructions, agentInstructions, compactionInstructions, 1)
 	request.Instructions = strings.Replace(request.Instructions, reactionAvailability, "", 1)
+	// Count the guidance in the turn estimate above, then omit it from the summary request.
+	request.Instructions = strings.Replace(request.Instructions, pendingDecisionInstructions, "", 1)
 	request.MaxOutputTokens = int(outputBound)
 	request.Tools = nil
 	inferCtx, cancel := context.WithTimeout(ctx, e.opts.InferenceTimeout)

@@ -98,7 +98,10 @@ func (t runtimeTools) helpCatalog(
 		if ctx.Err() != nil {
 			return nil, nil, nil, ctx.Err()
 		}
-		warnings = append(warnings, "remote_catalog_unavailable; builtin help remains available")
+		warnings = append(
+			warnings,
+			"remote_catalog_unavailable; builtin help remains available. Remote methods can be missing from these results.",
+		)
 	}
 	entries, cards, err := t.helpEntries(r, p, reads, actions)
 	return entries, cards, warnings, err

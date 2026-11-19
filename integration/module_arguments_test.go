@@ -42,6 +42,7 @@ func TestModuleCallInvalidArgumentsNeverReachBackend(t *testing.T) {
 			require.Nil(t, approval)
 			var result struct {
 				Error      string `json:"error"`
+				Recovery   string `json:"recovery"`
 				Validation struct {
 					Fields []string `json:"fields"`
 				} `json:"validation"`
@@ -49,6 +50,8 @@ func TestModuleCallInvalidArgumentsNeverReachBackend(t *testing.T) {
 			require.NoError(t, json.Unmarshal(raw, &result))
 			require.Equal(t, "invalid_arguments", result.Error)
 			require.Contains(t, result.Validation.Fields, "slot_id")
+			require.Contains(t, result.Recovery, "modules.help.read")
+			require.Contains(t, result.Recovery, "normal approval")
 			require.NotContains(t, string(raw), "DO_NOT_EXPOSE")
 			require.NotContains(t, string(raw), "private_input")
 			op, found, err := coordinator.FindByCall(t.Context(), run.ID, call.ID)

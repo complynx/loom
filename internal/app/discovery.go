@@ -105,6 +105,7 @@ type helpIndexResult[T any] struct {
 	Partial    bool     `json:"partial"`
 	NextCursor string   `json:"next_cursor,omitempty"`
 	Warnings   []string `json:"warnings,omitempty"`
+	Recovery   string   `json:"recovery,omitempty"`
 }
 
 // helpIndexPage bounds complete entries and includes continuation metadata in the byte limit.
@@ -144,6 +145,10 @@ func helpIndexPage[T any](
 		}
 	}
 	result.Partial, result.NextCursor = false, ""
+	if len(result.Items) == 0 && len(warnings) == 0 && input.AfterID == "" &&
+		(input.Service != "" || input.Module != "" || input.Query != "") {
+		result.Recovery = "Check any service or module filter. If needed, drop the filters and search with one short literal term."
+	}
 	return json.Marshal(result)
 }
 
