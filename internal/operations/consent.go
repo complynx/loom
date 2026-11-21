@@ -100,6 +100,18 @@ func (c *Coordinator) invalidateAfterFailure(ctx context.Context, op Operation, 
 }
 
 func (c *Coordinator) invalidateUnsentFailure(ctx context.Context, op Operation, failure error) (Operation, error) {
+	if op.ExternalSessionID != "" {
+		// Only a proven pre-RPC failure can reopen a dispatch claim. An
+		// individual decision survives it; a remembered rule is checked again.
+		op.State = statePrepared
+		if op.Mode == noConfirmation || op.ExternalDecision != "" {
+			op.State = stateApproved
+		}
+		if err := c.saveDetached(ctx, op, stateDispatching); err != nil {
+			return op, err
+		}
+		return op, failure
+	}
 	if err := c.invalidateConsent(ctx, op.RunID, op.ID); err != nil {
 		return op, err
 	}

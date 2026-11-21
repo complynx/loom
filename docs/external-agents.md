@@ -1,9 +1,9 @@
 # External agents
 
 A user can connect their own agent to Loom through the Model Context Protocol
-(MCP). The agent uses the same command interpreter that the internal agent
-uses: one `script` tool with permission-filtered modules. Loom does not run
-inference for these calls. The user's agent supplies its own model.
+(MCP). The agent reads permission-filtered modules through `script`. If the
+user enables writes, the agent uses the separate write tools. The user's
+agent supplies its own model for both paths.
 
 This page is the contract for operators, chat clients, module authors and
 clients of the MCP endpoint. It also records the agreed design for the parts
@@ -17,11 +17,12 @@ that are not implemented.
 | Service reads through marked methods | Implemented with a separate token from a [token service](#token-services). Off until a discovered service declares a token endpoint and the operator approves it. |
 | User profile written by a confirming chat client | Implemented. |
 | MCP sessions and revoke controls in the internal agent | Implemented. |
-| `external_agent` method mark in manifests | Implemented for read methods. |
+| `external_agent` method mark in manifests | Implemented for eligible read and write methods. |
 | History record for each external action | Implemented. |
 | Acceptance with a real MCP client and the installed issuer | Open. See [Acceptance](#acceptance). |
-| External service writes and personal-memory writes | Not implemented. See [Planned writes](#planned-writes). |
-| Files, paid transcription, diagnostics and administration tools | Not available to external agents. |
+| External service writes | Implemented for marked idempotent service methods with status. See [Service writes](#service-writes). |
+| External personal-memory writes | Planned. |
+| Files, paid transcription, Loom diagnostics and administration tools | Not available to external agents. |
 
 ## Execution model
 
@@ -79,7 +80,7 @@ endpoint and the profile routes are not served and return `404`.
 `GET /v1/capabilities` reports the feature to registered clients:
 
 ```json
-{"external_agent": {"version": 1, "resource": "https://loom.example.com/mcp", "access": ["history", "memory", "skills"], "token_services": ["replace-with-service-id"]}}
+{"external_agent": {"version": 1, "resource": "https://loom.example.com/mcp", "access": ["history", "memory", "skills", "writes"], "token_services": ["replace-with-service-id"]}}
 ```
 
 The key is absent when the endpoint is disabled. A chat client must check it
@@ -284,7 +285,7 @@ external agents to users who already use that client.
 | Method | Path | Body | Result |
 | --- | --- | --- | --- |
 | GET | `/v1/users/me/external-agent` | None | Profile. |
-| PUT | `/v1/users/me/external-agent` | `{enabled, history, memory, skills, version}` | Updated profile. |
+| PUT | `/v1/users/me/external-agent` | `{enabled, history, memory, skills, writes, version}` | Updated profile. |
 
 Both routes require `external_agent.profile.write`. PUT uses fresh
 authorization and bypasses the positive claims cache. PUT also requires a
@@ -301,6 +302,7 @@ the permission.
 | `history` | Allows `modules.history.search` and `modules.history.read` in the default chat. The history can contain results of methods that are not marked for external agents. |
 | `memory` | Allows `modules.memory.state`, `list` and `read`. Memory writes stay unavailable. |
 | `skills` | Allows disclosure from the user's organization skill library. Omission is false, including in requests from older confirming clients. |
+| `writes` | Enables the write tools of marked services. Omission is false. Turning it off closes connections that have performed or prepared a write. |
 | `version` | Current stored version. Zero creates the profile. A stale value returns `409 external_agent_profile_version_conflict`; read again and resolve. |
 
 The response also contains `confirmed_by` (the actor that wrote the profile)
@@ -342,8 +344,8 @@ This is a method fragment, not a complete manifest.
   external agents until its author marks it.
 - The mark does not grant permissions. The user's module and method permission
   categories still apply.
-- Only read methods are served now. A marked write or delete method stays
-  unavailable until [writes](#planned-writes) exist.
+- Marked mutations use the separate [write catalog and tools](#service-writes).
+  Read scripts contain only read methods.
 - A method result can include artifact descriptors. Loom does not import them
   for an external agent and returns only `result`.
 
@@ -528,63 +530,68 @@ the new caller permission from published manifests. Events of type
 `external_agent.action` remain in chat history; an older binary gives them to
 the internal agent as plain text.
 
-## Planned writes
+## Service writes
 
-The design below is agreed and not implemented. It needs an accepted
-[token service](#token-services) in the installation first.
+An enabled `writes` profile switch adds the `write_catalog`, `write`,
+`write_status` and `write_continue` MCP tools. The confirming chat client
+sets this switch with the existing profile route. The same token service
+must be selected for creation, receipt lookup and continuation.
 
-- **Operations without a run.** A write keeps the prepare, consent, dispatch
-  and status-recovery contract of [durable operations](modules/calls-confirmation.md).
-  Its owner becomes the external session instead of a run. Dispatch does not
-  use the run engine.
-- **Standalone confirmations.** When a write needs confirmation, use a separate
-  chat message with inline approve and cancel controls bound to its approval
-  ID. Free text never approves an external action. Approvals of the internal
-  agent keep their existing reply modes.
-- **Expanded choices.** The third button, `↓ More`, expands the same message
-  without making a decision. It retains the one-time choices and adds three
-  choices for this connection: allow future requests of this type (the exact
-  service, module and method), allow future requests from this category (the
-  exact service and module), or allow all eligible future writes. The footer
-  explains that a method grant includes different arguments, a category grant
-  includes other eligible methods, and an all-writes grant can apply to other
-  services. Eligible actions can change data or incur charges without another
-  prompt until this connection ends, within 24 hours of initialization. Label
-  the three choices with their actual targets.
-- **Remembered approval.** A trusted callback approves the current sealed
-  operation and saves the selected rule together. A rule belongs to one MCP
-  session and disappears on session closure, expiry or revocation. Every
-  dispatch still needs current profile and service permission, a valid
-  preparation and an applicable rule. A rule cannot bypass a method's
-  mandatory per-operation approval. Methods must explicitly allow remembered
-  approval before a rule can cover them. The main bot can inspect and remove
-  rules. Rule changes that widen access require the user's trusted approval.
-- **Source.** The approval carries its source, and the message shows it.
-- **System text.** The message text comes from Loom and from the service's
-  prepare description. Text from the external agent is not shown.
-- **Resolution.** After the decision is accepted, the client removes the
-  controls and changes the message to confirmed or cancelled. An expired
-  preparation changes the message to expired.
-- **Limit.** The number of unresolved confirmations per profile is bounded.
-- **Delivery.** The confirming client of the profile receives its approvals.
-- **Profile.** Service writes and memory writes get their own profile
-  switches. A memory write also needs a standalone confirmation that shows
-  the exact text.
-- **Result.** A write call returns `waiting_approval` with its operation ID.
-  The agent reads the outcome by that ID. The outcome is also written to
-  history.
-- **Credentials after approval.** An approval callback does not have the
-  agent's bearer token. An explicit continuation from the same session can
-  supply a fresh token to dispatch the approved operation. Keep status lookup
-  read-only and keep the original operation ID across retries.
+Only marked, idempotent actions with a status endpoint and no artifact
+imports are available. A `write` uses a UUID request ID. Retry with the
+same request ID, service, method and arguments to recover its receipt.
+The retry never dispatches an existing operation. Keep its operation ID
+for status or continuation. The operation belongs to the MCP session.
+A method marked `external_agent_protected_arguments` uses a sealed
+argument envelope bound to its operation ID. It must have no confirmation
+step and must return a redacted receipt. Loom uses its storage keyring
+and does not send these arguments to the confirming service. Keep the
+previous read key available until sessions with affected operations expire. Loom sends neither the
+agent token nor any credentials to the approving user.
 
-Service methods already implementing `service_id` or `exact_parameters`,
-idempotent execute and status lookup are candidates. For example, the
-[sample massage service](../examples/manifest.json) declares booking with a
-service-generated confirmation. Loom can reuse the service RPCs. The current
-coordinator dispatch still requires a run, its lease and its consent revision.
-A session-owned operation needs a standalone dispatch and decision boundary
-before any service write is available through MCP.
+The confirming service advertises `external_agent_tokens.approval_path`.
+Loom sends the signed-in subject, client label, sealed operation ID,
+prepared description and expiry there, using the configured token-service
+secret. If the confirming service also prepared the operation, Loom sends
+its normalized arguments so the client can verify the saved terms. The
+client presents a private Telegram decision. It submits
+`POST /v1/users/me/external-agent/approvals/{id}/decision` with delegated
+authorization and a body `{"choice":"once"}`. Other choices are `reject`,
+`method` and `all`. The deciding actor must match the confirming profile.
+The decision route changes consent only. The external client calls
+`write_continue` with its current MCP credential to execute.
+
+`external_agent_remember: true` enables method and all-eligible buttons.
+A remembered choice applies only to new writes in that MCP session, up
+to 24 hours after initialization.
+Per-operation approval remains mandatory on other methods. Revocation and
+session expiry remove the remembered choices. The write transport uses the
+selected token service's secret in `X-Loom-External-Write-Key` for prepare,
+execute and status. This header is sent only to that service.
+
+A write that needs Telegram returns `waiting_approval`. Receipt lookup
+alone does not confirm delivery. When delivery is `unconfirmed` and the
+prompt did not arrive, call `write_continue` with the original operation ID.
+It resumes approval delivery without executing an unapproved write.
+The profile can have eight pending operations at a time. The confirming
+client uses the service's prepared description and shows the MCP client
+label. Free text cannot decide an operation. On dispatch, Loom records
+the result as a passive event in the user's chat.
+
+The coordinator preserves the run-owned path for internal agents. MCP
+operations instead lock the active session and confirming profile before
+recording dispatch intent. After a proven pre-dispatch failure, retry
+continuation on the original operation. An uncertain dispatch is reconciled
+through the status RPC for the same operation while the owning connection
+is active. Reading a stored result requires the service to authorize the
+operation through its current status RPC. Continuation still requires the
+original sealed write contract. Replay with the
+same request ID returns a failed receipt with `preparation_interrupted`
+after an abandoned preparation.
+
+Migration 00014 preserves old operation receipts and adds an opt-in
+switch to existing profiles. Disable writes before rolling back the
+binary. The down migration refuses to discard receipts from MCP sessions.
 
 ## Acceptance
 

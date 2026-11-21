@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+
+	"github.com/complynx/loom/internal/domain"
 )
 
 const externalTokenLimit = 64 << 10
@@ -12,7 +14,44 @@ const externalTokenLimit = 64 << 10
 // ExternalAgentTokens declares the endpoint where Loom gets a user's service
 // token for an external agent.
 type ExternalAgentTokens struct {
-	Path string `json:"path"`
+	Path         string `json:"path"`
+	ApprovalPath string `json:"approval_path,omitempty"`
+}
+
+func validateExternalAgentEndpoints(tokens *ExternalAgentTokens) error {
+	if tokens == nil {
+		return nil
+	}
+	if err := validPath(tokens.Path); err != nil {
+		return err
+	}
+	if tokens.ApprovalPath != "" {
+		return validPath(tokens.ApprovalPath)
+	}
+	return nil
+}
+
+// DeliverExternalApproval sends the prepared decision to the registered
+// confirming client. Its subject and issuer came from the profile.
+func (r *Registry) DeliverExternalApproval(
+	ctx context.Context, issuer, confirmer string, secrets map[string]string, approval domain.ExternalApproval,
+) error {
+	for _, service := range r.snapshot() {
+		manifest := service.manifest
+		if manifest.Caller == nil || manifest.Caller.Auth.Issuer != issuer ||
+			manifest.Caller.Auth.Subject != confirmer || manifest.ExternalAgentTokens == nil ||
+			manifest.ExternalAgentTokens.ApprovalPath == "" || secrets[manifest.ServiceID] == "" {
+			continue
+		}
+		if manifest.ServiceID != approval.Service {
+			approval.Arguments = nil
+		}
+		payload, _ := json.Marshal(approval)
+		_, err := invoke(ctx, service, Principal{Token: secrets[manifest.ServiceID]},
+			manifest.ExternalAgentTokens.ApprovalPath, payload, externalTokenLimit, r.opts.RequestTimeout)
+		return err
+	}
+	return ErrUnavailable
 }
 
 // TokenService is a discovered service that issues service tokens for external agents.

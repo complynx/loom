@@ -1081,11 +1081,12 @@ func (r *runtimeComponents) initAgent(
 			return err
 		}
 		r.external = newExternalAgent(runtimeTools{
-			cfg:        cfg,
-			registry:   r.registry,
-			repository: r.repository,
-			executor:   r.executor,
-			observer:   observer,
+			cfg:                    cfg,
+			registry:               r.registry,
+			repository:             r.repository,
+			executor:               r.executor,
+			observer:               observer,
+			externalArgumentCipher: r.cipher,
 		},
 			r.externalAuth.VerifyExternal,
 			func() []modules.TokenService { return externalTokenServices(cfg, r.registry) },

@@ -29,6 +29,9 @@ an ID for new key material. No keys enter the database or public settings API.
    new key and migration reports zero. Startup refuses any missing key referenced
    by the current database, including expired and revoked sessions. Keep the old
    key in protected backup storage until every backup needing it has expired.
+   Protected MCP write arguments also use the keyring. Keep the previous read
+   key in the live configuration until MCP sessions that can replay its
+   envelopes have ended. Those sessions expire within 24 hours.
 
 The command contacts PostgreSQL only. It does not dispatch runs, refresh tokens,
 call Zitadel, or contact a model. Use an operator database role with SELECT/UPDATE

@@ -22,6 +22,7 @@ type ExternalAgentProfile struct {
 	History     bool      `json:"history"`
 	Memory      bool      `json:"memory"`
 	Skills      bool      `json:"skills"`
+	Writes      bool      `json:"writes"`
 	Version     int64     `json:"version"`
 	ConfirmedBy string    `json:"confirmed_by,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitzero"`
@@ -33,7 +34,23 @@ type ExternalAgentProfileUpdate struct {
 	History bool  `json:"history"`
 	Memory  bool  `json:"memory"`
 	Skills  bool  `json:"skills,omitempty"`
+	Writes  bool  `json:"writes,omitempty"`
 	Version int64 `json:"version"`
+}
+
+// ExternalApproval is delivered only to the user's confirming chat client.
+type ExternalApproval struct {
+	ID          string          `json:"operation_id"`
+	Subject     string          `json:"subject"`
+	OrgID       string          `json:"organization"`
+	Client      string          `json:"client"`
+	Service     string          `json:"service"`
+	Module      string          `json:"module"`
+	Method      string          `json:"method"`
+	Description string          `json:"description"`
+	Arguments   json.RawMessage `json:"arguments,omitempty"`
+	Remember    bool            `json:"remember"`
+	ExpiresAt   time.Time       `json:"expires_at"`
 }
 
 // ExternalCaller is a user who authenticated an external agent with their own token.

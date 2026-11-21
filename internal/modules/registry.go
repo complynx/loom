@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ const (
 	fieldRunID                 = "run_id"
 	fieldOperationID           = "operation_id"
 	effectRead                 = "read"
+	noConfirmation             = "none"
 	fieldArguments             = "arguments"
 	fieldResult                = "result"
 	fieldArtifacts             = "artifacts"
@@ -67,6 +69,7 @@ type Principal struct {
 	UserID, Subject, Issuer, Organization, Actor, PolicyRevision string
 	Permissions                                                  []string
 	Token                                                        string
+	ExternalWriteKey                                             string
 }
 type Tool struct {
 	Visibility                string                   `json:"Visibility,omitempty"`
@@ -110,7 +113,9 @@ type Method struct {
 	ArtifactMIMETypes          []string                 `json:"artifact_mime_types"`
 	ExternalDisclosure         bool                     `json:"external_disclosure"`
 	// ExternalAgent lets a user's own agent call this method. The default is false.
-	ExternalAgent bool `json:"external_agent,omitempty"`
+	ExternalAgent                   bool `json:"external_agent,omitempty"`
+	ExternalAgentRemember           bool `json:"external_agent_remember,omitempty"`
+	ExternalAgentProtectedArguments bool `json:"external_agent_protected_arguments,omitempty"`
 }
 type Module struct {
 	Visibility      string   `json:"visibility,omitempty"`
@@ -366,10 +371,8 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return m, err
 	}
-	if m.ExternalAgentTokens != nil {
-		if err := validPath(m.ExternalAgentTokens.Path); err != nil {
-			return m, err
-		}
+	if err := validateExternalAgentEndpoints(m.ExternalAgentTokens); err != nil {
+		return m, err
 	}
 	seen := map[string]bool{}
 	for _, module := range m.Modules {
@@ -424,6 +427,10 @@ func validateMethodMetadata(method Method) error {
 	if !validVisibility(method.Visibility) {
 		return errors.New("invalid method visibility")
 	}
+	if method.ExternalAgentProtectedArguments &&
+		(!externalWrite(method) || method.Confirmation.Mode != noConfirmation || method.ExternalAgentRemember) {
+		return errors.New("protected arguments require an external write without confirmation")
+	}
 	return domain.ValidateSkills(method.Skills)
 }
 func validateMethod(method Method) error {
@@ -431,7 +438,7 @@ func validateMethod(method Method) error {
 		return err
 	}
 	if method.Confirmation.ReplyMode == "protocol" &&
-		(method.Confirmation.Mode == "none" || method.Effect == effectRead) {
+		(method.Confirmation.Mode == noConfirmation || method.Effect == effectRead) {
 		return errors.New("protocol confirmation requires a confirmed write")
 	}
 	if method.Confirmation.ReplyMode != "" && method.Confirmation.ReplyMode != "protocol" {
@@ -704,7 +711,7 @@ func (r *Registry) listReads(ctx context.Context, p Principal, external bool) ([
 	return tools, nil
 }
 func (r *Registry) lookup(ctx context.Context, p Principal, moduleName, methodName string) (registered, Method, error) {
-	return r.lookupWithFresh(ctx, p, moduleName, methodName, false)
+	return r.lookupWithFresh(ctx, p, "", moduleName, methodName, false)
 }
 
 func (r *Registry) lookupFresh(
@@ -712,38 +719,25 @@ func (r *Registry) lookupFresh(
 	p Principal,
 	moduleName, methodName string,
 ) (registered, Method, error) {
-	return r.lookupWithFresh(ctx, p, moduleName, methodName, true)
+	return r.lookupWithFresh(ctx, p, "", moduleName, methodName, true)
 }
 
 func (r *Registry) lookupWithFresh(
 	ctx context.Context,
 	p Principal,
-	moduleName, methodName string,
+	serviceID, moduleName, methodName string,
 	fresh bool,
 ) (registered, Method, error) {
-	var found *registered
-	var module Module
-	for _, s := range r.snapshot() {
-		for _, m := range s.manifest.Modules {
-			if m.ID == moduleName && allowed(p, m.Permissions) {
-				if found != nil {
-					return registered{}, Method{}, ErrUnavailable
-				}
-				candidate := s
-				found = &candidate
-				module = m
-			}
-		}
-	}
-	if found == nil {
-		return registered{}, Method{}, ErrUnavailable
+	service, module, err := r.visibleModule(p, serviceID, moduleName)
+	if err != nil {
+		return registered{}, Method{}, err
 	}
 	if fresh && module.Discovery == "dynamic" {
 		r.mu.Lock()
-		delete(r.dynamic, cacheKey(p, *found, module))
+		delete(r.dynamic, cacheKey(p, service, module))
 		r.mu.Unlock()
 	}
-	methods, err := r.methods(ctx, p, *found, module)
+	methods, err := r.methods(ctx, p, service, module)
 	if err != nil {
 		return registered{}, Method{}, err
 	}
@@ -754,9 +748,33 @@ func (r *Registry) lookupWithFresh(
 		if !allowed(p, m.Permissions) {
 			return registered{}, Method{}, ErrForbidden
 		}
-		return *found, m, nil
+		return service, m, nil
 	}
 	return registered{}, Method{}, ErrUnavailable
+}
+
+func (r *Registry) visibleModule(p Principal, serviceID, moduleName string) (registered, Module, error) {
+	var service registered
+	var module Module
+	found := false
+	for _, s := range r.snapshot() {
+		if serviceID != "" && s.manifest.ServiceID != serviceID {
+			continue
+		}
+		for _, m := range s.manifest.Modules {
+			if m.ID != moduleName || !allowed(p, m.Permissions) {
+				continue
+			}
+			if found {
+				return registered{}, Module{}, ErrUnavailable
+			}
+			service, module, found = s, m, true
+		}
+	}
+	if !found {
+		return registered{}, Module{}, ErrUnavailable
+	}
+	return service, module, nil
 }
 
 func invoke(
@@ -786,6 +804,9 @@ func invoke(
 	req.Header.Set("Content-Type", "application/json")
 	if p.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+p.Token)
+	}
+	if p.ExternalWriteKey != "" {
+		req.Header.Set("X-Loom-External-Write-Key", p.ExternalWriteKey)
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -976,9 +997,21 @@ func (r *Registry) validateMethodShape(method Method) error {
 
 // ListActions exposes supported writes for a durable structured tool. JS bindings use List only.
 func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error) {
+	return r.listActions(ctx, p, r.snapshot(), false)
+}
+
+func (r *Registry) ListExternalActions(ctx context.Context, p Principal, service string) ([]Tool, error) {
+	if service == "" {
+		return nil, ErrUnavailable
+	}
+	services := slices.DeleteFunc(r.snapshot(), func(s registered) bool { return s.manifest.ServiceID != service })
+	return r.listActions(ctx, p, services, true)
+}
+
+func (r *Registry) listActions(ctx context.Context, p Principal, services []registered, external bool) ([]Tool, error) {
 	tools := []Tool{}
 	seen := map[string]string{}
-	for _, s := range r.snapshot() {
+	for _, s := range services {
 		for _, module := range s.manifest.Modules {
 			if !allowed(p, module.Permissions) {
 				continue
@@ -992,7 +1025,7 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 				return nil, err
 			}
 			for _, method := range methods {
-				if method.Effect != effectRead && allowed(p, method.Permissions) {
+				if actionable(p, method, external) {
 					tools = append(
 						tools,
 						Tool{
@@ -1018,6 +1051,10 @@ func (r *Registry) ListActions(ctx context.Context, p Principal) ([]Tool, error)
 	}
 	sortTools(tools)
 	return tools, nil
+}
+
+func actionable(p Principal, method Method, external bool) bool {
+	return method.Effect != effectRead && allowed(p, method.Permissions) && (!external || externalWrite(method))
 }
 
 // Bound data before schema checks so a script cannot force unbounded validation work.

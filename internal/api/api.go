@@ -107,7 +107,7 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 				capabilities["external_agent"] = externalAgentCapability{
 					Version:       1,
 					Resource:      options.ExternalAgent.Resource,
-					Access:        []string{"history", "memory", "skills"},
+					Access:        []string{"history", "memory", "skills", "writes"},
 					TokenServices: tokenServices,
 				}
 			}

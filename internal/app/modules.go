@@ -272,7 +272,7 @@ func (b *ModuleBridge) Discard(
 			return op.Result, nil, nil
 		}
 		return json.RawMessage(`{"status":"succeeded"}`), nil, nil
-	case "failed", "rejected":
+	case "failed", operationRejected:
 		raw, _ := json.Marshal(map[string]string{"status": op.State})
 		return raw, nil, nil
 	default:
@@ -337,7 +337,7 @@ func (b *ModuleBridge) resolveOperation(
 			return json.RawMessage(`{"status":"succeeded"}`), nil, nil
 		}
 		return operation.Result, nil, nil
-	case "rejected", "failed":
+	case operationRejected, "failed":
 		return terminalOperationFailure(operation), nil, nil
 	default:
 		return nil, nil, &runs.Suspension{State: domain.Reconciling, Reason: operationUnknown}
