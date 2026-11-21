@@ -21,6 +21,7 @@ type ExternalAgentProfile struct {
 	Enabled     bool      `json:"enabled"`
 	History     bool      `json:"history"`
 	Memory      bool      `json:"memory"`
+	Skills      bool      `json:"skills"`
 	Version     int64     `json:"version"`
 	ConfirmedBy string    `json:"confirmed_by,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitzero"`
@@ -31,6 +32,7 @@ type ExternalAgentProfileUpdate struct {
 	Enabled bool  `json:"enabled"`
 	History bool  `json:"history"`
 	Memory  bool  `json:"memory"`
+	Skills  bool  `json:"skills,omitempty"`
 	Version int64 `json:"version"`
 }
 

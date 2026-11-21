@@ -13,7 +13,7 @@ that are not implemented.
 
 | Part | State |
 | --- | --- |
-| MCP endpoint, OAuth resource metadata, `script` tool with help, history and memory reads | Implemented. |
+| MCP endpoint, OAuth resource metadata, `script` tool with help, skill, history and memory reads | Implemented. |
 | Service reads through marked methods | Implemented with a separate token from a [token service](#token-services). Off until a discovered service declares a token endpoint and the operator approves it. |
 | User profile written by a confirming chat client | Implemented. |
 | MCP sessions and revoke controls in the internal agent | Implemented. |
@@ -21,7 +21,7 @@ that are not implemented.
 | History record for each external action | Implemented. |
 | Acceptance with a real MCP client and the installed issuer | Open. See [Acceptance](#acceptance). |
 | External service writes and personal-memory writes | Not implemented. See [Planned writes](#planned-writes). |
-| Files, skills, paid transcription, diagnostics and administration tools | Not available to external agents. |
+| Files, paid transcription, diagnostics and administration tools | Not available to external agents. |
 
 ## Execution model
 
@@ -70,7 +70,7 @@ external_agents:
 | `audience` | Required. Audience that a token for the MCP endpoint must contain. It must differ from `identity.audience`. See [token audience](#token-audience). |
 | `scopes` | Scopes that Loom advertises to clients. List every scope that the issuer needs to put the MCP audience, the organization and the roles into the access token. Do not add scopes for the audiences of downstream services. At most 32 entries. |
 | `client_id`, `client_secret`, `client_key_base64`, `client_key_file` | Optional introspection credentials for MCP tokens, with the meaning of the same `identity` fields. Without them Loom uses the `identity` credentials. See [introspection client](#introspection-client). |
-| `token_services` | Optional. Approves [token services](#token-services): each key is a service ID, each value is the secret that authenticates Loom to that service. A secret has 16 to 512 printable ASCII characters without spaces. At most 32 entries. Without an entry only help, history and memory are available. |
+| `token_services` | Optional. Approves [token services](#token-services): each key is a service ID, each value is the secret that authenticates Loom to that service. A secret has 16 to 512 printable ASCII characters without spaces. At most 32 entries. Without an entry the agent can use only builtin modules. |
 | `calls_per_minute` | Tool calls and tool listings per user in one fixed minute, 1..600. Zero or omission uses 30. The limit also counts calls of a user without access. It is local to one API process. |
 
 When `enabled` is false, the other fields must be absent. In recovery mode the
@@ -79,7 +79,7 @@ endpoint and the profile routes are not served and return `404`.
 `GET /v1/capabilities` reports the feature to registered clients:
 
 ```json
-{"external_agent": {"version": 1, "resource": "https://loom.example.com/mcp", "access": ["history", "memory"], "token_services": ["replace-with-service-id"]}}
+{"external_agent": {"version": 1, "resource": "https://loom.example.com/mcp", "access": ["history", "memory", "skills"], "token_services": ["replace-with-service-id"]}}
 ```
 
 The key is absent when the endpoint is disabled. A chat client must check it
@@ -170,7 +170,7 @@ them only for MCP tokens. The `/v1` API keeps the `identity` credentials.
 ### Token services
 
 By default external agents cannot call service methods. The catalog, the
-bindings and dispatch contain only help, history and memory.
+bindings and dispatch contain only builtin modules.
 
 A **token service** enables marked service reads. It is a discovered service,
 for example a chat client, that can issue a token of the user for downstream
@@ -262,7 +262,7 @@ Loom keeps a service token in memory and reuses it for the same token service
 and agent token until 30 seconds before it expires, and never longer than the
 agent's token. When Loom sees other permissions for that agent token, it asks
 again. If the request fails, service calls fail and `help.list` returns a
-`remote_catalog_unavailable` warning; history and memory stay available. The
+`remote_catalog_unavailable` warning. Builtin data remains available. The
 operation metric `external_service_token` counts the outcomes.
 
 When a token service leaves discovery or the operator removes its approval,
@@ -284,7 +284,7 @@ external agents to users who already use that client.
 | Method | Path | Body | Result |
 | --- | --- | --- | --- |
 | GET | `/v1/users/me/external-agent` | None | Profile. |
-| PUT | `/v1/users/me/external-agent` | `{enabled, history, memory, version}` | Updated profile. |
+| PUT | `/v1/users/me/external-agent` | `{enabled, history, memory, skills, version}` | Updated profile. |
 
 Both routes require `external_agent.profile.write`. PUT uses fresh
 authorization and bypasses the positive claims cache. PUT also requires a
@@ -292,7 +292,7 @@ delegated request: Loom refuses a user's direct token, also when a role grants
 the permission.
 
 ```json
-{"enabled": true, "history": true, "memory": false, "version": 0}
+{"enabled": true, "history": true, "memory": false, "skills": false, "version": 0}
 ```
 
 | Field | Meaning |
@@ -300,11 +300,12 @@ the permission.
 | `enabled` | Master switch. False denies every tool call. |
 | `history` | Allows `modules.history.search` and `modules.history.read` in the default chat. The history can contain results of methods that are not marked for external agents. |
 | `memory` | Allows `modules.memory.state`, `list` and `read`. Memory writes stay unavailable. |
+| `skills` | Allows disclosure from the user's organization skill library. Omission is false, including in requests from older confirming clients. |
 | `version` | Current stored version. Zero creates the profile. A stale value returns `409 external_agent_profile_version_conflict`; read again and resolve. |
 
 The response also contains `confirmed_by` (the actor that wrote the profile)
 and `updated_at`. A user without a stored profile gets
-`{"enabled":false,"history":false,"memory":false,"version":0}`. Each change
+`{"enabled":false,"history":false,"memory":false,"skills":false,"version":0}`. Each change
 is written to the audit log. A change applies to the next module call, also
 inside a script that is already running.
 
@@ -425,12 +426,21 @@ Available bindings:
 | `help` | `list`, `read` | Always. The catalog contains only what this session can call. |
 | `history` | `search`, `read` | Profile `history`. Default chat only. |
 | `memory` | `state`, `list`, `read` | Profile `memory`. |
+| `skills` | `list`, `read` | Skills published by available service methods. Profile `skills` also adds the organization library. |
 | Service modules | Marked read methods | The call has a [token service](#token-services), and the user has the module and method permissions. |
 
 The tool description contains the same environment overview and navigation
 guidance that the internal agent receives. Start with
 `return await modules.help.list({})` and read a method card before an
 unfamiliar call.
+
+Use `modules.skills.list({})` for names, sources, and use cases. Read a body
+with `modules.skills.read({name, source})`, copying the source from the list.
+Loom checks every `require` against the current MCP method catalog for both
+operations. Select the same token service when reading a skill and calling
+its methods. Builtin and run-specific skills and library edits stay inside
+the main bot. Skill text cannot grant authority or consent. See the
+[skill contract](skills.md#model-interface) for list filters and pagination.
 
 If the service catalog is unavailable, a script still runs with the builtin
 modules, and `help.list` returns a `remote_catalog_unavailable` warning.
@@ -463,7 +473,7 @@ Private error text, backend bodies and credentials are not returned.
 
 Loom writes the record. The agent cannot omit or change it.
 
-One script that started at least one service, history or memory call creates
+One script that started at least one service, skill, history or memory call creates
 one event in the user's default chat. A script that only read help creates no
 event. Loom stores the event before it returns the result. If the event cannot
 be stored, the agent receives `history_unavailable` instead of the result.
@@ -510,8 +520,9 @@ Stored history and search remain complete.
 ## Persistence and compatibility
 
 Migrations `00011_external_agent_profiles.sql` and
-`00012_external_agent_sessions.sql` add tables. They do not rewrite existing
-rows. Older binaries ignore the tables. Before a rollback,
+`00012_external_agent_sessions.sql` add tables. Migration
+`00013_external_agent_skills.sql` adds the organization-library switch with a
+false default for existing profiles. Before a rollback,
 disable the endpoint and remove `external_agent`, `external_agent_tokens` and
 the new caller permission from published manifests. Events of type
 `external_agent.action` remain in chat history; an older binary gives them to

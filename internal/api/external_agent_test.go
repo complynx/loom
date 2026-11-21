@@ -281,6 +281,6 @@ func TestExternalAgentProfileRoutesRequireConfirmingPermission(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(capabilities.Body.Bytes(), &body))
 	require.Equal(t, "https://loom.example.com/mcp", body.ExternalAgent.Resource)
-	require.Equal(t, []string{"history", "memory"}, body.ExternalAgent.Access)
+	require.Equal(t, []string{"history", "memory", "skills"}, body.ExternalAgent.Access)
 	require.Equal(t, []string{"chat-client"}, body.ExternalAgent.TokenServices)
 }

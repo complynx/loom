@@ -65,17 +65,20 @@ func TestExternalAgentProfileMigrationKeepsExistingData(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, store.Migrate(ctx, parsed.String()))
+	_, err = provider.UpTo(ctx, 12)
+	require.NoError(t, err)
 	_, err = db.ExecContext(
 		ctx,
 		"INSERT INTO external_agent_profiles(owner_id,org_id,enabled,history,memory,version,confirmed_by) VALUES($1,'org',true,true,false,1,'chat-client')",
 		user,
 	)
 	require.NoError(t, err)
+	require.NoError(t, store.Migrate(ctx, parsed.String()))
 	require.NoError(t, store.Migrate(ctx, parsed.String()), "a repeated migration command must be safe")
 
 	var text string
 	var nextSeq, version int64
+	var skills bool
 	require.NoError(
 		t,
 		db.QueryRowContext(ctx, "SELECT e.text,c.next_seq FROM chat_events e JOIN chats c ON c.id=e.chat_id WHERE c.owner_id=$1", user).
@@ -85,8 +88,9 @@ func TestExternalAgentProfileMigrationKeepsExistingData(t *testing.T) {
 	require.EqualValues(t, 2, nextSeq)
 	require.NoError(
 		t,
-		db.QueryRowContext(ctx, "SELECT version FROM external_agent_profiles WHERE owner_id=$1 AND org_id='org'", user).
-			Scan(&version),
+		db.QueryRowContext(ctx, "SELECT version,skills FROM external_agent_profiles WHERE owner_id=$1 AND org_id='org'", user).
+			Scan(&version, &skills),
 	)
 	require.EqualValues(t, 1, version)
+	require.False(t, skills, "existing profiles must opt in to organization skill disclosure")
 }

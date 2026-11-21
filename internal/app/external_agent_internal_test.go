@@ -241,13 +241,38 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	)
 	require.Equal(t, "other", *selected.Load())
 	require.Contains(t, choose(`{"code":"return 1","token_service":"unknown"}`), "unknown_token_service")
+	author := user
+	author.Permissions = map[string]bool{"chat.read": true, domain.SkillsWritePermission: true}
+	_, err = repository.PutSkill(ctx, author, "org-guide", domain.SkillWrite{
+		Usecase: "Find business records", Body: "Organization procedure",
+	})
+	require.NoError(t, err)
+	result, failed = script(`return (await modules.skills.list({})).skills.map(s => [s.name,s.source,typeof s.body]);`)
+	require.False(t, failed, result)
+	require.JSONEq(t, `[["read-guide","tool:business/read","undefined"]]`, result)
+	result, failed = script(`return (await modules.skills.read({name:"read-guide",source:"tool:business/read"})).body;`)
+	require.False(t, failed, result)
+	require.JSONEq(t, `"Use the read method."`, result)
+	result, failed = script(`return await modules.skills.read({name:"org-guide"});`)
+	require.True(t, failed, result)
+	require.Contains(t, result, "not_found")
+	require.JSONEq(t, `[]`, choose(`{"code":"return (await modules.skills.list({})).skills;"}`))
 
 	profile, err = repository.PutExternalAgentProfile(
 		ctx,
 		confirming,
-		domain.ExternalAgentProfileUpdate{Enabled: true, History: true, Memory: true, Version: profile.Version},
+		domain.ExternalAgentProfileUpdate{
+			Enabled: true,
+			History: true,
+			Memory:  true,
+			Skills:  true,
+			Version: profile.Version,
+		},
 	)
 	require.NoError(t, err)
+	result, failed = script(`return [(await modules.skills.read({name:"org-guide"})).body,typeof modules.skills.put];`)
+	require.False(t, failed, result)
+	require.JSONEq(t, `["Organization procedure","undefined"]`, result)
 	result, failed = script(
 		`return {revision: typeof (await modules.memory.state({})).revision, put: typeof modules.memory.put};`,
 	)
@@ -470,6 +495,16 @@ func externalAgentManifest() modules.Manifest {
 	}
 	chatOnly := method("chat_only", true)
 	chatOnly.Permissions = []string{"chat.read"}
+	read := method("read", true)
+	read.Skills = []domain.SkillDefinition{
+		{Name: "read-guide", Usecase: "Find records", Require: []string{"business.read"}, Body: "Use the read method."},
+		{
+			Name:    "write-guide",
+			Usecase: "Change records",
+			Require: []string{"business.secret"},
+			Body:    "Unavailable procedure.",
+		},
+	}
 	return modules.Manifest{
 		ProtocolVersion: 1,
 		ServiceID:       "external-fixture",
@@ -481,7 +516,7 @@ func externalAgentManifest() modules.Manifest {
 			Permissions: []string{"business.access"},
 			Discovery:   "static",
 			Methods: []modules.Method{
-				method("read", true), method("ready", true), method("secret", false), chatOnly,
+				read, method("ready", true), method("secret", false), chatOnly,
 			},
 		}},
 	}

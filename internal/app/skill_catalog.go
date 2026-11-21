@@ -52,46 +52,64 @@ func (t runtimeTools) skillCatalog(
 	if err != nil {
 		return nil, err
 	}
-	if t.repository != nil {
-		page, listErr := t.repository.ListSkills(ctx, p, domain.SkillListRequest{Limit: domain.MaxOrganizationSkills})
-		if listErr != nil {
-			return nil, listErr
-		}
-		for _, skill := range page.Skills {
-			skill.Source = organizationSkillSource
-			if skillRequirementsAvailable(skill, entries) {
-				out = append(out, skill)
-			}
-		}
-	}
-	appendDefinitions := func(source string, definitions []domain.SkillDefinition, version int64) {
-		for _, definition := range definitions {
-			skill := domain.Skill{
-				Name:    definition.Name,
-				Usecase: definition.Usecase,
-				Body:    definition.Body,
-				Require: definition.Require,
-				Source:  source,
-				Version: version,
-			}
-			if skillRequirementsAvailable(skill, entries) {
-				out = append(out, skill)
-			}
-		}
+	if out, err = t.appendOrganizationSkills(ctx, p, out, entries); err != nil {
+		return nil, err
 	}
 	var builtins []domain.SkillDefinition
 	if err = json.Unmarshal(builtinSkillsJSON, &builtins); err != nil {
 		return nil, err
 	}
-	appendDefinitions(builtinSkillSource, builtins, builtinSkillVersion)
+	out = appendSkillDefinitions(out, entries, builtinSkillSource, builtins, builtinSkillVersion)
 	if skill, ok := t.adminSkill(p); ok {
-		appendDefinitions(builtinSkillSource, []domain.SkillDefinition{skill}, builtinSkillVersion)
+		out = appendSkillDefinitions(
+			out,
+			entries,
+			builtinSkillSource,
+			[]domain.SkillDefinition{skill},
+			builtinSkillVersion,
+		)
 	}
-	appendDefinitions("caller", run.Skills, 0)
+	out = appendSkillDefinitions(out, entries, "caller", run.Skills, 0)
 	for _, tool := range append(append([]modules.Tool{}, reads...), actions...) {
-		appendDefinitions("tool:"+tool.Module+"/"+tool.Method, tool.Skills, 0)
+		out = appendSkillDefinitions(out, entries, toolSkillSource(tool), tool.Skills, 0)
 	}
 	sort.Slice(out, func(i, j int) bool { return skillID(out[i]) < skillID(out[j]) })
+	return out, nil
+}
+
+func toolSkillSource(tool modules.Tool) string { return "tool:" + tool.Module + "/" + tool.Method }
+
+func appendSkillDefinitions(
+	out []domain.Skill, entries []helpEntry, source string, definitions []domain.SkillDefinition, version int64,
+) []domain.Skill {
+	for _, definition := range definitions {
+		skill := domain.Skill{
+			Name: definition.Name, Usecase: definition.Usecase, Body: definition.Body,
+			Require: definition.Require, Source: source, Version: version,
+		}
+		if skillRequirementsAvailable(skill, entries) {
+			out = append(out, skill)
+		}
+	}
+	return out
+}
+
+func (t runtimeTools) appendOrganizationSkills(
+	ctx context.Context, p domain.Principal, out []domain.Skill, entries []helpEntry,
+) ([]domain.Skill, error) {
+	if t.repository == nil {
+		return out, nil
+	}
+	page, err := t.repository.ListSkills(ctx, p, domain.SkillListRequest{Limit: domain.MaxOrganizationSkills})
+	if err != nil {
+		return nil, err
+	}
+	for _, skill := range page.Skills {
+		skill.Source = organizationSkillSource
+		if skillRequirementsAvailable(skill, entries) {
+			out = append(out, skill)
+		}
+	}
 	return out, nil
 }
 

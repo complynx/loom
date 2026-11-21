@@ -73,6 +73,10 @@ tell the model to read that method's exact contract. See
 
 ## Model interface
 
+External agents can list and read procedures from their available service
+methods. The organization library requires the user's MCP profile consent.
+See [MCP skill access](external-agents.md#the-script-tool).
+
 Every inference advertises all currently available skill metadata in the
 `script` tool description: `name`, `source`, `usecase`, `require`, and `version`.
 Bodies stay out of this initial catalog. Existing context input limits apply;

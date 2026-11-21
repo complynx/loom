@@ -45,7 +45,7 @@ type ExternalAgents struct {
 	// TokenServices approves the services that issue service tokens for external
 	// agents. The key is a service ID; the value is the secret that authenticates
 	// Loom to that service. Loom sends the agent's token only to these services.
-	// Without an entry only help, history and memory are available.
+	// Without an entry only builtin modules are available.
 	TokenServices map[string]string `yaml:"token_services" json:"-"`
 	// CallsPerMinute limits tool calls of one user. Zero uses the default.
 	CallsPerMinute int `yaml:"calls_per_minute"`

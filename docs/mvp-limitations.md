@@ -42,7 +42,7 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 - Provider previous_response_id or complete transcript reuse. previous_run_id is a compatible local history-prefix hint, not resume or a guaranteed provider cache hit.
 - A common dependency circuit breaker, automatic late-usage retrieval or a global platform spend cap. Bounded provider retry and sponsored recovery already exist.
 - Remote cancellation through manifest cancel_path. Cancel is not rollback.
-- External agent writes, memory writes, files, skills and paid tools. External agents have read methods only; their rate limit is local to one API process.
+- External agent writes, memory writes, files, skill library edits and paid tools. External agents have read methods only; their rate limit is local to one API process.
 - Acceptance of an external agent token service in the installation. The request has fixture tests only.
 - Object storage, chunk-upload sessions, cross-host blob transfer or native PDF/audio/video model input. The worker processes these formats; supported images can attach directly.
 - A proven private-inference boundary, automatic memory extraction, memory administration UI, subagents or proactive runs.
