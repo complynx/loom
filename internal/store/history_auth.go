@@ -122,7 +122,10 @@ func (s *Store) AppendEvent(
 	if !p.Has("chat.events.append") {
 		return out, domain.Forbidden()
 	}
-	if in.Type == "message.reaction" || in.SourceEventID == "" || len(in.SourceEventID) > 128 || len(in.Type) > 128 ||
+	// Loom alone writes reactions and external agent actions through their own paths.
+	if in.Type == "message.reaction" || in.Type == domain.ExternalAgentActionEvent || in.SourceEventID == "" ||
+		len(in.SourceEventID) > 128 ||
+		len(in.Type) > 128 ||
 		len(in.Action) > 256 ||
 		in.Text == "" ||
 		len(in.Text) > 65536 ||

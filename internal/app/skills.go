@@ -107,7 +107,26 @@ func (t runtimeTools) readSkills(
 	if err != nil {
 		return nil, err
 	}
+	var entries []helpEntry
+	if method == builtinReadMethod {
+		entries, _, err = t.helpEntries(run, p, reads, actions)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return t.queryCatalogSkills(ctx, p, catalog, entries, method, raw)
+}
+
+func (t runtimeTools) queryCatalogSkills(
+	ctx context.Context,
+	p domain.Principal,
+	catalog []domain.Skill,
+	entries []helpEntry,
+	method string,
+	raw json.RawMessage,
+) (json.RawMessage, error) {
 	var result any
+	var err error
 	if method == helpListMethod {
 		var in domain.SkillListRequest
 		if err = decodeDiagnosticsInput(raw, &in); err != nil {
@@ -121,10 +140,6 @@ func (t runtimeTools) readSkills(
 		}
 		if err = decodeDiagnosticsInput(raw, &in); err != nil {
 			return nil, err
-		}
-		entries, _, helpErr := t.helpEntries(run, p, reads, actions)
-		if helpErr != nil {
-			return nil, helpErr
 		}
 		result, err = t.readCatalogSkill(ctx, p, catalog, entries, in.Name, in.Source)
 	}

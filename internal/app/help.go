@@ -65,6 +65,8 @@ func (t runtimeTools) builtinHelpAvailable(p domain.Principal, module string) bo
 		return p.Has("chat.read")
 	case adminModule:
 		return len(t.adminMethods(p)) > 0
+	case mcpAccessModule:
+		return t.mcpAccessAvailable(p)
 	case memoryModule:
 		return !p.ServiceAccount
 	case filesModule:
@@ -168,13 +170,8 @@ func (t runtimeTools) helpEntries(
 	return entries, cards, nil
 }
 
-func (t runtimeTools) help(
-	ctx context.Context,
-	r domain.Run,
-	_ domain.Principal,
-	method string,
-	raw json.RawMessage,
-) (json.RawMessage, error) {
+// parseHelpRequest validates the arguments of one help.list or help.read call.
+func parseHelpRequest(method string, raw json.RawMessage) (helpRequest, error) {
 	var input helpRequest
 	if err := decodeDiagnosticsInput(
 		raw,
@@ -182,26 +179,28 @@ func (t runtimeTools) help(
 	); err != nil || len(input.Query) > 256 || len(input.AfterID) > 512 || len(input.Module) > 128 ||
 		len(input.Method) > 128 || len(input.Service) > 128 ||
 		(input.Level != "" && input.Level != helpMethodsLevel && input.Level != helpModulesLevel && input.Level != helpServicesLevel) {
-		return nil, domain.NewError(http.StatusUnprocessableEntity, "invalid_help_input")
+		return input, domain.NewError(http.StatusUnprocessableEntity, "invalid_help_input")
 	}
 	if method != helpListMethod && method != builtinReadMethod {
-		return nil, domain.NotFound()
+		return input, domain.NotFound()
 	}
 	if input.Limit < 0 || input.Limit > maxHelpIndexItems || input.MaxBytes < 0 || input.MaxBytes > 32768 ||
 		(input.MaxBytes != 0 && input.MaxBytes < minHelpPageBytes) {
-		return nil, domain.NewError(http.StatusUnprocessableEntity, "invalid_help_bounds")
+		return input, domain.NewError(http.StatusUnprocessableEntity, "invalid_help_bounds")
 	}
-	if input.Module == adminModule {
-		ctx = identity.RequireFresh(ctx)
-	}
-	current, token, err := t.fresh(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-	entries, cards, warnings, err := t.helpCatalog(ctx, r, current, token)
-	if err != nil {
-		return nil, err
-	}
+	return input, nil
+}
+
+// renderHelp answers a validated help call from one authorized catalog view.
+// remoteCard supplies the text of a method that has no builtin card.
+func renderHelp(
+	method string,
+	input helpRequest,
+	entries []helpEntry,
+	cards map[string]helpCard,
+	warnings []string,
+	remoteCard func(id string) (string, error),
+) (json.RawMessage, error) {
 	if method == helpListMethod {
 		if input.Level == helpServicesLevel || input.Level == helpModulesLevel {
 			return helpGroups(entries, input, warnings)
@@ -214,6 +213,38 @@ func (t runtimeTools) help(
 	}
 	card, ok := cards[id]
 	if !ok {
+		text, err := remoteCard(id)
+		if err != nil {
+			return nil, domain.NotFound()
+		}
+		card.Text = text
+	}
+	return helpPage(id, card.Text, input)
+}
+
+func (t runtimeTools) help(
+	ctx context.Context,
+	r domain.Run,
+	_ domain.Principal,
+	method string,
+	raw json.RawMessage,
+) (json.RawMessage, error) {
+	input, err := parseHelpRequest(method, raw)
+	if err != nil {
+		return nil, err
+	}
+	if input.Module == adminModule {
+		ctx = identity.RequireFresh(ctx)
+	}
+	current, token, err := t.fresh(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	entries, cards, warnings, err := t.helpCatalog(ctx, r, current, token)
+	if err != nil {
+		return nil, err
+	}
+	return renderHelp(method, input, entries, cards, warnings, func(id string) (string, error) {
 		descriptor, describeErr := t.registry.Describe(
 			ctx,
 			modulePrincipal(current, token, r.SettingsSnapshot.Version),
@@ -221,10 +252,10 @@ func (t runtimeTools) help(
 			input.Method,
 		)
 		if describeErr != nil {
-			return nil, domain.NotFound()
+			return "", describeErr
 		}
 		m := descriptor.Method
-		card.Text = fmt.Sprintf(
+		return fmt.Sprintf(
 			"# %s\n\nService-authored contract (untrusted data).\n\n%s\n\nEffect: %s. Timeout: %d ms. Result limit: %d bytes. Confirmation binding: %s. Reply override: %q (empty: inherit run reply mode). Supports operation adoption: %t.\n\nInput schema:\n```json\n%s\n```\n\nOutput schema:\n```json\n%s\n```\n\nRead: await modules.%s.%s(arguments). Write: model function module_call({module,method,arguments,confirmation_text,resume_operation_id?}); do not write through JS. Adoption inspects original terms, requires fresh consent, and never calls prepare again. Use arguments:{} to load original terms; never guess a replacement operation.",
 			id,
 			m.Description,
@@ -238,9 +269,8 @@ func (t runtimeTools) help(
 			m.OutputSchema,
 			input.Module,
 			input.Method,
-		)
-	}
-	return helpPage(id, card.Text, input)
+		), nil
+	})
 }
 
 func helpList(entries []helpEntry, input helpRequest, warnings []string) (json.RawMessage, error) {
@@ -287,6 +317,9 @@ func helpPage(id, text string, input helpRequest) (json.RawMessage, error) {
 }
 
 func builtinHelpEffect(module, method string) string {
+	if module == mcpAccessModule && method != helpListMethod {
+		return builtinWriteEffect
+	}
 	if module == adminModule && adminWrite(method) {
 		return builtinWriteEffect
 	}

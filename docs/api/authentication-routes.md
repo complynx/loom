@@ -68,6 +68,7 @@ organization, lifecycle and additional handler checks still apply.
 | GET | `/users/me/preferences` | Read model/effort; `chat.read` |
 | PATCH | `/users/me/preferences` | Set model/effort; `preferences.self.write` |
 | GET | `/users/me/credits` | Read balance and reservation; `chat.read` |
+| GET/PUT | `/users/me/external-agent` | Read/replace the external agent profile; `external_agent.profile.write`; present only when external agents are enabled |
 | GET/PATCH | `/admin/settings` | Read/update typed settings; `settings.read` / `settings.write` |
 | POST | `/admin/identity/cache/clear` | Purge shared API/worker claims cache; `settings.write`, admin organization, fresh authorization |
 | GET/PATCH | `/admin/users/{id}/policy` | Read/update user limits; `users.policy.write` |
@@ -86,6 +87,10 @@ Handles expire within 15 minutes and no later than the file. A handle ID alone
 does not grant access. See [Files and recovery](files-recovery.md).
 [User memory](../user-memory.md) and [diagnostics](../diagnostics.md) describe their
 additional endpoints. Consult `/openapi.json` for request and response schemas.
+
+Outside `/v1`, the optional `/mcp` endpoint serves a user's own agent with the
+user's own access token. It has separate token rules and no delegation; see
+[External agents](../external-agents.md).
 
 Outside `/v1`, `/healthz` checks the process and `/readyz` checks whether durable
 requests can safely be accepted. Readiness returns 503 during recovery mode.

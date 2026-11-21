@@ -207,12 +207,18 @@ func Credential(r *http.Request, p domain.Principal) (string, error) {
 	return bearer(r.Header.Get("Authorization"))
 }
 func (a *Authenticator) authenticateToken(ctx context.Context, token string) (domain.Principal, error) {
+	p, _, err := a.authenticateClaims(ctx, token)
+	return p, err
+}
+
+// authenticateClaims also returns the verified claims that produced the principal.
+func (a *Authenticator) authenticateClaims(ctx context.Context, token string) (domain.Principal, tokenInfo, error) {
 	if token == "" || len(token) > 16384 {
-		return domain.Principal{}, ErrUnauthorized
+		return domain.Principal{}, tokenInfo{}, ErrUnauthorized
 	}
 	info, err := a.cache.load(ctx, token, a.introspectToken)
 	if err != nil {
-		return domain.Principal{}, err
+		return domain.Principal{}, tokenInfo{}, err
 	}
 	p := domain.Principal{
 		Issuer: info.Issuer, Subject: info.Subject, Actor: info.Subject,
@@ -228,7 +234,7 @@ func (a *Authenticator) authenticateToken(ctx context.Context, token string) (do
 		}
 		p.Permissions = permissions
 	}
-	return p, nil
+	return p, info, nil
 }
 
 func (a *Authenticator) introspectToken(ctx context.Context, token string) (tokenInfo, error) {
@@ -273,6 +279,11 @@ func (a *Authenticator) introspectToken(ctx context.Context, token string) (toke
 		}
 	}
 	if !allowed || signed.Subject != "" && signed.Subject != info.Subject {
+		return tokenInfo{}, ErrUnauthorized
+	}
+	// A token for both endpoints would join what the separate audiences keep apart.
+	if reject := a.cfg.RejectAudience; reject != "" &&
+		(slices.Contains(info.Audience, reject) || signed.Audience.Contains(reject)) {
 		return tokenInfo{}, ErrUnauthorized
 	}
 	if signed.Expiry != nil && int64(*signed.Expiry) < info.Expires {
@@ -431,7 +442,7 @@ func delegatedPermissions(user, actor, binding map[string]bool) map[string]bool 
 	return out
 }
 func harnessPermission(p string) bool {
-	for _, prefix := range []string{"runs.", "chat.", "artifacts.", "preferences.", "users.", "settings.", "billing.", "operations.", "auth.", "sessions.", "diagnostics."} {
+	for _, prefix := range []string{"runs.", "chat.", "artifacts.", "preferences.", "users.", "settings.", "billing.", "operations.", "auth.", "sessions.", "diagnostics.", "external_agent."} {
 		if strings.HasPrefix(p, prefix) {
 			return true
 		}

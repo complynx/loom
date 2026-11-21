@@ -50,6 +50,19 @@ func methodDescriptor(s registered, module string, m Method) Descriptor {
 	}
 }
 
+// DescribeExternal resolves the contract of a read method marked for external agents.
+// Other methods are reported as unavailable.
+func (r *Registry) DescribeExternal(ctx context.Context, p Principal, module, method string) (Descriptor, error) {
+	descriptor, err := r.Describe(ctx, p, module, method)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	if !descriptor.Method.ExternalAgent || descriptor.Method.Effect != effectRead {
+		return Descriptor{}, ErrUnavailable
+	}
+	return descriptor, nil
+}
+
 // WriteBackend is used only by operations.Coordinator, never a JavaScript proxy.
 type WriteBackend struct {
 	Registry         *Registry

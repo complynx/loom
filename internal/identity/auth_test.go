@@ -146,7 +146,7 @@ func authenticationServer(t *testing.T, key *rsa.PrivateKey, issuer *string) *ht
 			sub := "user"
 			org := "org"
 			active := true
-			aud := "harness"
+			var aud any = "harness"
 			exp := time.Now().Add(time.Hour).Unix()
 			switch token {
 			case "expired":
@@ -159,9 +159,24 @@ func authenticationServer(t *testing.T, key *rsa.PrivateKey, issuer *string) *ht
 				sub = "svc"
 			case "other-org":
 				org = "other"
+			case "mcp-only", "mcp-no-client":
+				aud = "mcp"
+			case "both-audiences":
+				aud = []string{"harness", "mcp"}
 			}
-			_ = json.NewEncoder(w).
-				Encode(map[string]any{"active": active, "iss": *issuer, "sub": sub, "aud": aud, "exp": exp, "urn:zitadel:iam:user:resourceowner:id": org, "urn:zitadel:iam:org:project:roles": map[string]any{"member": map[string]string{org: "example"}}})
+			info := map[string]any{
+				"active":                                active,
+				"iss":                                   *issuer,
+				"sub":                                   sub,
+				"aud":                                   aud,
+				"exp":                                   exp,
+				"urn:zitadel:iam:user:resourceowner:id": org,
+				"urn:zitadel:iam:org:project:roles":     map[string]any{"member": map[string]string{org: "example"}},
+			}
+			if r.Form.Get("token") != "mcp-no-client" {
+				info["client_id"] = "agent-client"
+			}
+			_ = json.NewEncoder(w).Encode(info)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

@@ -58,7 +58,7 @@ func TestRuntimeOperatorAuthenticationThroughTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	observer := telemetry.New(slog.New(slog.DiscardHandler))
 	handler := runtimeHandler(t.Context(), cfg, nil, auth, observer, nil,
-		func(context.Context) error { return nil }, cipher, nil, nil)
+		func(context.Context) error { return nil }, cipher, nil, nil, nil)
 	for _, tc := range []struct {
 		token, path string
 		status      int

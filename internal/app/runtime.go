@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -179,7 +180,6 @@ func Serve(ctx context.Context, cfg config.Config) error {
 	if err = resources.startBackground(runtimeCtx, cfg, logger); err != nil {
 		return err
 	}
-	queue := resources.queue
 	var draining atomic.Bool
 	ready := runtimeFileReadiness(
 		cfg,
@@ -201,6 +201,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		resources.cipher,
 		resources.authorize,
 		operatorLogin,
+		resources.externalAgentOptions(cfg, observer),
 	)
 	server, listener, metricsServer, err := runtimeServers(
 		ctx,
@@ -212,7 +213,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		resources.repository,
 		resources.registry,
 		resources.executor,
-		queue,
+		resources.queue,
 	)
 	if err != nil {
 		return err
@@ -241,7 +242,7 @@ func Serve(ctx context.Context, cfg config.Config) error {
 		ctx,
 		cfg,
 		resources.engine,
-		queue,
+		resources.queue,
 		server,
 		metricsServer,
 		resources.files,
@@ -412,25 +413,14 @@ func runtimeRegistry(
 	return registry, nil
 }
 
-func runtimeAuthenticator(
+// runtimeServiceClassifier recognizes registered service identities of the Loom audience.
+func runtimeServiceClassifier(
 	cfg config.Config,
 	repository *store.Store,
 	registry *modules.Registry,
-	cipher *identity.SessionCipher,
-	checkService func(context.Context, domain.Principal) (identity.Binding, error),
 	observedServices *sync.Map,
-) (*identity.Authenticator, error) {
-	auth, err := identity.New(
-		cfg.Identity,
-		&http.Client{Transport: telemetry.TraceTransport{}},
-		func(c context.Context, _ *http.Request, p domain.Principal) (identity.Binding, error) {
-			return checkService(c, p)
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	err = auth.UseServiceClassifier(func(c context.Context, p domain.Principal) (bool, error) {
+) identity.ServiceClassifier {
+	return func(c context.Context, p domain.Principal) (bool, error) {
 		if registry.TrustReady() != nil {
 			return false, identity.ErrUnavailable
 		}
@@ -439,7 +429,73 @@ func runtimeAuthenticator(
 			return true, nil
 		}
 		return repository.IsKnownServiceIdentity(c, p.Issuer, p.Subject, cfg.Identity.Audience)
-	})
+	}
+}
+
+// externalIdentity returns the identity settings that verify MCP tokens: the
+// MCP audience, and the introspection credentials of the MCP endpoint when the
+// operator configured them.
+func externalIdentity(cfg config.Config) config.Identity {
+	identityConfig := cfg.Identity
+	identityConfig.Audience = cfg.ExternalAgents.Audience
+	// An agent's token must open only the MCP endpoint, never the /v1 API.
+	identityConfig.RejectAudience = cfg.Identity.Audience
+	if external := cfg.ExternalAgents; external.OwnCredentials() {
+		identityConfig.ClientID, identityConfig.ClientSecret = external.ClientID, external.ClientSecret
+		identityConfig.ClientKeyID, identityConfig.ClientPrivateKey = external.ClientKeyID, external.ClientPrivateKey
+		// The key sources of the /v1 client must not stay next to the MCP
+		// credentials: the authenticator accepts one credential source.
+		identityConfig.ClientKeyBase64, identityConfig.ClientKeyFile = external.ClientKeyBase64, external.ClientKeyFile
+	}
+	return identityConfig
+}
+
+// externalAuthenticator verifies tokens for the MCP endpoint. Its audience always
+// differs from the /v1 audience. It has its own claims cache, so a token that is
+// valid for one endpoint is never accepted at the other because of a cached check.
+func externalAuthenticator(
+	cfg config.Config,
+	repository *store.Store,
+	registry *modules.Registry,
+	observedServices *sync.Map,
+	observer *telemetry.Telemetry,
+) (*identity.Authenticator, error) {
+	auth, err := identity.New(externalIdentity(cfg), &http.Client{Transport: telemetry.TraceTransport{}}, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err = auth.UseServiceClassifier(
+		runtimeServiceClassifier(cfg, repository, registry, observedServices),
+	); err != nil {
+		return nil, err
+	}
+	auth.UseCacheControl(repository.IdentityCacheEpoch, repository.ClearIdentityCache, observer.IdentityCache)
+	return auth, nil
+}
+
+func runtimeAuthenticator(
+	cfg config.Config,
+	repository *store.Store,
+	registry *modules.Registry,
+	cipher *identity.SessionCipher,
+	checkService func(context.Context, domain.Principal) (identity.Binding, error),
+	observedServices *sync.Map,
+) (*identity.Authenticator, error) {
+	identityConfig := cfg.Identity
+	if cfg.ExternalAgents.Enabled {
+		identityConfig.RejectAudience = cfg.ExternalAgents.Audience
+	}
+	auth, err := identity.New(
+		identityConfig,
+		&http.Client{Transport: telemetry.TraceTransport{}},
+		func(c context.Context, _ *http.Request, p domain.Principal) (identity.Binding, error) {
+			return checkService(c, p)
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	err = auth.UseServiceClassifier(runtimeServiceClassifier(cfg, repository, registry, observedServices))
 	if err != nil {
 		return nil, err
 	}
@@ -629,11 +685,13 @@ func runtimeHandler(
 	cipher *identity.SessionCipher,
 	authorize RunAuthorizer,
 	operatorLogin *api.OperatorLogin,
+	external *api.ExternalAgentOptions,
 ) http.Handler {
 	return api.New(
 		repository,
 		measuredAuth{auth: auth, observer: observer},
 		api.Options{
+			ExternalAgent: external,
 			ClearIdentityCache: func(c context.Context) (int64, error) {
 				epoch, err := auth.ClearPermissionsCache(c)
 				if err == nil {
@@ -859,6 +917,56 @@ type runtimeComponents struct {
 	executor         sandbox.Client
 	queue            *river.Client[pgx.Tx]
 	maxWorkers       int
+	// external is nil when external agents are disabled or in recovery mode.
+	external     *ExternalAgent
+	externalAuth *identity.Authenticator
+}
+
+// externalTokenServices lists the token services that the operator approved
+// and that are discovered now.
+func externalTokenServices(cfg config.Config, registry *modules.Registry) []modules.TokenService {
+	return slices.DeleteFunc(registry.ExternalTokenServices(), func(service modules.TokenService) bool {
+		return cfg.ExternalAgents.TokenServices[service.ServiceID] == ""
+	})
+}
+
+// externalServiceTokens gets service tokens from the approved token services.
+// An unapproved service has no secret, so the registry refuses the request.
+func externalServiceTokens(
+	cfg config.Config,
+	auth *identity.Authenticator,
+	registry *modules.Registry,
+) func(context.Context, domain.ExternalCaller, string) (string, error) {
+	return identity.NewServiceTokens(auth, identity.ServiceTokenSource{
+		Fetch: func(ctx context.Context, service, subjectToken string) (string, *int64, error) {
+			return registry.ExternalToken(ctx, service, cfg.ExternalAgents.TokenServices[service], subjectToken)
+		},
+		Forbidden: []string{cfg.Identity.Audience, cfg.ExternalAgents.Audience},
+	}).For
+}
+
+// externalAgentOptions returns nil when the MCP endpoint is not served.
+func (r *runtimeComponents) externalAgentOptions(
+	cfg config.Config,
+	observer *telemetry.Telemetry,
+) *api.ExternalAgentOptions {
+	if r.external == nil {
+		return nil
+	}
+	return &api.ExternalAgentOptions{
+		Service:      r.external,
+		Authenticate: measuredAuth{auth: r.externalAuth, observer: observer}.AuthenticateExternal,
+		Resource:     cfg.ExternalAgents.Resource,
+		Issuer:       cfg.Identity.Issuer,
+		Scopes:       cfg.ExternalAgents.Scopes,
+		TokenServices: func() []string {
+			ids := []string{}
+			for _, service := range externalTokenServices(cfg, r.registry) {
+				ids = append(ids, service.ServiceID)
+			}
+			return ids
+		},
+	}
 }
 
 func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) error {
@@ -960,6 +1068,29 @@ func (r *runtimeComponents) initAgent(
 	r.queue, r.maxWorkers, err = runtimeQueue(cfg, r.pool, r.engine, r.repository, observer, logger)
 	if err != nil {
 		return err
+	}
+	if cfg.ExternalAgents.Enabled {
+		r.externalAuth, err = externalAuthenticator(
+			cfg,
+			r.repository,
+			r.registry,
+			&r.observedServices,
+			observer,
+		)
+		if err != nil {
+			return err
+		}
+		r.external = newExternalAgent(runtimeTools{
+			cfg:        cfg,
+			registry:   r.registry,
+			repository: r.repository,
+			executor:   r.executor,
+			observer:   observer,
+		},
+			r.externalAuth.VerifyExternal,
+			func() []modules.TokenService { return externalTokenServices(cfg, r.registry) },
+			externalServiceTokens(cfg, r.externalAuth, r.registry),
+		)
 	}
 
 	return nil

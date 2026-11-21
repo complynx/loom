@@ -166,6 +166,8 @@ func knownComponent(component string) bool {
 		"module_call",
 		"script",
 		"artifact_gc",
+		"external_agent_call",
+		"external_service_token",
 		"queue_recovery",
 		"lifecycle",
 		runComponent:

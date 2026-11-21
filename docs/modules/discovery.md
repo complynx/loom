@@ -17,7 +17,7 @@ HTTP is supported on the trusted Docker network. HTTPS uses normal certificate v
 
 The operator who controls labels and manifests controls service registration. Restrict the Docker API to the required GET list/inspect operations. A read-only mount of `docker.sock` does not restrict Docker API methods.
 
-The manifest requires `protocol_version`, `service_id`, `revision`, `description` and `modules`; `caller` is optional. The [JSON Schema](../../schemas/manifest.schema.json) defines its shape. Runtime validation also checks identifiers, method limits, safe paths, schemas and confirmation rules. Unknown versions and unknown v1 fields are rejected. See [the example manifest](../../examples/manifest.json) for a complete document.
+The manifest requires `protocol_version`, `service_id`, `revision`, `description` and `modules`; `caller` and `external_agent_tokens` are optional. The [JSON Schema](../../schemas/manifest.schema.json) defines its shape. Runtime validation also checks identifiers, method limits, safe paths, schemas and confirmation rules. Unknown versions and unknown v1 fields are rejected. See [the example manifest](../../examples/manifest.json) for a complete document.
 
 Use unique module IDs across services. Replicas of one `service_id` must publish byte-identical manifests, including revision and caller binding. Different hashes cause a conflict and remove that service from the active registry. The runtime keeps one endpoint per service; it does not provide load balancing or session affinity for durable operations. Replicas must share operation and confirmation state if later calls can reach another replica.
 
@@ -34,7 +34,7 @@ configure a [service account](../api/service-accounts.md). An SA can call the
 service methods allowed by its own rights without registering as a business user
 in unrelated services.
 
-`caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read` and `artifacts.write`. These are caller permissions, not user delegation. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
+`caller.permissions` can grant the registered service `runs.create`, `runs.control`, `chat.read`, `chat.events.append`, `artifacts.read`, `artifacts.write` and `external_agent.profile.write`. The last permission publishes the service as a confirming client that writes [external agent profiles](../external-agents.md#user-profile). These are caller permissions, not user delegation. `external_agent_tokens.path` publishes the service as a [token service](../external-agents.md#token-services) for external agents; the operator must also approve its service ID. Incoming caller authentication uses a verified Zitadel access token whose issuer, subject and audience match the registration.
 
 The schema also accepts `auth.type: "secret"` with `secret_ref`. Incoming opaque-secret authentication is not implemented; do not use that branch for an active integration. Never place secret values in a manifest.
 
@@ -51,3 +51,5 @@ The broker checks permissions before a call; the service must enforce its own au
 `external_disclosure` controls whether imported method artifacts may be sent to a model. It does not override the user's broader disclosure policy or filter ordinary text results out of the method catalog. Model attachment paths separately check run settings, current settings and model capabilities. Do not return text that the delegated user is not authorized to disclose.
 
 Method descriptors also support [skills and discovery visibility](authoring-help.md#discovery-visibility).
+
+A method can set `external_agent: true` to let a user's own agent call it through the MCP endpoint. The default is false, and there is no module-level default. Read the [method mark](../external-agents.md#method-mark) rules before you set it.
