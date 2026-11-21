@@ -32,6 +32,8 @@ func builtinCategorySummary(module string) string {
 		return "Discover and load reusable organization procedures; editing requires skills.write."
 	case adminModule:
 		return "Administer Loom settings, user policies, models and wallet funding within current authority."
+	case mcpAccessModule:
+		return "List and revoke the user's MCP sessions, or disable their MCP access."
 	case historyModule:
 		return "Find earlier conversation facts, decisions and activity; read bounded event pages."
 	case memoryModule:

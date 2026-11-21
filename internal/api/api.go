@@ -45,6 +45,8 @@ type Options struct {
 	MaxBodyBytes                                    int64
 	StreamDuration, StreamPoll, ReauthorizeInterval time.Duration
 	SealCredential                                  func(context.Context, *http.Request, domain.Principal) (json.RawMessage, error)
+	// ExternalAgent enables the MCP endpoint and profile routes. Nil disables both.
+	ExternalAgent *ExternalAgentOptions
 }
 type server struct {
 	store   *store.Store
@@ -92,18 +94,24 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 		"GET /v1/capabilities",
 		"chat.read",
 		func(w http.ResponseWriter, _ *http.Request, _ domain.Principal) error {
-			write(
-				w,
-				http.StatusOK,
-				map[string]any{
-					"output_validation":  map[string]any{"version": 1, "disallow_custom_emoji": true},
-					"execution_profiles": []domain.ExecutionProfile{domain.ProfileNativeFiles},
-					"conversation_recovery": map[string]any{
-						"version":   1,
-						"text_only": true,
-					},
-				},
-			)
+			capabilities := map[string]any{
+				"output_validation":     map[string]any{"version": 1, "disallow_custom_emoji": true},
+				"execution_profiles":    []domain.ExecutionProfile{domain.ProfileNativeFiles},
+				"conversation_recovery": map[string]any{"version": 1, "text_only": true},
+			}
+			if options.ExternalAgent != nil {
+				tokenServices := []string{}
+				if options.ExternalAgent.TokenServices != nil {
+					tokenServices = options.ExternalAgent.TokenServices()
+				}
+				capabilities["external_agent"] = externalAgentCapability{
+					Version:       1,
+					Resource:      options.ExternalAgent.Resource,
+					Access:        []string{"history", "memory", "skills"},
+					TokenServices: tokenServices,
+				}
+			}
+			write(w, http.StatusOK, capabilities)
 			return nil
 		},
 	)
@@ -111,6 +119,7 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 	s.registerDiagnostics(mux)
 	s.registerMemory(mux)
 	s.registerSkills(mux)
+	s.registerExternalAgent(mux)
 	return mux
 }
 
@@ -391,7 +400,8 @@ func fail(w http.ResponseWriter, status int, code, message string, retryable boo
 	if status < 400 || status > 599 {
 		status = http.StatusInternalServerError
 	}
-	if status == http.StatusUnauthorized {
+	if status == http.StatusUnauthorized && w.Header().Get("WWW-Authenticate") == "" {
+		// The MCP endpoint sets its own challenge before it reports the failure.
 		w.Header().Set("WWW-Authenticate", `Bearer realm="harness"`)
 	}
 	write(

@@ -225,6 +225,12 @@ func sessionAndReadTypes(method, path string) (any, any, string, bool) {
 	if strings.HasSuffix(path, "/reactions") {
 		return domain.SetReaction{}, domain.ChatEvent{}, "201", true
 	}
+	if path == externalAgentProfilePath {
+		if method == http.MethodPut {
+			return domain.ExternalAgentProfileUpdate{}, domain.ExternalAgentProfile{}, "200", true
+		}
+		return nil, domain.ExternalAgentProfile{}, "200", true
+	}
 	if path == "/v1/admin/identity/cache/clear" {
 		return nil, identityCacheReceipt{}, "200", true
 	}

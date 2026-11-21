@@ -158,6 +158,17 @@ func (a measuredAuth) AuthenticateOperator(ctx context.Context, r *http.Request)
 	return a.measure(ctx, r, a.auth.AuthenticateOperator)
 }
 
+// AuthenticateExternal measures the token check of a user's own agent.
+func (a measuredAuth) AuthenticateExternal(ctx context.Context, r *http.Request) (domain.ExternalCaller, error) {
+	var caller domain.ExternalCaller
+	_, err := a.measure(ctx, r, func(c context.Context, request *http.Request) (domain.Principal, error) {
+		var authErr error
+		caller, authErr = a.auth.AuthenticateExternal(c, request)
+		return caller.Principal, authErr
+	})
+	return caller, err
+}
+
 func (a measuredAuth) measure(
 	ctx context.Context,
 	r *http.Request,

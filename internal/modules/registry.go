@@ -109,6 +109,8 @@ type Method struct {
 	Confirmation               Confirmation             `json:"confirmation"`
 	ArtifactMIMETypes          []string                 `json:"artifact_mime_types"`
 	ExternalDisclosure         bool                     `json:"external_disclosure"`
+	// ExternalAgent lets a user's own agent call this method. The default is false.
+	ExternalAgent bool `json:"external_agent,omitempty"`
 }
 type Module struct {
 	Visibility      string   `json:"visibility,omitempty"`
@@ -133,13 +135,15 @@ type Caller struct {
 	Auth        CallerAuth `json:"auth"`
 }
 type Manifest struct {
-	Summary         string   `json:"summary,omitempty"`
-	ProtocolVersion int      `json:"protocol_version"`
-	ServiceID       string   `json:"service_id"`
-	Revision        string   `json:"revision"`
-	Description     string   `json:"description"`
-	Caller          *Caller  `json:"caller,omitempty"`
-	Modules         []Module `json:"modules"`
+	Summary         string  `json:"summary,omitempty"`
+	ProtocolVersion int     `json:"protocol_version"`
+	ServiceID       string  `json:"service_id"`
+	Revision        string  `json:"revision"`
+	Description     string  `json:"description"`
+	Caller          *Caller `json:"caller,omitempty"`
+	// ExternalAgentTokens publishes the service as a token service for external agents.
+	ExternalAgentTokens *ExternalAgentTokens `json:"external_agent_tokens,omitempty"`
+	Modules             []Module             `json:"modules"`
 }
 
 // Endpoint addresses come from trusted Docker metadata, never model input or DNS.
@@ -362,10 +366,16 @@ func (r *Registry) decodeManifest(raw []byte) (Manifest, error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return m, err
 	}
+	if m.ExternalAgentTokens != nil {
+		if err := validPath(m.ExternalAgentTokens.Path); err != nil {
+			return m, err
+		}
+	}
 	seen := map[string]bool{}
 	for _, module := range m.Modules {
 		if seen[module.ID] || reserved(module.ID) || module.ID == "history" || module.ID == fieldArtifacts ||
-			module.ID == "skills" || module.ID == "admin" || module.ID == "diagnostics" || module.ID == "memory" || module.ID == "files" {
+			module.ID == "skills" || module.ID == "admin" || module.ID == "diagnostics" || module.ID == "memory" ||
+			module.ID == "files" || module.ID == "mcp_access" {
 			return m, errors.New("duplicate or reserved module id")
 		}
 		seen[module.ID] = true
@@ -639,6 +649,21 @@ func (r *Registry) methods(ctx context.Context, p Principal, s registered, modul
 	return response.Methods, nil
 }
 func (r *Registry) List(ctx context.Context, p Principal) ([]Tool, error) {
+	return r.listReads(ctx, p, false)
+}
+
+// ListExternal returns the read methods that their service marked for external agents.
+func (r *Registry) ListExternal(ctx context.Context, p Principal) ([]Tool, error) {
+	return r.listReads(ctx, p, true)
+}
+
+// readable reports a read method that the principal can call. An external caller
+// also needs the method's external_agent mark.
+func readable(p Principal, method Method, external bool) bool {
+	return method.Effect == effectRead && allowed(p, method.Permissions) && (!external || method.ExternalAgent)
+}
+
+func (r *Registry) listReads(ctx context.Context, p Principal, external bool) ([]Tool, error) {
 	tools := []Tool{}
 	seen := map[string]string{}
 	for _, s := range r.snapshot() {
@@ -655,7 +680,7 @@ func (r *Registry) List(ctx context.Context, p Principal) ([]Tool, error) {
 				return nil, err
 			}
 			for _, method := range methods {
-				if method.Effect == effectRead && allowed(p, method.Permissions) {
+				if readable(p, method, external) {
 					tools = append(
 						tools,
 						Tool{
@@ -782,13 +807,29 @@ func (r *Registry) BrokerLive(
 ) sandbox.Broker {
 	return sandbox.BrokerFunc(
 		func(ctx context.Context, module, method string, args json.RawMessage) (json.RawMessage, error) {
-			return r.readCall(ctx, principal, runID, guard, module, method, args)
+			return r.readCall(ctx, principal, runID, guard, module, method, args, false)
+		},
+	)
+}
+
+// ExternalBroker serves reads for an external agent. It calls only methods marked
+// external_agent. It does not import artifacts: an external action has no run to own them.
+// executionID replaces the run ID in the request envelope. principal is called once
+// before each call; it must check that the caller is still admitted.
+func (r *Registry) ExternalBroker(
+	principal func(context.Context) (Principal, error),
+	executionID string,
+) sandbox.Broker {
+	return sandbox.BrokerFunc(
+		func(ctx context.Context, module, method string, args json.RawMessage) (json.RawMessage, error) {
+			return r.readCall(ctx, principal, executionID, nil, module, method, args, true)
 		},
 	)
 }
 
 func (r *Registry) readCall(ctx context.Context, principal func(context.Context) (Principal, error), runID string,
-	guard func(context.Context) error, module, method string, args json.RawMessage) (json.RawMessage, error) {
+	guard func(context.Context) error, module, method string, args json.RawMessage, external bool,
+) (json.RawMessage, error) {
 	if len(args) > maxArgumentBytes {
 		return nil, errors.New("module arguments exceed 65536 bytes")
 	}
@@ -802,6 +843,9 @@ func (r *Registry) readCall(ctx context.Context, principal func(context.Context)
 	s, m, err := r.lookup(ctx, p, module, method)
 	if err != nil {
 		return nil, err
+	}
+	if external && !m.ExternalAgent {
+		return nil, ErrUnavailable
 	}
 	if m.Effect != effectRead {
 		return nil, ErrWriteDisabled
@@ -857,6 +901,9 @@ func (r *Registry) readCall(ctx context.Context, principal func(context.Context)
 	}
 	if err = output.Validate(doc); err != nil {
 		return nil, fmt.Errorf("invalid module result: %w", err)
+	}
+	if external {
+		return response.Result, nil
 	}
 	artifacts, err := r.importArtifacts(ctx, p, s, module, runID, m, response.Artifacts, guard, principal)
 	if err != nil {

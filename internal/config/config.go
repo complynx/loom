@@ -41,9 +41,12 @@ type Database struct {
 	LockTimeoutMS      int    `yaml:"lock_timeout_ms"`
 }
 type Identity struct {
-	AdminOrganizationID        string              `yaml:"admin_organization_id"`
-	Issuer                     string              `yaml:"issuer"`
-	Audience                   string              `yaml:"audience"`
+	AdminOrganizationID string `yaml:"admin_organization_id"`
+	Issuer              string `yaml:"issuer"`
+	Audience            string `yaml:"audience"`
+	// RejectAudience is set at startup, not in YAML. A token that contains it is
+	// refused: it belongs to the other endpoint.
+	RejectAudience             string              `yaml:"-"                             json:"-"`
 	ClientID                   string              `yaml:"client_id"`
 	ClientSecret               string              `yaml:"client_secret"`
 	ClientKeyBase64            string              `yaml:"client_key_base64"             json:"-"`
@@ -205,6 +208,7 @@ type Search struct {
 }
 
 type Config struct {
+	ExternalAgents    ExternalAgents      `yaml:"external_agents"`
 	FileTools         FileTools           `yaml:"file_tools"`
 	Transcription     Transcription       `yaml:"transcription"`
 	Operator          Operator            `yaml:"operator"`
@@ -289,6 +293,12 @@ func Parse(b []byte, lookup func(string) (string, bool)) (Config, error) {
 	if e != nil {
 		return Config{}, e
 	}
+	// A disabled endpoint loads no key: Validate refuses its settings by name.
+	if c.ExternalAgents.Enabled {
+		if c.ExternalAgents, e = c.ExternalAgents.ResolveCredentials(); e != nil {
+			return Config{}, e
+		}
+	}
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
@@ -314,6 +324,9 @@ func (c Config) validateTrust() error {
 		return err
 	}
 	if err := c.validateOperator(); err != nil {
+		return err
+	}
+	if err := c.ExternalAgents.Validate(c.Identity.Audience); err != nil {
 		return err
 	}
 	if c.Sandbox.EngineCandidate != "" && c.Sandbox.EngineCandidate != "goja" {

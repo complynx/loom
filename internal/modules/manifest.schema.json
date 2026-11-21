@@ -11,6 +11,12 @@
     "description": {"type": "string", "maxLength": 4000},
     "summary": {"$ref": "#/$defs/summary"},
     "caller": {"$ref": "#/$defs/caller"},
+    "external_agent_tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {"path": {"$ref": "#/$defs/path"}}
+    },
     "modules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/module"}}
   },
   "$defs": {
@@ -27,7 +33,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["runs.create", "runs.control", "chat.read", "chat.events.append", "artifacts.read", "artifacts.write"]
+            "enum": ["runs.create", "runs.control", "chat.read", "chat.events.append", "artifacts.read", "artifacts.write", "external_agent.profile.write"]
           }
         },
         "auth": {
@@ -135,6 +141,7 @@
         "confirmation": {"$ref": "#/$defs/confirmation"},
         "artifact_mime_types": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
         "external_disclosure": {"type": "boolean"},
+        "external_agent": {"type": "boolean"},
         "skills": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/skill"}},
         "visibility": {"enum": ["default", "list", "search", "hidden"]}
       },

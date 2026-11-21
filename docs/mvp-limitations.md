@@ -13,6 +13,7 @@ This page separates implemented behavior, verification scope and missing feature
 | External client and writes | Bounded real-service checks: delegated run, subsequent history, permission-filtered discovery, result delivery and same-run recovery. Protocol-mode prepare/restart/approval/replay/status preserves one effect. The provider was manual. |
 | Files | Native service import, readable PDF text/rendering, video frame/audio extraction, audio metadata and explicit source refetch after artifact expiry. Automatic reference refresh has separate local tests. |
 | Memory, search and context | Owner isolation, micro-memory, literal/fulltext/RE2, partial reads, vector API, compatible prefix reuse and durable compaction use fixtures/PostgreSQL. |
+| External agents | MCP JSON-RPC exchange, token rules, user profile, method mark, history record, zero-credit use and no run creation use fixtures and PostgreSQL. No real MCP client or issuer is included. |
 | Failures and diagnostics | Isolated disk-full/read-only, cancellation, lost responses, worker kill/OOM, bounded restore barrier, diagnostics, logs/metrics and bounded OTel export. This does not establish host load limits. |
 
 Checks apply to their recorded builds and boundaries. They do not automatically accept each later release or installation. Keep run evidence outside the repository; use the [QA guides](qa.md) for repeatable criteria.
@@ -27,12 +28,13 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 | Queue restart → reauthorize | Same run, CAS and a real local credential-revocation chain. | The complete chain for token TTL expiry and the deployed client. |
 | Conversational consent | Resolution binds the latest accepted input and exact prepared action. | Live RU/EN, conditional/late answers and client UI ordering. Older binary callbacks do not accept this mode. |
 | Models and media | Image attachment, native compaction and paid transcription. | Live vision, compaction quality/cost, paid speech transcription and unattended tool selection. |
+| External agents | Read tools through MCP with OAuth resource metadata. | A real MCP client with the installed issuer, client registration, token audiences and the chat client's profile flow. See [acceptance](external-agents.md#acceptance). |
 | Operations | Startup, telemetry, keyring and recovery guards. | End-to-end backend/alerts, target load/host OOM, off-host/PITR restore and historical-backup key rotation. |
 
 ## Not implemented
 
 - Cross-org delegation is intentionally denied. Supporting it needs a separate trust contract.
-- Automatic token exchange, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth.
+- Automatic renewal of a delegated user's token, offline refresh and refresh rotation inside Loom. Expiry needs explicit reauthorization; a run can enter waiting_auth. The [token service](external-agents.md#token-services) request for external agents is a separate function.
 - Incoming opaque service secrets. Services use verified Zitadel tokens and trusted caller bindings.
 - Provider token deltas and WebSocket. SSE contains durable run events; steering applies at step boundaries.
 - A general parallel scheduler for model tool calls. Scripts can use parallel host RPC.
@@ -40,6 +42,8 @@ Checks apply to their recorded builds and boundaries. They do not automatically 
 - Provider previous_response_id or complete transcript reuse. previous_run_id is a compatible local history-prefix hint, not resume or a guaranteed provider cache hit.
 - A common dependency circuit breaker, automatic late-usage retrieval or a global platform spend cap. Bounded provider retry and sponsored recovery already exist.
 - Remote cancellation through manifest cancel_path. Cancel is not rollback.
+- External agent writes, memory writes, files, skill library edits and paid tools. External agents have read methods only; their rate limit is local to one API process.
+- Acceptance of an external agent token service in the installation. The request has fixture tests only.
 - Object storage, chunk-upload sessions, cross-host blob transfer or native PDF/audio/video model input. The worker processes these formats; supported images can attach directly.
 - A proven private-inference boundary, automatic memory extraction, memory administration UI, subagents or proactive runs.
 - Privileged retention changes for all existing resources or secure erasure of every checkpoint/audit/backup trace.
