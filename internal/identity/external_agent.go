@@ -30,7 +30,7 @@ func (a *Authenticator) VerifyExternal(ctx context.Context, token string) (domai
 	if err != nil {
 		return domain.ExternalCaller{}, err
 	}
-	if p.ServiceAccount || p.OrgID == "" {
+	if p.ServiceAccount || p.OrgID == "" || info.ClientID == "" {
 		return domain.ExternalCaller{}, ErrUnauthorized
 	}
 	service, err := a.classifyService(ctx, p)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -80,9 +79,8 @@ func newExternalAgent(
 }
 
 type externalSession struct {
-	caller    domain.ExternalCaller
-	profile   domain.ExternalAgentProfile
-	principal domain.Principal
+	caller  domain.ExternalCaller
+	profile domain.ExternalAgentProfile
 	// tokenService is the token service of this call. Empty means that service
 	// methods are not available in this call.
 	tokenService string
@@ -173,15 +171,25 @@ func (a *ExternalAgent) admit(ctx context.Context, caller domain.ExternalCaller)
 	if !profile.Enabled {
 		return externalSession{}, domain.NewError(http.StatusForbidden, externalDisabledCode)
 	}
-	permissions := maps.Clone(p.Permissions)
-	if permissions == nil {
-		permissions = map[string]bool{}
+	return externalSession{caller: caller, profile: profile}, nil
+}
+
+func (a *ExternalAgent) OpenSession(ctx context.Context, caller domain.ExternalCaller) (string, error) {
+	if !a.limiter.allow(externalLimitKey(caller), time.Now()) {
+		return "", domain.NewError(http.StatusTooManyRequests, "rate_limited")
 	}
-	if profile.History {
-		permissions["chat.read"] = true
+	if _, err := a.admit(ctx, caller); err != nil {
+		return "", err
 	}
-	p.Permissions = permissions
-	return externalSession{caller: caller, profile: profile, principal: p}, nil
+	return a.tools.repository.OpenExternalAgentSession(ctx, caller)
+}
+
+func (a *ExternalAgent) CheckSession(ctx context.Context, caller domain.ExternalCaller) error {
+	return a.tools.repository.CheckExternalAgentSession(ctx, caller)
+}
+
+func (a *ExternalAgent) CloseSession(ctx context.Context, caller domain.ExternalCaller) error {
+	return a.tools.repository.CloseExternalAgentSession(ctx, caller)
 }
 
 // servicePrincipal is the identity that Loom presents to a downstream service.
@@ -207,7 +215,7 @@ func (a *ExternalAgent) servicePrincipal(ctx context.Context, session externalSe
 		// cause is kept as text only: it must not match an authorization error.
 		return modules.Principal{}, fmt.Errorf("%w: token service request: %s", modules.ErrUnavailable, err.Error())
 	}
-	return modulePrincipal(session.principal, token, 0), nil
+	return modulePrincipal(session.caller.Principal, token, 0), nil
 }
 
 // serviceReads returns the marked service reads of the session. It returns none
@@ -239,8 +247,12 @@ func (a *ExternalAgent) readmit(ctx context.Context, held domain.ExternalCaller)
 		return externalSession{}, err
 	}
 	if fresh.Principal.Issuer != held.Principal.Issuer || fresh.Principal.Subject != held.Principal.Subject ||
-		fresh.Principal.OrgID != held.Principal.OrgID {
+		fresh.Principal.OrgID != held.Principal.OrgID || fresh.ClientID != held.ClientID {
 		return externalSession{}, domain.NewError(http.StatusUnauthorized, "unauthorized")
+	}
+	fresh.SessionID = held.SessionID
+	if err = a.CheckSession(ctx, fresh); err != nil {
+		return externalSession{}, externalSessionError(err)
 	}
 	return a.admit(ctx, fresh)
 }
@@ -529,6 +541,9 @@ func externalFailure(err error) json.RawMessage {
 	case code == "history_unavailable":
 		failure.Code = code
 		failure.Recovery = "Loom could not record this action, so it withheld the result. Retry later."
+	case code == "external_session_closed":
+		failure.Code = code
+		failure.Recovery = "This MCP session ended. Reconnect before sending requests."
 	case errors.Is(err, identity.ErrUnauthorized):
 		failure.Code = "permission_denied"
 		failure.Recovery = "Sign in again."
@@ -552,7 +567,8 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 	bindings := externalBuiltins(session.profile)
 	indexes := map[string]int{}
 	for _, tool := range reads {
-		if tool.Module == helpModule || tool.Module == historyModule || tool.Module == memoryModule {
+		if tool.Module == helpModule || tool.Module == historyModule || tool.Module == memoryModule ||
+			tool.Module == mcpAccessModule {
 			return nil, errors.New("reserved builtin module name collision")
 		}
 		index, ok := indexes[tool.Module]
@@ -621,7 +637,17 @@ func (a *ExternalAgent) script(ctx context.Context, session externalSession, cod
 	if scriptErr != nil {
 		return nil, scriptErr
 	}
+	if err = a.CheckSession(ctx, session.caller); err != nil {
+		return nil, externalSessionError(err)
+	}
 	return result, nil
+}
+
+func externalSessionError(err error) error {
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.NewError(http.StatusNotFound, "external_session_closed")
+	}
+	return err
 }
 
 // dispatch checks the current profile before every builtin call. Remote calls
@@ -647,28 +673,24 @@ func (a *ExternalAgent) dispatch(
 	case helpModule:
 		return a.help(ctx, session, method, raw)
 	case memoryModule:
-		value, memoryErr := a.tools.callMemory(ctx, session.principal, method, raw)
+		value, memoryErr := a.tools.callMemory(ctx, session.caller.Principal, method, raw)
 		if memoryErr != nil {
 			return nil, memoryErr
 		}
 		return json.Marshal(value)
 	}
-	chat, err := a.tools.repository.DefaultChat(ctx, session.principal)
+	// The profile grants access to this history read only. Service calls use the
+	// verified OAuth principal without this Loom permission.
+	historyPrincipal := session.caller.Principal
+	historyPrincipal.Permissions = map[string]bool{"chat.read": true}
+	chat, err := a.tools.repository.DefaultChat(ctx, historyPrincipal)
 	if err != nil {
 		return nil, err
 	}
 	if method == historySearchMethod {
-		return a.tools.searchHistory(ctx, session.principal, chat.ID, raw)
+		return a.tools.searchHistory(ctx, historyPrincipal, chat.ID, raw)
 	}
-	var input domain.ReadHistoryRequest
-	if err = json.Unmarshal(raw, &input); err != nil {
-		return nil, err
-	}
-	page, err := a.tools.repository.ReadHistory(ctx, session.principal, chat.ID, input)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(page)
+	return a.tools.readHistory(ctx, historyPrincipal, chat.ID, raw)
 }
 
 // record writes one passive history event for a script that called a service,
@@ -729,6 +751,9 @@ func externalActionText(action domain.ExternalAction) string {
 	parts := make([]string, 0, len(action.Calls))
 	for _, call := range action.Calls {
 		part := fmt.Sprintf("%s.%s x%d", call.Module, call.Method, call.Count)
+		if strings.Contains(call.Module, ".") || strings.Contains(call.Method, ".") {
+			part = fmt.Sprintf("%s / %s x%d", call.Module, call.Method, call.Count)
+		}
 		if call.Failed > 0 {
 			part += fmt.Sprintf(" (%d failed)", call.Failed)
 		}
@@ -749,13 +774,18 @@ func externalActionText(action domain.ExternalAction) string {
 	return text + "."
 }
 
+type externalCallKey struct {
+	module string
+	method string
+}
+
 // externalCalls counts the module calls of one script. Scripts call in parallel.
 // A call is counted when it starts, so a call that the script did not wait for
 // still enters the record.
 type externalCalls struct {
 	mu     sync.Mutex
 	closed bool
-	counts map[string]*domain.ExternalActionCall
+	counts map[externalCallKey]*domain.ExternalActionCall
 }
 
 // start counts one call and returns the function that reports its end. It returns
@@ -767,9 +797,9 @@ func (c *externalCalls) start(module, method string) func(failed bool) {
 		return nil
 	}
 	if c.counts == nil {
-		c.counts = map[string]*domain.ExternalActionCall{}
+		c.counts = map[externalCallKey]*domain.ExternalActionCall{}
 	}
-	key := module + "." + method
+	key := externalCallKey{module: module, method: method}
 	entry := c.counts[key]
 	if entry == nil {
 		entry = &domain.ExternalActionCall{Module: module, Method: method}
@@ -798,7 +828,10 @@ func (c *externalCalls) close() []domain.ExternalActionCall {
 		out = append(out, *entry)
 	}
 	slices.SortFunc(out, func(a, b domain.ExternalActionCall) int {
-		return strings.Compare(a.Module+"."+a.Method, b.Module+"."+b.Method)
+		if a.Module != b.Module {
+			return strings.Compare(a.Module, b.Module)
+		}
+		return strings.Compare(a.Method, b.Method)
 	})
 	return out
 }

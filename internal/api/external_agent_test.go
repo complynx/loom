@@ -16,7 +16,32 @@ import (
 	"github.com/complynx/loom/internal/identity"
 )
 
-type externalService struct{ calls []string }
+type externalService struct {
+	calls []string
+	open  bool
+}
+
+const testMCPSession = "test-session"
+
+func (s *externalService) OpenSession(context.Context, domain.ExternalCaller) (string, error) {
+	s.open = true
+	return testMCPSession, nil
+}
+
+func (s *externalService) CheckSession(_ context.Context, caller domain.ExternalCaller) error {
+	if !s.open || caller.SessionID != testMCPSession {
+		return domain.NotFound()
+	}
+	return nil
+}
+
+func (s *externalService) CloseSession(ctx context.Context, caller domain.ExternalCaller) error {
+	if err := s.CheckSession(ctx, caller); err != nil {
+		return err
+	}
+	s.open = false
+	return nil
+}
 
 func (s *externalService) Tools(context.Context, domain.ExternalCaller) ([]domain.ExternalTool, error) {
 	return []domain.ExternalTool{
@@ -58,11 +83,14 @@ func externalHandler(service *externalService, options api.Options) http.Handler
 	return api.New(nil, authFunc(allowed), options)
 }
 
-func mcpRequest(handler http.Handler, token, body string) *httptest.ResponseRecorder {
+func mcpRequest(handler http.Handler, token, body string, session ...string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
+	}
+	if len(session) > 0 {
+		r.Header.Set("Mcp-Session-Id", session[0])
 	}
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
@@ -93,9 +121,10 @@ func TestMCPEndpointAuthorizesAndServesTools(t *testing.T) {
 	initialize := mcpRequest(
 		handler,
 		"user-token",
-		`{"jsonrpc":"2.0","id":"a","method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","id":"a","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
 	)
 	require.Equal(t, http.StatusOK, initialize.Code)
+	require.Equal(t, testMCPSession, initialize.Header().Get("Mcp-Session-Id"))
 	var initialized struct {
 		ID     string `json:"id"`
 		Result struct {
@@ -108,11 +137,18 @@ func TestMCPEndpointAuthorizesAndServesTools(t *testing.T) {
 	require.Equal(t, "2025-06-18", initialized.Result.ProtocolVersion)
 	require.Contains(t, initialized.Result.Capabilities, "tools")
 
-	notification := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	notification := mcpRequest(
+		handler,
+		"user-token",
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		testMCPSession,
+	)
 	require.Equal(t, http.StatusAccepted, notification.Code)
 	require.Empty(t, notification.Body.String())
 
-	list := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	const listRequest = `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`
+	require.Equal(t, http.StatusBadRequest, mcpRequest(handler, "user-token", listRequest).Code)
+	list := mcpRequest(handler, "user-token", listRequest, testMCPSession)
 	require.JSONEq(
 		t,
 		`{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"script","description":"run","inputSchema":{"type":"object"}}]}}`,
@@ -123,6 +159,7 @@ func TestMCPEndpointAuthorizesAndServesTools(t *testing.T) {
 		handler,
 		"user-token",
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"script","arguments":{"code":"return 1"}}}`,
+		testMCPSession,
 	)
 	require.JSONEq(
 		t,
@@ -133,15 +170,36 @@ func TestMCPEndpointAuthorizesAndServesTools(t *testing.T) {
 		handler,
 		"user-token",
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"other"}}`,
+		testMCPSession,
 	)
 	require.Contains(t, failed.Body.String(), `"isError":true`)
 	require.Equal(t, []string{`alice script {"code":"return 1"}`, "alice other {}"}, service.calls)
+
+	closeRequest := httptest.NewRequest(http.MethodDelete, "/mcp", nil)
+	closeRequest.Header.Set("Authorization", "Bearer user-token")
+	closeRequest.Header.Set("Mcp-Session-Id", testMCPSession)
+	invalidClose := closeRequest.Clone(t.Context())
+	invalidClose.Header.Set("Mcp-Protocol-Version", "unsupported")
+	invalid := httptest.NewRecorder()
+	handler.ServeHTTP(invalid, invalidClose)
+	require.Equal(t, http.StatusBadRequest, invalid.Code)
+	require.Equal(t, http.StatusOK, mcpRequest(handler, "user-token", listRequest, testMCPSession).Code)
+	closed := httptest.NewRecorder()
+	handler.ServeHTTP(closed, closeRequest)
+	require.Equal(t, http.StatusNoContent, closed.Code)
+	require.Equal(t, http.StatusNotFound, mcpRequest(handler, "user-token", listRequest, testMCPSession).Code)
 }
 
 func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 	t.Parallel()
-	service := &externalService{}
+	service := &externalService{open: true}
 	handler := externalHandler(service, api.Options{})
+	for _, params := range []string{"", `,"params":3`, `,"params":null`, `,"params":{}`} {
+		badInit := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","id":1,"method":"initialize"`+params+`}`)
+		require.Equal(t, http.StatusOK, badInit.Code)
+		require.Contains(t, badInit.Body.String(), "-32602")
+		require.Empty(t, badInit.Header().Get("Mcp-Session-Id"))
+	}
 	for name, tc := range map[string]struct {
 		body   string
 		status int
@@ -149,7 +207,6 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 	}{
 		"unknown method":  {`{"jsonrpc":"2.0","id":1,"method":"resources/list"}`, http.StatusOK, -32601},
 		"missing tool":    {`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`, http.StatusOK, -32602},
-		"initialize type": {`{"jsonrpc":"2.0","id":1,"method":"initialize","params":3}`, http.StatusOK, -32602},
 		"wrong version":   {`{"jsonrpc":"1.0","id":1,"method":"ping"}`, http.StatusOK, -32600},
 		"batch":           {`[{"jsonrpc":"2.0","id":1,"method":"ping"}]`, http.StatusBadRequest, -32600},
 		"malformed JSON":  {`{"jsonrpc":`, http.StatusBadRequest, -32700},
@@ -164,7 +221,7 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 		},
 		"wrong version notification": {`{"jsonrpc":"1.0","method":"ping"}`, http.StatusOK, -32600},
 	} {
-		response := mcpRequest(handler, "user-token", tc.body)
+		response := mcpRequest(handler, "user-token", tc.body, testMCPSession)
 		require.Equal(t, tc.status, response.Code, name)
 		var body struct {
 			Error struct {
@@ -179,9 +236,9 @@ func TestMCPEndpointRejectsInvalidExchanges(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, stream)
 	require.Equal(t, http.StatusMethodNotAllowed, w.Code)
-	require.Equal(t, http.MethodPost, w.Header().Get("Allow"))
+	require.Equal(t, "POST, DELETE", w.Header().Get("Allow"))
 
-	clientResponse := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","id":7,"result":{}}`)
+	clientResponse := mcpRequest(handler, "user-token", `{"jsonrpc":"2.0","id":7,"result":{}}`, testMCPSession)
 	require.Equal(t, http.StatusAccepted, clientResponse.Code)
 
 	browser := httptest.NewRequest(

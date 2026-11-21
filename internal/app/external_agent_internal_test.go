@@ -118,6 +118,8 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, profile.Version)
 	require.Equal(t, "chat-client", profile.ConfirmedBy)
+	caller.SessionID, err = agent.OpenSession(ctx, caller)
+	require.NoError(t, err)
 	_, err = repository.PutExternalAgentProfile(ctx, confirming, domain.ExternalAgentProfileUpdate{Enabled: true})
 	require.ErrorContains(t, err, "external_agent_profile_version_conflict")
 	_, err = pool.Exec(ctx, "UPDATE billing_accounts SET balance=0")
@@ -172,9 +174,12 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 		return {first, earlier: (await modules.history.read({after_seq: 0})).events.length};`)
 	require.False(t, failed, result)
 	require.JSONEq(t, `{"first":{"ok":true},"earlier":0}`, result)
-	result, failed = script(`return [typeof modules.business.secret, typeof modules.memory, typeof modules.files];`)
+	result, failed = script(
+		`return [typeof modules.business.secret, typeof modules.business.chat_only,
+			typeof modules.memory, typeof modules.files, typeof modules.mcp_access];`,
+	)
 	require.False(t, failed, result)
-	require.JSONEq(t, `["undefined","undefined","undefined"]`, result)
+	require.JSONEq(t, `["undefined","undefined","undefined","undefined","undefined"]`, result)
 	result, failed = script(`return (await modules.help.list({module: "business"})).items.map(item => item.id);`)
 	require.False(t, failed, result)
 	require.JSONEq(t, `["business.read","business.ready"]`, result)
@@ -322,8 +327,9 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 	afterRead.Store(&revoke)
 	before = reads.Load()
 	result, failed = script(twoReads)
-	require.False(t, failed, result)
-	require.JSONEq(t, `{"first":{"ok":true},"error":"permission_denied"}`, result)
+	require.True(t, failed, result)
+	require.Contains(t, result, "external_session_closed")
+	require.NotContains(t, result, `"first"`)
 	require.Equal(t, before+1, reads.Load(), "a revoked profile must block the next call of a running script")
 }
 
@@ -428,6 +434,21 @@ func (s *externalFixtureService) read(r *http.Request, hold *heldRead) {
 	}
 }
 
+func TestExternalActionCountersKeepDottedNamesDistinct(t *testing.T) {
+	t.Parallel()
+	var calls externalCalls
+	calls.start("bookings.eu", "list")(true)
+	calls.start("bookings", "eu.list")(false)
+	got := calls.close()
+	require.Equal(t, []domain.ExternalActionCall{
+		{Module: "bookings", Method: "eu.list", Count: 1},
+		{Module: "bookings.eu", Method: "list", Count: 1, Failed: 1},
+	}, got)
+	message := externalActionText(domain.ExternalAction{Calls: got})
+	require.Contains(t, message, "bookings / eu.list x1")
+	require.Contains(t, message, "bookings.eu / list x1 (1 failed)")
+}
+
 func externalAgentManifest() modules.Manifest {
 	method := func(id string, external bool) modules.Method {
 		return modules.Method{
@@ -447,6 +468,8 @@ func externalAgentManifest() modules.Manifest {
 			ExternalAgent:     external,
 		}
 	}
+	chatOnly := method("chat_only", true)
+	chatOnly.Permissions = []string{"chat.read"}
 	return modules.Manifest{
 		ProtocolVersion: 1,
 		ServiceID:       "external-fixture",
@@ -457,7 +480,9 @@ func externalAgentManifest() modules.Manifest {
 			Description: "Business reads",
 			Permissions: []string{"business.access"},
 			Discovery:   "static",
-			Methods:     []modules.Method{method("read", true), method("ready", true), method("secret", false)},
+			Methods: []modules.Method{
+				method("read", true), method("ready", true), method("secret", false), chatOnly,
+			},
 		}},
 	}
 }

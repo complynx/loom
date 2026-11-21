@@ -85,7 +85,7 @@ func TestEndpointAudiencesAreMutuallyExclusive(t *testing.T) {
 		_, err = api.Authenticate(context.Background(), request(token))
 		require.ErrorIs(t, err, identity.ErrUnauthorized, token)
 	}
-	for _, token := range []string{"opaque", "both-audiences"} {
+	for _, token := range []string{"opaque", "both-audiences", "mcp-no-client"} {
 		_, err = mcp.AuthenticateExternal(context.Background(), request(token))
 		require.ErrorIs(t, err, identity.ErrUnauthorized, token)
 	}

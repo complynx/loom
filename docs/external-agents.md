@@ -16,6 +16,7 @@ that are not implemented.
 | MCP endpoint, OAuth resource metadata, `script` tool with help, history and memory reads | Implemented. |
 | Service reads through marked methods | Implemented with a separate token from a [token service](#token-services). Off until a discovered service declares a token endpoint and the operator approves it. |
 | User profile written by a confirming chat client | Implemented. |
+| MCP sessions and revoke controls in the internal agent | Implemented. |
 | `external_agent` method mark in manifests | Implemented for read methods. |
 | History record for each external action | Implemented. |
 | Acceptance with a real MCP client and the installed issuer | Open. See [Acceptance](#acceptance). |
@@ -360,9 +361,19 @@ reject them. Remove them from static and dynamic documents before a rollback.
 ## MCP endpoint
 
 `POST /mcp` accepts one JSON-RPC 2.0 message with
-`Content-Type: application/json` and returns one JSON response. The endpoint is
-stateless: it issues no session ID and opens no server stream. `GET` and
-`DELETE` return `405`.
+`Content-Type: application/json` and returns one JSON response. A successful
+`initialize` returns a new `Mcp-Session-Id` header. Send that ID and the OAuth
+token with each later request. Loom binds the ID to the token's issuer, user,
+organization and OAuth client. A refreshed token of the same identity can keep
+using the session. The issuer must report a nonempty `client_id` in
+introspection. A missing session ID returns `400`. An expired, revoked or
+foreign ID returns `404`.
+
+`DELETE /mcp` with the same authorization and session headers ends the session
+and returns `204`. The endpoint opens no server stream. `GET` returns `405`.
+Sessions last up to 24 hours from initialization. If the user already has
+16 active sessions in the organization, opening another closes the oldest.
+Initialization counts toward the per-user rate limit.
 
 Browser pages are not supported clients. A request with an `Origin` header
 returns `403 forbidden_origin`, and Loom sends no CORS headers. Native and
@@ -381,7 +392,23 @@ A request ID must be a string or a number. Batches, other ID types, another
 `jsonrpc` value and every other message shape return JSON-RPC error `-32600`
 with a null ID and start no tool. Unknown methods return `-32601`. A `tools/list` request above
 the rate limit returns `-32000` with the message `rate_limited`. Malformed
-`initialize` parameters return `-32602`.
+`initialize` parameters return `-32602`. Opening a session requires an enabled
+profile and external disclosure. Disabled access returns `403`.
+
+## Manage MCP access from the main bot
+
+In a normal internal chat the bot can call `modules.mcp_access.list({})` to
+name current sessions and `modules.mcp_access.revoke({session_id})` to end one.
+Use the reference from `list`. It is different from the transport session ID.
+The application refuses the next request or module admission from the revoked
+session and withholds any result when revocation is observed before return.
+The client can initialize a fresh session while the profile is enabled.
+
+`modules.mcp_access.disable({})` disables the user's profile and ends all
+sessions in that organization. New sessions require the confirming client
+to enable access again. The profile retains its last confirming client in
+`confirmed_by`. These methods require current `chat.read` authority for the
+user and are unavailable through MCP.
 
 ## The script tool
 
@@ -420,13 +447,14 @@ A failed call returns `isError: true` with model-safe JSON:
 
 | Code | Cause |
 | --- | --- |
-| `external_agent_disabled` | No enabled profile. `tools/list` then describes the tool as disabled. |
+| `external_agent_disabled` | The profile is absent or disabled. A new connection receives HTTP `403`. |
 | `disclosure_denied` | The operator disabled external disclosure. `tools/list` then describes that reason. |
 | `rate_limited` | The per-user limit for this minute is used. |
 | `busy` | The bound on concurrent external scripts is reached. Retry later. |
 | `history_unavailable` | Loom could not store the history record and withheld the result. |
 | `invalid_arguments`, `unknown_tool` | Wrong tool name or arguments. |
 | `unknown_token_service` | `token_service` names no available [token service](#token-services). |
+| `external_session_closed` | The connection ended during execution. |
 | Script codes | The classified codes of the script contract, for example `method_unavailable` and `script_timeout`. |
 
 Private error text, backend bodies and credentials are not returned.
@@ -463,9 +491,7 @@ that the script did not wait for is therefore in the record as `unfinished`.
 - `text` is written by Loom from method IDs and counts. It contains no text
   from the agent, no arguments and no results.
 - `client_id` is the OAuth client that the issuer reported for the token,
-  reduced to at most 128 printable ASCII characters. A dynamically registered
-  client chooses its own name; treat the value as a claim, not as a verified
-  identity. An absent value is recorded as `unknown`.
+  reduced to at most 128 printable ASCII characters for display.
 - `outcome` is `succeeded` or `failed`. A failed script adds `error` with its
   classified code. Each call entry can add `failed` with the number of failed
   calls and `unfinished` with the number of calls that were in flight when the
@@ -483,8 +509,9 @@ Stored history and search remain complete.
 
 ## Persistence and compatibility
 
-Migration `00010_external_agent_profiles.sql` adds one table. It does not
-rewrite existing rows. Older binaries ignore the table. Before a rollback,
+Migrations `00011_external_agent_profiles.sql` and
+`00012_external_agent_sessions.sql` add tables. They do not rewrite existing
+rows. Older binaries ignore the tables. Before a rollback,
 disable the endpoint and remove `external_agent`, `external_agent_tokens` and
 the new caller permission from published manifests. Events of type
 `external_agent.action` remain in chat history; an older binary gives them to
@@ -499,10 +526,28 @@ The design below is agreed and not implemented. It needs an accepted
   and status-recovery contract of [durable operations](modules/calls-confirmation.md).
   Its owner becomes the external session instead of a run. Dispatch does not
   use the run engine.
-- **Standalone confirmations.** Every confirmed external write uses a separate
+- **Standalone confirmations.** When a write needs confirmation, use a separate
   chat message with inline approve and cancel controls bound to its approval
   ID. Free text never approves an external action. Approvals of the internal
   agent keep their existing reply modes.
+- **Expanded choices.** The third button, `↓ More`, expands the same message
+  without making a decision. It retains the one-time choices and adds three
+  choices for this connection: allow future requests of this type (the exact
+  service, module and method), allow future requests from this category (the
+  exact service and module), or allow all eligible future writes. The footer
+  explains that a method grant includes different arguments, a category grant
+  includes other eligible methods, and an all-writes grant can apply to other
+  services. Eligible actions can change data or incur charges without another
+  prompt until this connection ends, within 24 hours of initialization. Label
+  the three choices with their actual targets.
+- **Remembered approval.** A trusted callback approves the current sealed
+  operation and saves the selected rule together. A rule belongs to one MCP
+  session and disappears on session closure, expiry or revocation. Every
+  dispatch still needs current profile and service permission, a valid
+  preparation and an applicable rule. A rule cannot bypass a method's
+  mandatory per-operation approval. Methods must explicitly allow remembered
+  approval before a rule can cover them. The main bot can inspect and remove
+  rules. Rule changes that widen access require the user's trusted approval.
 - **Source.** The approval carries its source, and the message shows it.
 - **System text.** The message text comes from Loom and from the service's
   prepare description. Text from the external agent is not shown.
@@ -517,6 +562,18 @@ The design below is agreed and not implemented. It needs an accepted
 - **Result.** A write call returns `waiting_approval` with its operation ID.
   The agent reads the outcome by that ID. The outcome is also written to
   history.
+- **Credentials after approval.** An approval callback does not have the
+  agent's bearer token. An explicit continuation from the same session can
+  supply a fresh token to dispatch the approved operation. Keep status lookup
+  read-only and keep the original operation ID across retries.
+
+Service methods already implementing `service_id` or `exact_parameters`,
+idempotent execute and status lookup are candidates. For example, the
+[sample massage service](../examples/manifest.json) declares booking with a
+service-generated confirmation. Loom can reuse the service RPCs. The current
+coordinator dispatch still requires a run, its lease and its consent revision.
+A session-owned operation needs a standalone dispatch and decision boundary
+before any service write is available through MCP.
 
 ## Acceptance
 
@@ -551,6 +608,7 @@ record. They do not prove these installation properties:
 | Method mark, refused unmarked dispatch, no artifact import | `TestExternalAgentReadsOnlyMarkedMethodsWithoutArtifacts` in `internal/modules` |
 | Profile switches, token service selection, service token sent instead of the agent's token, direct profile write refused, zero credits, limit for a caller without access, history record, no run, withheld result, concurrency bound, token and profile revocation inside a script | `TestExternalAgentReadsRecordHistoryWithoutRunOrCredits` in `internal/app` |
 | Profile right comes from the caller binding, not from the user's role | `TestProfilePermissionComesFromCallerBinding` in `internal/identity` |
+| Session ownership, revocation, profile disable and replacement of the oldest session | `TestExternalAgentSessionsKeepOwnershipAndRevokeIndependently` and `TestExternalAgentSessionOverflowClosesOldestConnection` in `internal/store` |
 | Compression in run context, refused event type on the public route | `TestPassiveContextKeepsHistoryAndLatestActions` in `internal/store` |
 | Upgrade from the previous schema with existing data | `TestExternalAgentProfileMigrationKeepsExistingData` in `internal/store` |
 

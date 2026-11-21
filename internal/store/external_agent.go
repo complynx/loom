@@ -65,6 +65,16 @@ func (s *Store) PutExternalAgentProfile(
 		if e != nil {
 			return e
 		}
+		if !in.Enabled {
+			if _, e = tx.Exec(
+				ctx,
+				"DELETE FROM external_agent_sessions WHERE owner_id=$1 AND org_id=$2",
+				uid,
+				p.OrgID,
+			); e != nil {
+				return e
+			}
+		}
 		return audit(ctx, tx, p, "external_agent.profile", uid, in)
 	})
 	return out, err

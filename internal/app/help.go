@@ -65,6 +65,8 @@ func (t runtimeTools) builtinHelpAvailable(p domain.Principal, module string) bo
 		return p.Has("chat.read")
 	case adminModule:
 		return len(t.adminMethods(p)) > 0
+	case mcpAccessModule:
+		return t.mcpAccessAvailable(p)
 	case memoryModule:
 		return !p.ServiceAccount
 	case filesModule:
@@ -315,6 +317,9 @@ func helpPage(id, text string, input helpRequest) (json.RawMessage, error) {
 }
 
 func builtinHelpEffect(module, method string) string {
+	if module == mcpAccessModule && method != helpListMethod {
+		return builtinWriteEffect
+	}
 	if module == adminModule && adminWrite(method) {
 		return builtinWriteEffect
 	}

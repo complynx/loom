@@ -43,7 +43,7 @@ func TestExternalAgentProfileMigrationKeepsExistingData(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	const previousRelease = 9
+	const previousRelease = 10
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files)
 	require.NoError(t, err)
 	_, err = provider.UpTo(ctx, previousRelease)

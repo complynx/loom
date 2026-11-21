@@ -41,6 +41,15 @@ type ExternalCaller struct {
 	Principal Principal
 	ClientID  string
 	Token     string
+	SessionID string
+}
+
+// ExternalAgentSession is one connection owned by a user and OAuth client.
+type ExternalAgentSession struct {
+	ID        string    `json:"id"`
+	ClientID  string    `json:"client_id"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // ExternalTool is one tool that Loom offers to an external agent.

@@ -22,7 +22,7 @@ func downgradeToV9(t *testing.T, s *store.Store) {
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files)
 	require.NoError(t, err)
-	_, err = provider.Down(t.Context())
+	_, err = provider.DownTo(t.Context(), 9)
 	require.NoError(t, err)
 	version, err := provider.GetDBVersion(t.Context())
 	require.NoError(t, err)
