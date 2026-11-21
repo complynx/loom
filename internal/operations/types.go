@@ -28,6 +28,13 @@ type Binding struct {
 }
 
 type Request struct {
+	ExternalSessionID  string          `json:"external_session_id,omitempty"`
+	ExternalService    string          `json:"external_service,omitempty"`
+	ExternalClient     string          `json:"external_client,omitempty"`
+	ExternalConfirmer  string          `json:"external_confirmer,omitempty"`
+	RememberApproval   bool            `json:"remember_approval,omitempty"`
+	ProtectArguments   bool            `json:"-"`
+	ProtectedArguments json.RawMessage `json:"protected_arguments,omitempty"`
 	BackendOperationID string          `json:"backend_operation_id,omitempty"`
 	RunID              string          `json:"run_id"`
 	CallID             string          `json:"call_id"`
@@ -67,7 +74,8 @@ type Preparation struct {
 type Operation struct {
 	Request
 
-	ConsentRevision int64 `json:"consent_revision,omitempty"`
+	ConsentRevision  int64  `json:"consent_revision,omitempty"`
+	ExternalDecision string `json:"external_decision,omitempty"`
 
 	ID           string          `json:"operation_id"`
 	State        string          `json:"state"`

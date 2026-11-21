@@ -13,6 +13,26 @@ import (
 	"github.com/complynx/loom/internal/domain"
 )
 
+func TestOperationArgumentsUseReadKeysAndBindTheOperation(t *testing.T) {
+	t.Parallel()
+	keys := map[string][]byte{"old": make([]byte, 32), "new": make([]byte, 32)}
+	keys["new"][0] = 1
+	old, err := NewSessionKeyring("old", keys, "aud", "client")
+	require.NoError(t, err)
+	args := json.RawMessage(`{"passport_number":"SYNTHETIC-KEY-ROTATION"}`)
+	sealed, err := old.SealOperationArguments("operation-1", args)
+	require.NoError(t, err)
+	require.NotContains(t, string(sealed), "SYNTHETIC-KEY-ROTATION")
+
+	current, err := NewSessionKeyring("new", keys, "aud", "client")
+	require.NoError(t, err)
+	opened, err := current.OpenOperationArguments("operation-1", sealed)
+	require.NoError(t, err)
+	require.JSONEq(t, string(args), string(opened))
+	_, err = current.OpenOperationArguments("operation-2", sealed)
+	require.ErrorIs(t, err, ErrUnauthorized)
+}
+
 func TestSessionKeyRotationAcrossRestart(t *testing.T) {
 	t.Parallel()
 	oldKey := make([]byte, 32)

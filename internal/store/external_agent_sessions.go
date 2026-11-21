@@ -69,19 +69,25 @@ func evictExternalAgentSession(ctx context.Context, tx pgx.Tx, p domain.Principa
 
 // CheckExternalAgentSession binds the transport ID to the issuer, user, organization and OAuth client.
 func (s *Store) CheckExternalAgentSession(ctx context.Context, caller domain.ExternalCaller) error {
+	_, _, err := s.ExternalAgentSessionOwner(ctx, caller)
+	return err
+}
+
+// ExternalAgentSessionOwner resolves the durable owner and session IDs.
+func (s *Store) ExternalAgentSessionOwner(ctx context.Context, caller domain.ExternalCaller) (string, string, error) {
 	p := caller.Principal
 	if _, err := uuid.Parse(caller.SessionID); err != nil || p.ServiceAccount {
-		return domain.NotFound()
+		return "", "", domain.NotFound()
 	}
-	var id string
-	err := s.pool.QueryRow(ctx, `SELECT x.id FROM external_agent_sessions x JOIN users u ON u.id=x.owner_id
+	var id, owner string
+	err := s.pool.QueryRow(ctx, `SELECT x.id,x.owner_id FROM external_agent_sessions x JOIN users u ON u.id=x.owner_id
 		WHERE x.transport_id=$1 AND u.issuer=$2 AND u.subject=$3 AND x.org_id=$4
 		AND x.client_id=$5 AND x.expires_at>now()`,
-		caller.SessionID, p.Issuer, p.Subject, p.OrgID, caller.ClientID).Scan(&id)
+		caller.SessionID, p.Issuer, p.Subject, p.OrgID, caller.ClientID).Scan(&id, &owner)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.NotFound()
+		return "", "", domain.NotFound()
 	}
-	return err
+	return id, owner, err
 }
 
 func (s *Store) ListExternalAgentSessions(

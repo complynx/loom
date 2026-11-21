@@ -73,12 +73,21 @@ func TestExternalAgentProfileMigrationKeepsExistingData(t *testing.T) {
 		user,
 	)
 	require.NoError(t, err)
+	_, err = provider.UpTo(ctx, 13)
+	require.NoError(t, err)
+	run, operation := uuid.NewString(), uuid.NewString()
+	_, err = db.ExecContext(ctx, `INSERT INTO runs(id,chat_id,owner_id,actor_id,org_id,state,doc,max_microcredits)
+		VALUES($1,$2,$3,'chat-client','org','queued','{}',1000)`, run, chat, user)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO write_operations(id,run_id,call_id,state,doc)
+		VALUES ($1,$2,'existing','succeeded','{}')`, operation, run)
+	require.NoError(t, err)
 	require.NoError(t, store.Migrate(ctx, parsed.String()))
 	require.NoError(t, store.Migrate(ctx, parsed.String()), "a repeated migration command must be safe")
 
 	var text string
 	var nextSeq, version int64
-	var skills bool
+	var skills, writes bool
 	require.NoError(
 		t,
 		db.QueryRowContext(ctx, "SELECT e.text,c.next_seq FROM chat_events e JOIN chats c ON c.id=e.chat_id WHERE c.owner_id=$1", user).
@@ -88,9 +97,15 @@ func TestExternalAgentProfileMigrationKeepsExistingData(t *testing.T) {
 	require.EqualValues(t, 2, nextSeq)
 	require.NoError(
 		t,
-		db.QueryRowContext(ctx, "SELECT version,skills FROM external_agent_profiles WHERE owner_id=$1 AND org_id='org'", user).
-			Scan(&version, &skills),
+		db.QueryRowContext(ctx, "SELECT version,skills,writes FROM external_agent_profiles WHERE owner_id=$1 AND org_id='org'", user).
+			Scan(&version, &skills, &writes),
 	)
 	require.EqualValues(t, 1, version)
 	require.False(t, skills, "existing profiles must opt in to organization skill disclosure")
+	require.False(t, writes, "existing profiles must opt in to writes")
+	var retainedRun, state string
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT run_id,state FROM write_operations WHERE id=$1", operation).
+		Scan(&retainedRun, &state))
+	require.Equal(t, run, retainedRun)
+	require.Equal(t, "succeeded", state)
 }

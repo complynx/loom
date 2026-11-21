@@ -63,37 +63,115 @@ func (r *Registry) DescribeExternal(ctx context.Context, p Principal, module, me
 	return descriptor, nil
 }
 
+func externalWrite(method Method) bool {
+	return method.ExternalAgent && method.Effect != effectRead && method.Idempotency &&
+		method.StatusPath != "" && len(method.ArtifactMIMETypes) == 0
+}
+
+func (r *Registry) DescribeExternalAction(
+	ctx context.Context,
+	p Principal,
+	service, module, method string,
+) (Descriptor, error) {
+	s, m, err := r.externalWriteMethod(ctx, p, service, module, method)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	return methodDescriptor(s, module, m), nil
+}
+
+func (r *Registry) externalWriteMethod(
+	ctx context.Context, p Principal, service, module, method string,
+) (registered, Method, error) {
+	if service == "" {
+		return registered{}, Method{}, ErrUnavailable
+	}
+	s, m, err := r.lookupWithFresh(ctx, p, service, module, method, true)
+	if err == nil && !externalWrite(m) {
+		err = ErrUnavailable
+	}
+	return s, m, err
+}
+
 // WriteBackend is used only by operations.Coordinator, never a JavaScript proxy.
 type WriteBackend struct {
 	Registry         *Registry
 	Principal        Principal
 	RefreshPrincipal func(context.Context) (Principal, error)
 	Guard            func(context.Context) error
+	ExternalWriteKey string
 }
 
 func (b WriteBackend) Authorize(ctx context.Context, op operations.Operation) error {
 	_, _, _, err := b.resolve(ctx, op)
 	return err
 }
-func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (registered, Method, Principal, error) {
+
+// ReadExternalReceipt checks current method access. For a data-bearing receipt,
+// the service must also authorize the specific operation before returning data.
+func (b WriteBackend) ReadExternalReceipt(ctx context.Context, op operations.Operation) (json.RawMessage, error) {
+	s, m, p, err := b.externalStatusAuthority(ctx, op)
+	if err != nil || len(op.Result) == 0 {
+		return nil, err
+	}
+	result, err := b.readStatus(ctx, op, s, m, p)
+	if err != nil {
+		return nil, err
+	}
+	if result.State != stateSucceeded {
+		return nil, ErrUnavailable
+	}
+	return result.Output, nil
+}
+
+func (b WriteBackend) externalStatusAuthority(
+	ctx context.Context, op operations.Operation,
+) (registered, Method, Principal, error) {
+	if op.ExternalSessionID == "" || b.ExternalWriteKey == "" {
+		return registered{}, Method{}, Principal{}, operations.ErrBinding
+	}
+	p, err := b.boundPrincipal(ctx, op)
+	if err != nil {
+		return registered{}, Method{}, Principal{}, err
+	}
+	s, m, err := b.Registry.externalWriteMethod(ctx, p, op.ExternalService, op.Module, op.Method)
+	p.ExternalWriteKey = b.ExternalWriteKey
+	return s, m, p, err
+}
+
+func (b WriteBackend) boundPrincipal(ctx context.Context, op operations.Operation) (Principal, error) {
 	if b.Guard != nil {
 		if err := b.Guard(ctx); err != nil {
-			return registered{}, Method{}, Principal{}, err
+			return Principal{}, err
 		}
 	}
 	p := b.Principal
 	if b.RefreshPrincipal != nil {
 		fresh, err := b.RefreshPrincipal(ctx)
 		if err != nil {
-			return registered{}, Method{}, Principal{}, err
+			return Principal{}, err
 		}
 		p = fresh
 	}
 	if p.Issuer != op.Binding.Issuer || p.Subject != op.Binding.Subject || p.Organization != op.Binding.OrgID ||
 		p.Actor != op.Binding.Actor {
-		return registered{}, Method{}, Principal{}, operations.ErrBinding
+		return Principal{}, operations.ErrBinding
 	}
-	s, m, err := b.Registry.lookupFresh(ctx, p, op.Module, op.Method)
+	return p, nil
+}
+
+func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (registered, Method, Principal, error) {
+	p, err := b.boundPrincipal(ctx, op)
+	if err != nil {
+		return registered{}, Method{}, Principal{}, err
+	}
+	var s registered
+	var m Method
+	if op.ExternalSessionID == "" {
+		s, m, err = b.Registry.lookupFresh(ctx, p, op.Module, op.Method)
+	} else {
+		s, m, err = b.Registry.externalWriteMethod(ctx, p, op.ExternalService, op.Module, op.Method)
+	}
 	if err != nil {
 		return registered{}, Method{}, Principal{}, err
 	}
@@ -101,41 +179,52 @@ func (b WriteBackend) resolve(ctx context.Context, op operations.Operation) (reg
 		m.Confirmation.Mode != op.Mode {
 		return registered{}, Method{}, Principal{}, operations.ErrBinding
 	}
+	if op.ExternalSessionID != "" {
+		if b.ExternalWriteKey == "" || m.ExternalAgentProtectedArguments != (len(op.ProtectedArguments) > 0) {
+			return registered{}, Method{}, Principal{}, operations.ErrBinding
+		}
+		p.ExternalWriteKey = b.ExternalWriteKey
+	}
 	if op.BackendOperationID != "" {
 		return s, m, p, nil
 	}
+	err = validateWriteArguments(m, op.Arguments)
+	return s, m, p, err
+}
+
+func validateWriteArguments(m Method, raw json.RawMessage) error {
 	input, err := compileSchema(m.InputSchema)
 	if err != nil {
-		return registered{}, Method{}, Principal{}, err
+		return err
 	}
 	var doc any
-	if err = decodeJSONDocument(op.Arguments, &doc); err != nil {
-		return registered{}, Method{}, Principal{}, &InvalidArgumentsError{Reason: "invalid_json"}
+	if err = decodeJSONDocument(raw, &doc); err != nil {
+		return &InvalidArgumentsError{Reason: "invalid_json"}
 	}
-	if len(op.Arguments) > maxArgumentBytes {
-		return registered{}, Method{}, Principal{}, &InvalidArgumentsError{Reason: "too_large"}
+	if len(raw) > maxArgumentBytes {
+		return &InvalidArgumentsError{Reason: "too_large"}
 	}
 	if err = validateDocument(doc); err != nil {
-		return registered{}, Method{}, Principal{}, &InvalidArgumentsError{Reason: "too_complex"}
+		return &InvalidArgumentsError{Reason: "too_complex"}
 	}
 	if err = input.Validate(doc); err != nil {
-		return registered{}, Method{}, Principal{}, argumentSchemaError(input, err)
+		return argumentSchemaError(input, err)
 	}
-	return s, m, p, nil
+	return nil
 }
 func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (operations.Preparation, error) {
 	s, m, principal, err := b.resolve(ctx, op)
 	if err != nil {
 		return operations.Preparation{}, err
 	}
-	if op.Mode == "none" {
+	if op.Mode == noConfirmation {
 		return operations.Preparation{ExpiresAt: time.Now().UTC().Add(defaultPreparationTTL)}, nil
 	}
 	envelope, _ := json.Marshal(
 		map[string]any{
 			fieldProtocolVersion: 1,
 			fieldOperationID:     op.BackendID(),
-			fieldRunID:           op.RunID,
+			fieldRunID:           operationContextID(op),
 			fieldArguments:       op.Arguments,
 		},
 	)
@@ -165,6 +254,9 @@ func (b WriteBackend) Prepare(ctx context.Context, op operations.Operation) (ope
 	}
 	if response.Status != statePrepared || response.OperationID != op.ID || !response.ExpiresAt.After(time.Now()) ||
 		len(response.Description) > maxPreparationDescriptionBytes {
+		return operations.Preparation{}, operations.ErrBinding
+	}
+	if op.ExternalSessionID != "" && response.Description == "" {
 		return operations.Preparation{}, operations.ErrBinding
 	}
 	preparedArgs := response.Arguments
@@ -251,7 +343,7 @@ func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (res
 		map[string]any{
 			fieldProtocolVersion: 1,
 			fieldOperationID:     op.BackendID(),
-			fieldRunID:           op.RunID,
+			fieldRunID:           operationContextID(op),
 			fieldArguments:       arguments,
 			"idempotency_key":    op.BackendID(),
 			"confirmation":       confirmation,
@@ -278,10 +370,21 @@ func (b WriteBackend) Execute(ctx context.Context, op operations.Operation) (res
 	return b.finishWriteResult(ctx, op, principal, s, m, raw, false)
 }
 func (b WriteBackend) Status(ctx context.Context, op operations.Operation) (operations.Result, error) {
-	s, m, principal, err := b.resolve(ctx, op)
+	resolve := b.resolve
+	if op.ExternalSessionID != "" {
+		// Status never dispatches. Use the current service and original operation ID.
+		resolve = b.externalStatusAuthority
+	}
+	s, m, principal, err := resolve(ctx, op)
 	if err != nil {
 		return operations.Result{}, err
 	}
+	return b.readStatus(ctx, op, s, m, principal)
+}
+
+func (b WriteBackend) readStatus(
+	ctx context.Context, op operations.Operation, s registered, m Method, principal Principal,
+) (operations.Result, error) {
 	payload, _ := json.Marshal(map[string]any{fieldProtocolVersion: 1, fieldOperationID: op.BackendID()})
 	raw, err := invoke(
 		ctx,
@@ -378,7 +481,7 @@ func (b WriteBackend) finishWriteResult(
 	status bool,
 ) (operations.Result, error) {
 	result, err := decodeWriteResult(raw, op.BackendID(), m.OutputSchema, status)
-	if err != nil || result.State != stateSucceeded {
+	if err != nil || result.State != stateSucceeded || op.ExternalSessionID != "" {
 		return result, err
 	}
 	var response struct {
@@ -409,4 +512,11 @@ func (b WriteBackend) finishWriteResult(
 		result.Output, _ = json.Marshal(map[string]any{fieldResult: result.Output, fieldArtifacts: imported})
 	}
 	return result, nil
+}
+
+func operationContextID(op operations.Operation) string {
+	if op.ExternalSessionID != "" {
+		return op.ID
+	}
+	return op.RunID
 }

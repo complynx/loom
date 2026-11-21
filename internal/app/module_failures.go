@@ -16,8 +16,10 @@ import (
 )
 
 const (
+	operationPreparing   = "preparing"
 	operationPrepared    = "prepared"
 	operationPending     = "pending"
+	operationRejected    = "rejected"
 	operationDispatching = "dispatching"
 	moduleFailureKey     = "error"
 )

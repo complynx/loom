@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
+	stateDispatching   = "dispatching"
+	noConfirmation     = "none"
 	statePreparing     = "preparing"
 	stateFailed        = "failed"
 	statePrepared      = "prepared"
@@ -28,8 +30,9 @@ const (
 )
 
 type Coordinator struct {
-	Pool        *pgxpool.Pool
-	ApprovalTTL time.Duration
+	Pool           *pgxpool.Pool
+	ApprovalTTL    time.Duration
+	ArgumentCipher ExternalArgumentCipher
 }
 
 func canonical(raw json.RawMessage) (json.RawMessage, error) {
@@ -63,11 +66,16 @@ func newID() (string, error) {
 // only those values so existing seals retain their original struct encoding.
 func seal(op Operation) (string, error) {
 	var err error
-	op.Arguments, err = canonical(op.Arguments)
-	if err != nil {
-		return "", err
+	if len(op.ProtectedArguments) == 0 {
+		op.Arguments, err = canonical(op.Arguments)
+		if err != nil {
+			return "", err
+		}
+		op.Preparation.Arguments, err = canonical(op.Preparation.Arguments)
+	} else {
+		op.Arguments = nil
+		op.ProtectedArguments, err = canonical(op.ProtectedArguments)
 	}
-	op.Preparation.Arguments, err = canonical(op.Preparation.Arguments)
 	if err != nil {
 		return "", err
 	}
@@ -86,27 +94,41 @@ func seal(op Operation) (string, error) {
 // Prepare deduplicates the stable call identity. A changed argument or authority
 // under the same identity is rejected; it does not silently replace an intent.
 func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend) (Operation, error) {
+	op, _, err := c.prepare(ctx, req, backend)
+	return op, err
+}
+
+// PrepareExternal reports whether the result is an existing operation. The
+// caller treats replay as receipt lookup and uses continuation to dispatch.
+func (c *Coordinator) PrepareExternal(ctx context.Context, req Request, backend Backend) (Operation, bool, error) {
+	if req.ExternalSessionID == "" {
+		return Operation{}, false, ErrBinding
+	}
+	return c.prepare(ctx, req, backend)
+}
+
+func (c *Coordinator) prepare(ctx context.Context, req Request, backend Backend) (Operation, bool, error) {
 	if req.CallID == "" || req.Module == "" || req.Method == "" || req.Binding.UserID == "" ||
 		req.Binding.Subject == "" ||
 		req.Binding.ContractHash == "" {
-		return Operation{}, ErrBinding
+		return Operation{}, false, ErrBinding
 	}
-	if req.Mode != "none" && req.Mode != "service_id" && req.Mode != "exact_parameters" {
-		return Operation{}, ErrBinding
+	if req.Mode != noConfirmation && req.Mode != "service_id" && req.Mode != "exact_parameters" {
+		return Operation{}, false, ErrBinding
 	}
 	if req.BackendOperationID != "" {
 		if _, supported := backend.(Inspector); !supported {
-			return Operation{}, ErrAdoptionUnsupported
+			return Operation{}, false, ErrAdoptionUnsupported
 		}
 	}
 	args, err := canonical(req.Arguments)
 	if err != nil {
-		return Operation{}, err
+		return Operation{}, false, err
 	}
 	req.Arguments = args
 	id, err := newID()
 	if err != nil {
-		return Operation{}, err
+		return Operation{}, false, err
 	}
 	op := Operation{
 		Request:      req,
@@ -115,23 +137,31 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 		ArgumentHash: digest(args),
 		CreatedAt:    time.Now().UTC(),
 	}
+	if req.ProtectArguments {
+		if err = c.protectExternalArguments(&op); err != nil {
+			return Operation{}, false, err
+		}
+	}
 	doc, err := json.Marshal(op)
 	if err != nil {
-		return Operation{}, err
+		return Operation{}, false, err
 	}
 	// Run authority is checked before preparing even though preparation cannot
 	// perform a write. Dispatch later validates the live fenced lease again.
-	tag, err := c.Pool.Exec(ctx, `INSERT INTO write_operations(id,run_id,call_id,state,doc)
-	 SELECT $1,r.id,$3,'preparing',$4 FROM runs r JOIN users u ON u.id=r.owner_id
-	 WHERE r.id=$2 AND r.owner_id=$5 AND r.actor_id=$6 AND r.org_id=$7 AND u.issuer=$8 AND u.subject=$9
-	 ON CONFLICT(run_id,call_id) DO NOTHING`, id, req.RunID, req.CallID, doc, req.Binding.UserID, req.Binding.Actor, req.Binding.OrgID, req.Binding.Issuer, req.Binding.Subject)
+	tag, err := c.insertPreparation(ctx, op, doc)
 	if err != nil {
-		return Operation{}, err
+		return Operation{}, false, err
 	}
 	if tag.RowsAffected() == 0 {
-		return c.priorPreparation(ctx, req)
+		prior, priorErr := c.priorPreparation(ctx, req)
+		return prior, true, priorErr
 	}
-	inspection, err := inspectOrPrepare(ctx, op, backend)
+	prepareCtx, cancel := ctx, func() {}
+	if op.ExternalSessionID != "" {
+		prepareCtx, cancel = context.WithTimeout(ctx, externalPrepareTimeout)
+	}
+	inspection, err := inspectOrPrepare(prepareCtx, op.withArguments(args), backend)
+	cancel()
 	if err != nil {
 		op.State = stateFailed
 		if op.BackendOperationID != "" && !errors.Is(err, ErrBinding) && !errors.Is(err, ErrExpired) &&
@@ -139,9 +169,21 @@ func (c *Coordinator) Prepare(ctx context.Context, req Request, backend Backend)
 			op.State = stateUnknown
 		}
 		_ = c.saveDetached(ctx, op, statePreparing)
-		return op, err
+		return op, false, err
 	}
-	return c.savePreparation(ctx, op, inspection)
+	saved, err := c.savePreparation(ctx, op, inspection)
+	return saved, false, err
+}
+
+func (c *Coordinator) insertPreparation(ctx context.Context, op Operation, doc []byte) (pgconn.CommandTag, error) {
+	if op.ExternalSessionID != "" {
+		return c.insertExternalPreparation(ctx, op, doc)
+	}
+	req := op.Request
+	return c.Pool.Exec(ctx, `INSERT INTO write_operations(id,run_id,call_id,state,doc)
+	 SELECT $1,r.id,$3,'preparing',$4 FROM runs r JOIN users u ON u.id=r.owner_id
+	 WHERE r.id=$2 AND r.owner_id=$5 AND r.actor_id=$6 AND r.org_id=$7 AND u.issuer=$8 AND u.subject=$9
+	 ON CONFLICT(run_id,call_id) DO NOTHING`, op.ID, req.RunID, req.CallID, doc, req.Binding.UserID, req.Binding.Actor, req.Binding.OrgID, req.Binding.Issuer, req.Binding.Subject)
 }
 
 func (c *Coordinator) savePreparation(ctx context.Context, op Operation, inspection Inspection) (Operation, error) {
@@ -163,7 +205,7 @@ func (c *Coordinator) savePreparation(ctx context.Context, op Operation, inspect
 	op.Preparation = prep
 	op.State = inspection.Result.State
 	op.Result = inspection.Result.Output
-	if op.Mode == "none" && op.BackendOperationID == "" {
+	if op.Mode == noConfirmation && op.BackendOperationID == "" {
 		op.State = stateApproved
 	}
 	op.BindingHash, err = seal(op)
@@ -251,6 +293,10 @@ func (c *Coordinator) ApproveTx(ctx context.Context, tx pgx.Tx, id string, a App
 	if err != nil {
 		return Operation{}, err
 	}
+	return approveLocked(ctx, tx, op, a)
+}
+
+func approveLocked(ctx context.Context, tx pgx.Tx, op Operation, a Approval) (Operation, error) {
 	bindingHash, sealErr := seal(op)
 	if sealErr != nil || op.Binding != a.Binding || op.BindingHash != a.BindingHash || op.BindingHash != bindingHash {
 		return Operation{}, ErrBinding
@@ -269,7 +315,7 @@ func (c *Coordinator) ApproveTx(ctx context.Context, tx pgx.Tx, id string, a App
 		op.State = stateApproved
 	}
 	op.ConsentRevision = a.ConsentRevision
-	if err = updateTx(ctx, tx, op); err != nil {
+	if err := updateTx(ctx, tx, op); err != nil {
 		return Operation{}, err
 	}
 	return op, nil
@@ -366,7 +412,7 @@ func (c *Coordinator) Dispatch(
 	if !op.Preparation.ExpiresAt.After(time.Now()) {
 		return op, ErrExpired
 	}
-	op.State = "dispatching"
+	op.State = stateDispatching
 	if err = updateTx(ctx, tx, op); err != nil {
 		return op, err
 	}
@@ -391,7 +437,7 @@ func (c *Coordinator) executeIntent(
 	if !op.Preparation.ExpiresAt.After(time.Now()) {
 		op.State = stateFailed
 		op.FailureCode = "operation_expired"
-		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
+		if persistErr := c.saveDetached(ctx, op, stateDispatching); persistErr != nil {
 			return op, persistErr
 		}
 		return op, ErrExpired
@@ -404,7 +450,7 @@ func (c *Coordinator) executeIntent(
 	if err != nil || !canDispatch {
 		op.State = stateFailed
 		op.FailureCode = "execution_blocked"
-		if persistErr := c.saveDetached(ctx, op, "dispatching"); persistErr != nil {
+		if persistErr := c.saveDetached(ctx, op, stateDispatching); persistErr != nil {
 			return op, persistErr
 		}
 		if err != nil {
@@ -434,7 +480,7 @@ func (c *Coordinator) saveExecutionResult(
 			op.FailureCode = "backend_rejected"
 		}
 	}
-	persistErr := c.saveDetached(ctx, op, "dispatching")
+	persistErr := c.saveDetached(ctx, op, stateDispatching)
 	if persistErr != nil {
 		return op, persistErr
 	}
@@ -457,7 +503,7 @@ func (c *Coordinator) Reconcile(ctx context.Context, id string, backend Backend)
 	if err != nil {
 		return op, err
 	}
-	if op.State != stateUnknown && op.State != statePending && op.State != "dispatching" {
+	if op.State != stateUnknown && op.State != statePending && op.State != stateDispatching {
 		return op, nil
 	}
 	prior := op.State
@@ -557,13 +603,18 @@ func (c *Coordinator) normalizePreparation(op Operation, prep Preparation) (Prep
 	if op.Mode == "service_id" && prep.Token == "" {
 		return prep, ErrBinding
 	}
-	if len(prep.Arguments) == 0 {
-		prep.Arguments = op.Arguments
+	if len(op.ProtectedArguments) > 0 && len(prep.Arguments) > 0 {
+		return prep, ErrBinding
 	}
 	var err error
-	prep.Arguments, err = canonical(prep.Arguments)
-	if err != nil {
-		return prep, err
+	if len(op.ProtectedArguments) == 0 {
+		if len(prep.Arguments) == 0 {
+			prep.Arguments = op.Arguments
+		}
+		prep.Arguments, err = canonical(prep.Arguments)
+		if err != nil {
+			return prep, err
+		}
 	}
 	if len(prep.Preconditions) > 0 {
 		prep.Preconditions, err = canonical(prep.Preconditions)
@@ -586,6 +637,9 @@ func (c *Coordinator) normalizePreparation(op Operation, prep Preparation) (Prep
 }
 
 func (c *Coordinator) priorPreparation(ctx context.Context, req Request) (Operation, error) {
+	if req.ExternalSessionID != "" {
+		return c.FindExternalPreparation(ctx, req)
+	}
 	var raw []byte
 	if err := c.Pool.QueryRow(ctx, `SELECT doc FROM write_operations WHERE run_id=$1 AND call_id=$2`, req.RunID, req.CallID).
 		Scan(&raw); err != nil {

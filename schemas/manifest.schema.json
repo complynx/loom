@@ -15,7 +15,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["path"],
-      "properties": {"path": {"$ref": "#/$defs/path"}}
+      "properties": {"path": {"$ref": "#/$defs/path"}, "approval_path": {"$ref": "#/$defs/path"}}
     },
     "modules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/module"}}
   },
@@ -142,6 +142,8 @@
         "artifact_mime_types": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
         "external_disclosure": {"type": "boolean"},
         "external_agent": {"type": "boolean"},
+        "external_agent_remember": {"type": "boolean"},
+        "external_agent_protected_arguments": {"type": "boolean"},
         "skills": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/skill"}},
         "visibility": {"enum": ["default", "list", "search", "hidden"]}
       },

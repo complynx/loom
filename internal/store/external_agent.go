@@ -9,7 +9,7 @@ import (
 	"github.com/complynx/loom/internal/domain"
 )
 
-const externalAgentProfileColumns = "enabled,history,memory,skills,version,confirmed_by,updated_at"
+const externalAgentProfileColumns = "enabled,history,memory,skills,writes,version,confirmed_by,updated_at"
 
 // ExternalAgentProfile returns the stored consent of the authenticated user.
 // A user without a stored profile gets the zero profile: all access is denied.
@@ -21,11 +21,11 @@ func (s *Store) ExternalAgentProfile(ctx context.Context, p domain.Principal) (d
 	}
 	err := s.pool.QueryRow(
 		ctx,
-		"SELECT p.enabled,p.history,p.memory,p.skills,p.version,p.confirmed_by,p.updated_at FROM external_agent_profiles p JOIN users u ON u.id=p.owner_id WHERE u.issuer=$1 AND u.subject=$2 AND p.org_id=$3",
+		"SELECT p.enabled,p.history,p.memory,p.skills,p.writes,p.version,p.confirmed_by,p.updated_at FROM external_agent_profiles p JOIN users u ON u.id=p.owner_id WHERE u.issuer=$1 AND u.subject=$2 AND p.org_id=$3",
 		p.Issuer,
 		p.Subject,
 		p.OrgID,
-	).Scan(&out.Enabled, &out.History, &out.Memory, &out.Skills, &out.Version, &out.ConfirmedBy, &out.UpdatedAt)
+	).Scan(&out.Enabled, &out.History, &out.Memory, &out.Skills, &out.Writes, &out.Version, &out.ConfirmedBy, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ExternalAgentProfile{}, nil
 	}
@@ -53,31 +53,46 @@ func (s *Store) PutExternalAgentProfile(
 		if e != nil {
 			return e
 		}
-		query := "UPDATE external_agent_profiles SET enabled=$3,history=$4,memory=$5,skills=$6,confirmed_by=$7,version=version+1,updated_at=now() WHERE owner_id=$1 AND org_id=$2 AND version=$8 RETURNING " + externalAgentProfileColumns
+		query := "UPDATE external_agent_profiles SET enabled=$3,history=$4,memory=$5,skills=$6,writes=$9,confirmed_by=$7,version=version+1,updated_at=now() WHERE owner_id=$1 AND org_id=$2 AND version=$8 RETURNING " + externalAgentProfileColumns
 		if in.Version == 0 {
-			query = "INSERT INTO external_agent_profiles(owner_id,org_id,enabled,history,memory,skills,confirmed_by,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8+1) ON CONFLICT DO NOTHING RETURNING " + externalAgentProfileColumns
+			query = "INSERT INTO external_agent_profiles(owner_id,org_id,enabled,history,memory,skills,confirmed_by,version,writes) VALUES($1,$2,$3,$4,$5,$6,$7,$8+1,$9) ON CONFLICT DO NOTHING RETURNING " + externalAgentProfileColumns
 		}
-		e = tx.QueryRow(ctx, query, uid, p.OrgID, in.Enabled, in.History, in.Memory, in.Skills, actor(p), in.Version).
-			Scan(&out.Enabled, &out.History, &out.Memory, &out.Skills, &out.Version, &out.ConfirmedBy, &out.UpdatedAt)
+		e = tx.QueryRow(ctx, query, uid, p.OrgID, in.Enabled, in.History, in.Memory, in.Skills, actor(p), in.Version, in.Enabled && in.Writes).
+			Scan(&out.Enabled, &out.History, &out.Memory, &out.Skills, &out.Writes, &out.Version, &out.ConfirmedBy, &out.UpdatedAt)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return domain.Conflict("external_agent_profile_version_conflict")
 		}
 		if e != nil {
 			return e
 		}
-		if !in.Enabled {
-			if _, e = tx.Exec(
-				ctx,
-				"DELETE FROM external_agent_sessions WHERE owner_id=$1 AND org_id=$2",
-				uid,
-				p.OrgID,
-			); e != nil {
-				return e
-			}
+		if e = closeExternalSessions(ctx, tx, uid, p.OrgID, in); e != nil {
+			return e
 		}
 		return audit(ctx, tx, p, "external_agent.profile", uid, in)
 	})
 	return out, err
+}
+
+func closeExternalSessions(
+	ctx context.Context,
+	tx pgx.Tx,
+	owner, org string,
+	profile domain.ExternalAgentProfileUpdate,
+) error {
+	if !profile.Enabled {
+		_, err := tx.Exec(ctx, "DELETE FROM external_agent_sessions WHERE owner_id=$1 AND org_id=$2", owner, org)
+		return err
+	}
+	if profile.Writes {
+		return nil
+	}
+	// Do not revive a prepared operation or remembered choice on re-enabling.
+	_, err := tx.Exec(ctx, `DELETE FROM external_agent_sessions x
+		WHERE x.owner_id=$1 AND x.org_id=$2 AND (
+			EXISTS(SELECT 1 FROM external_agent_approval_rules g WHERE g.session_id=x.id)
+			OR EXISTS(SELECT 1 FROM write_operations w WHERE w.external_session_id=x.id)
+		)`, owner, org)
+	return err
 }
 
 // AppendExternalAction writes one external agent action to the user's default chat.
