@@ -10,14 +10,19 @@ import (
 // AuthenticateExternal accepts only a user's own access token. It rejects delegation
 // headers, service identities and service accounts. See VerifyExternal.
 func (a *Authenticator) AuthenticateExternal(ctx context.Context, r *http.Request) (domain.ExternalCaller, error) {
-	token, err := bearer(r.Header.Get("Authorization"))
+	token, err := ExternalBearer(r)
 	if err != nil {
 		return domain.ExternalCaller{}, err
 	}
-	if r.Header.Get("X-Subject-Token") != "" || r.Header.Get("X-Auth-Session-Id") != "" {
-		return domain.ExternalCaller{}, ErrUnauthorized
-	}
 	return a.VerifyExternal(ctx, token)
+}
+
+// ExternalBearer reads a direct access token and rejects delegated identity headers.
+func ExternalBearer(r *http.Request) (string, error) {
+	if r.Header.Get("X-Subject-Token") != "" || r.Header.Get("X-Auth-Session-Id") != "" {
+		return "", ErrUnauthorized
+	}
+	return bearer(r.Header.Get("Authorization"))
 }
 
 // VerifyExternal checks a user's own access token with the positive claims cache.

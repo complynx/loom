@@ -57,10 +57,11 @@ type ExternalApproval struct {
 // ClientID is the OAuth client that the identity provider reported. It is not verified
 // by Loom beyond that report.
 type ExternalCaller struct {
-	Principal Principal
-	ClientID  string
-	Token     string
-	SessionID string
+	Principal   Principal
+	ClientID    string
+	Token       string
+	BrokerToken string
+	SessionID   string
 }
 
 // ExternalAgentSession is one connection owned by a user and OAuth client.

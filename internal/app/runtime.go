@@ -27,6 +27,7 @@ import (
 	"github.com/complynx/loom/internal/domain"
 	"github.com/complynx/loom/internal/identity"
 	"github.com/complynx/loom/internal/lifecycle"
+	"github.com/complynx/loom/internal/mcpoauth"
 	"github.com/complynx/loom/internal/modules"
 	"github.com/complynx/loom/internal/operations"
 	"github.com/complynx/loom/internal/provider"
@@ -918,8 +919,10 @@ type runtimeComponents struct {
 	queue            *river.Client[pgx.Tx]
 	maxWorkers       int
 	// external is nil when external agents are disabled or in recovery mode.
-	external     *ExternalAgent
-	externalAuth *identity.Authenticator
+	external             *ExternalAgent
+	externalAuth         *identity.Authenticator
+	externalBroker       *mcpoauth.Broker
+	externalBrokerClient string
 }
 
 // externalTokenServices lists the token services that the operator approved
@@ -953,7 +956,7 @@ func (r *runtimeComponents) externalAgentOptions(
 	if r.external == nil {
 		return nil
 	}
-	return &api.ExternalAgentOptions{
+	options := &api.ExternalAgentOptions{
 		Service:      r.external,
 		Authenticate: measuredAuth{auth: r.externalAuth, observer: observer}.AuthenticateExternal,
 		Resource:     cfg.ExternalAgents.Resource,
@@ -967,6 +970,13 @@ func (r *runtimeComponents) externalAgentOptions(
 			return ids
 		},
 	}
+	if r.externalBroker != nil {
+		options.Authenticate = r.authenticateBroker
+		options.Broker = r.externalBroker
+		options.Issuer = r.externalBroker.Issuer()
+		options.Scopes = []string{r.externalBroker.Scope()}
+	}
+	return options
 }
 
 func (r *runtimeComponents) initStorage(ctx context.Context, cfg config.Config) error {
@@ -1080,6 +1090,9 @@ func (r *runtimeComponents) initAgent(
 		if err != nil {
 			return err
 		}
+		if err = r.initExternalBroker(cfg); err != nil {
+			return err
+		}
 		r.external = newExternalAgent(runtimeTools{
 			cfg:                    cfg,
 			registry:               r.registry,
@@ -1088,7 +1101,7 @@ func (r *runtimeComponents) initAgent(
 			observer:               observer,
 			externalArgumentCipher: r.cipher,
 		},
-			r.externalAuth.VerifyExternal,
+			r.verifyExternal,
 			func() []modules.TokenService { return externalTokenServices(cfg, r.registry) },
 			externalServiceTokens(cfg, r.externalAuth, r.registry),
 		)

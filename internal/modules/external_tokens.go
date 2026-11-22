@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/complynx/loom/internal/domain"
+	"github.com/complynx/loom/internal/mcpoauth"
 )
 
 const externalTokenLimit = 64 << 10
@@ -29,6 +30,34 @@ func validateExternalAgentEndpoints(tokens *ExternalAgentTokens) error {
 		return validPath(tokens.ApprovalPath)
 	}
 	return nil
+}
+
+func (r *Registry) ConnectionConfirmer(issuer, serviceID string) string {
+	for _, service := range r.snapshot() {
+		m := service.manifest
+		if m.ServiceID == serviceID && m.Caller != nil && m.Caller.Auth.Issuer == issuer &&
+			m.ExternalAgentTokens != nil {
+			return m.Caller.Auth.Subject
+		}
+	}
+	return ""
+}
+
+func (r *Registry) DeliverConnectionApproval(
+	ctx context.Context, serviceID, secret, confirmer string, approval mcpoauth.Approval,
+) error {
+	for _, service := range r.snapshot() {
+		m := service.manifest
+		if m.ServiceID != serviceID || m.Caller == nil || m.Caller.Auth.Issuer != approval.Issuer ||
+			m.Caller.Auth.Subject != confirmer || secret == "" || m.ExternalAgentTokens == nil {
+			continue
+		}
+		payload, _ := json.Marshal(map[string]any{fieldProtocolVersion: 1, "connection_approval": approval})
+		_, err := invoke(ctx, service, Principal{Token: secret},
+			m.ExternalAgentTokens.Path, payload, externalTokenLimit, r.opts.RequestTimeout)
+		return err
+	}
+	return ErrUnavailable
 }
 
 // DeliverExternalApproval sends the prepared decision to the registered
