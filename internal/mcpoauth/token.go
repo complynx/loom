@@ -86,10 +86,19 @@ func (b *Broker) token(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, "invalid_grant")
 		return
 	}
+	active, err := b.options.CheckAuthorization(r.Context(), f.owner, f.approvalID, f.Client)
+	if err != nil {
+		jsonResponse(w, http.StatusServiceUnavailable, map[string]string{fieldError: "temporarily_unavailable"})
+		return
+	}
+	if !active {
+		oauthError(w, "invalid_grant")
+		return
+	}
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"access_token": accessEnvelopePrefix + b.encode(
-			"MCP access",
-			accessToken{f.upstream, f.Client, f.upstreamExpiry},
+			accessEnvelopePurpose,
+			accessToken{f.upstream, f.Client, f.approvalID, f.upstreamExpiry},
 		),
 		"expires_in": seconds,
 		"token_type": "Bearer",

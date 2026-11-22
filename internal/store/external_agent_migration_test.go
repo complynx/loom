@@ -82,8 +82,24 @@ func TestExternalAgentProfileMigrationKeepsExistingData(t *testing.T) {
 	_, err = db.ExecContext(ctx, `INSERT INTO write_operations(id,run_id,call_id,state,doc)
 		VALUES ($1,$2,'existing','succeeded','{}')`, operation, run)
 	require.NoError(t, err)
+	_, err = provider.UpTo(ctx, 14)
+	require.NoError(t, err)
+	session, transport := uuid.NewString(), uuid.NewString()
+	_, err = db.ExecContext(ctx, `INSERT INTO external_agent_sessions(id,transport_id,owner_id,org_id,client_id)
+		VALUES($1,$2,$3,'org','existing-client')`, session, transport, user)
+	require.NoError(t, err)
 	require.NoError(t, store.Migrate(ctx, parsed.String()))
 	require.NoError(t, store.Migrate(ctx, parsed.String()), "a repeated migration command must be safe")
+	var savedTransport string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT transport_id FROM external_agent_sessions
+		WHERE id=$1 AND authorization_id IS NULL`, session).Scan(&savedTransport))
+	require.Equal(t, transport, savedTransport)
+	_, err = provider.DownTo(ctx, 14)
+	require.NoError(t, err)
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT transport_id FROM external_agent_sessions WHERE id=$1", session).
+		Scan(&savedTransport))
+	require.Equal(t, transport, savedTransport)
+	require.NoError(t, store.Migrate(ctx, parsed.String()))
 
 	var text string
 	var nextSeq, version int64

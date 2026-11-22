@@ -32,6 +32,18 @@ func (s *Store) OpenExternalAgentSession(ctx context.Context, caller domain.Exte
 		if err != nil {
 			return err
 		}
+		if caller.AuthorizationID != "" {
+			var authorization string
+			err = tx.QueryRow(ctx, `SELECT id FROM external_agent_authorizations
+				WHERE id=$1 AND owner_id=$2 AND org_id=$3 AND client_id=$4 AND expires_at>now() FOR KEY SHARE`,
+				caller.AuthorizationID, owner, p.OrgID, caller.ClientID).Scan(&authorization)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.NewError(http.StatusUnauthorized, "unauthorized")
+			}
+			if err != nil {
+				return err
+			}
+		}
 		if err = evictExternalAgentSession(ctx, tx, p, owner); err != nil {
 			return err
 		}
@@ -42,8 +54,10 @@ func (s *Store) OpenExternalAgentSession(ctx context.Context, caller domain.Exte
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO external_agent_sessions(id,transport_id,owner_id,org_id,client_id)
-			VALUES($1,$2,$3,$4,$5)`, uuid.NewString(), transportID, owner, p.OrgID, caller.ClientID)
+		_, err = tx.Exec(ctx, `INSERT INTO external_agent_sessions
+			(id,transport_id,owner_id,org_id,client_id,authorization_id)
+			VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::uuid)`,
+			uuid.NewString(), transportID, owner, p.OrgID, caller.ClientID, caller.AuthorizationID)
 		return err
 	})
 	if err != nil {
@@ -82,8 +96,8 @@ func (s *Store) ExternalAgentSessionOwner(ctx context.Context, caller domain.Ext
 	var id, owner string
 	err := s.pool.QueryRow(ctx, `SELECT x.id,x.owner_id FROM external_agent_sessions x JOIN users u ON u.id=x.owner_id
 		WHERE x.transport_id=$1 AND u.issuer=$2 AND u.subject=$3 AND x.org_id=$4
-		AND x.client_id=$5 AND x.expires_at>now()`,
-		caller.SessionID, p.Issuer, p.Subject, p.OrgID, caller.ClientID).Scan(&id, &owner)
+		AND x.client_id=$5 AND x.authorization_id IS NOT DISTINCT FROM NULLIF($6,'')::uuid AND x.expires_at>now()`,
+		caller.SessionID, p.Issuer, p.Subject, p.OrgID, caller.ClientID, caller.AuthorizationID).Scan(&id, &owner)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", domain.NotFound()
 	}
@@ -119,14 +133,16 @@ func (s *Store) ListExternalAgentSessions(
 // CloseExternalAgentSession closes the caller's own MCP connection. Client identity
 // is part of the deletion condition so a concurrent request cannot change its scope.
 func (s *Store) CloseExternalAgentSession(ctx context.Context, caller domain.ExternalCaller) error {
-	return s.deleteExternalAgentSession(ctx, caller.Principal, caller.SessionID, &caller.ClientID)
+	return s.deleteExternalAgentSession(
+		ctx, caller.Principal, caller.SessionID, &caller.ClientID, caller.AuthorizationID,
+	)
 }
 
 func (s *Store) RevokeExternalAgentSession(ctx context.Context, p domain.Principal, id string) error {
 	if !p.Has("chat.read") {
 		return domain.Forbidden()
 	}
-	return s.deleteExternalAgentSession(ctx, p, id, nil)
+	return s.deleteExternalAgentSession(ctx, p, id, nil, "")
 }
 
 // DisableExternalAgentAccess revokes all current sessions and requires a new
@@ -147,19 +163,16 @@ func (s *Store) DisableExternalAgentAccess(ctx context.Context, p domain.Princip
 		if err != nil {
 			return err
 		}
-		if _, err = tx.Exec(
-			ctx,
-			"DELETE FROM external_agent_sessions WHERE owner_id=$1 AND org_id=$2",
-			owner,
-			p.OrgID,
-		); err != nil {
+		if err = deleteExternalAgentAccess(ctx, tx, owner, p.OrgID); err != nil {
 			return err
 		}
 		return audit(ctx, tx, p, "external_agent.disable", owner, nil)
 	})
 }
 
-func (s *Store) deleteExternalAgentSession(ctx context.Context, p domain.Principal, id string, client *string) error {
+func (s *Store) deleteExternalAgentSession(
+	ctx context.Context, p domain.Principal, id string, client *string, authorizationID string,
+) error {
 	if _, err := uuid.Parse(id); err != nil || p.ServiceAccount {
 		return domain.NotFound()
 	}
@@ -167,8 +180,9 @@ func (s *Store) deleteExternalAgentSession(ctx context.Context, p domain.Princip
 		var reference string
 		err := tx.QueryRow(ctx, `DELETE FROM external_agent_sessions x USING users u
 			WHERE u.id=x.owner_id AND u.issuer=$2 AND u.subject=$3 AND x.org_id=$4 AND x.expires_at>now()
-			AND (($5::text IS NULL AND x.id=$1) OR (x.transport_id=$1 AND x.client_id=$5))
-			RETURNING x.id`, id, p.Issuer, p.Subject, p.OrgID, client).Scan(&reference)
+			AND (($5::text IS NULL AND x.id=$1) OR (x.transport_id=$1 AND x.client_id=$5 AND
+				x.authorization_id IS NOT DISTINCT FROM NULLIF($6,'')::uuid))
+			RETURNING x.id`, id, p.Issuer, p.Subject, p.OrgID, client, authorizationID).Scan(&reference)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.NotFound()
 		}

@@ -218,7 +218,8 @@ func (b *Broker) requestApproval(ctx context.Context, f flow, code string) error
 	}
 	pending := 0
 	for _, other := range b.flows {
-		if other.owner == owner && other.stage == waiting && other.deadline.After(time.Now()) {
+		if other.owner == owner && (other.stage == waiting || other.stage == authorizing) &&
+			other.deadline.After(time.Now()) {
 			pending++
 		}
 	}
@@ -250,25 +251,58 @@ func (b *Broker) requestApproval(ctx context.Context, f flow, code string) error
 }
 
 // Decide accepts only a delegated decision from the bound Telegram confirmer.
-func (b *Broker) Decide(id string, owner Owner, actor, choice string) error {
+func (b *Broker) Decide(ctx context.Context, id string, owner Owner, actor, choice string) error {
+	flowID, f, err := b.beginDecision(id, owner, actor, choice)
+	if err != nil || flowID == "" {
+		return err
+	}
+	// Persist the approved login before it can yield a code. A revocation after
+	// this point must not leave a deferred exchange able to recreate the grant.
+	err = b.options.Authorize(ctx, f.owner, f.approvalID, f.Client, f.Name, f.upstreamExpiry)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	current, ok := b.flows[flowID]
+	if !ok || current.stage != authorizing {
+		return errors.New("MCP connection approval unavailable")
+	}
+	if err != nil || !current.deadline.After(time.Now()) {
+		current.stage = denied
+		b.flows[flowID] = current
+		return errors.New("MCP connection approval unavailable")
+	}
+	current.stage = approved
+	b.flows[flowID] = current
+	return nil
+}
+
+// beginDecision reserves the flow during persistence without holding the broker lock.
+func (b *Broker) beginDecision(id string, owner Owner, actor, choice string) (string, flow, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	flowID, f := b.findApproval(id)
 	if flowID == "" || !f.deadline.After(time.Now()) || actor == "" || f.confirmer != actor || f.owner != owner {
-		return errors.New("MCP connection approval unavailable")
+		return "", flow{}, errors.New("MCP connection approval unavailable")
 	}
 	next := denied
 	if choice == "approve" {
 		next = approved
 	} else if choice != "reject" {
-		return errors.New("invalid MCP connection decision")
+		return "", flow{}, errors.New("invalid MCP connection decision")
 	}
-	if f.stage != waiting && f.stage != next {
-		return errors.New("MCP connection already decided")
+	if f.stage == next {
+		return "", flow{}, nil
 	}
-	f.stage = next
+	if f.stage != waiting {
+		return "", flow{}, errors.New("MCP connection already decided")
+	}
+	if next == denied {
+		f.stage = denied
+		b.flows[flowID] = f
+		return "", flow{}, nil
+	}
+	f.stage = authorizing
 	b.flows[flowID] = f
-	return nil
+	return flowID, f, nil
 }
 
 func (b *Broker) findApproval(id string) (string, flow) {

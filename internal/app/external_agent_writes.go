@@ -20,64 +20,42 @@ import (
 const (
 	externalWriteCatalog        = "write_catalog"
 	externalWrite               = "write"
-	externalWriteContinue       = "write_continue"
 	externalWriteStatus         = "write_status"
 	externalWritePageSize       = 12
 	externalDeliveryUnconfirmed = "unconfirmed"
 )
 
-func externalWriteTools() []domain.ExternalTool {
-	operation := json.RawMessage(`{"type":"object","properties":{"operation_id":{"type":"string"},` +
-		`"token_service":{"type":"string"}},"required":["operation_id"],"additionalProperties":false}`)
-	return []domain.ExternalTool{
-		{
-			Name:        externalWriteCatalog,
-			Description: "List available write tools with input schemas. Use next_offset to page.",
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"offset":{"type":"integer","minimum":0},` +
-				`"module":{"type":"string"},"token_service":{"type":"string"}},"additionalProperties":false}`),
-		},
-		{Name: externalWrite, Description: "Prepare a write using a UUID request_id. Reuse it on retry. " +
-			"Keep the returned operation_id for continuation after Telegram approval or to retry delivery if the prompt did not arrive.",
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"module":{"type":"string"},` +
-				`"method":{"type":"string"},"request_id":{"type":"string"},"arguments":{"type":"object"},` +
-				`"token_service":{"type":"string"}},"required":["module","method","request_id","arguments"],` +
-				`"additionalProperties":false}`)},
-		{
-			Name:        externalWriteStatus,
-			Description: "Read the state of a write from this MCP connection. Never executes it.",
-			InputSchema: operation,
-		},
-		{
-			Name:        externalWriteContinue,
-			Description: "Resume Telegram delivery if the prompt did not arrive, or execute the same write after approval.",
-			InputSchema: operation,
-		},
+func externalWriteTool() domain.ExternalTool {
+	return domain.ExternalTool{
+		Name: externalWrite,
+		Description: "Start a write with module, method, arguments and a UUID request_id. Reuse request_id on retry. " +
+			"To continue the same write after Telegram approval or retry its approval delivery, pass operation_id instead. " +
+			"Use script with modules.help.write_catalog({}) to discover writes and modules.help.write_status({operation_id}) to read receipts. " +
+			"Use the same token_service for all calls about an operation.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"module":{"type":"string","minLength":1},` +
+			`"method":{"type":"string","minLength":1},"request_id":{"type":"string","format":"uuid"},` +
+			`"arguments":{"type":"object"},"token_service":{"type":"string"},` +
+			`"operation_id":{"type":"string","format":"uuid"}},"additionalProperties":false}`),
 	}
 }
 
 type externalWriteInput struct {
 	Arguments    json.RawMessage `json:"arguments,omitempty"`
 	TokenService string          `json:"token_service,omitempty"`
-	OperationID  string          `json:"operation_id,omitempty"`
+	OperationID  *string         `json:"operation_id,omitempty"`
 	RequestID    string          `json:"request_id,omitempty"`
 	Module       string          `json:"module,omitempty"`
 	Method       string          `json:"method,omitempty"`
-	Offset       int             `json:"offset,omitempty"`
 }
 
 func (a *ExternalAgent) callExternalWrite(
-	ctx context.Context, caller domain.ExternalCaller, name string, raw json.RawMessage,
+	ctx context.Context, caller domain.ExternalCaller, raw json.RawMessage,
 ) (json.RawMessage, error) {
-	switch name {
-	case externalWriteCatalog, externalWrite, externalWriteContinue, externalWriteStatus:
-	default:
-		return nil, &domain.ToolError{Code: "unknown_tool", Recovery: "List tools available for this connection."}
-	}
 	if !a.limiter.allow(externalLimitKey(caller), time.Now()) {
 		return nil, &domain.ToolError{Code: "rate_limited", Recovery: "Wait one minute before retrying."}
 	}
 	var input externalWriteInput
-	if err := decodeDiagnosticsInput(raw, &input); err != nil || input.Offset < 0 {
+	if err := decodeDiagnosticsInput(raw, &input); err != nil || !validExternalWriteInput(raw, input) {
 		return nil, externalWriteArguments()
 	}
 	session, err := a.readmit(ctx, caller)
@@ -94,22 +72,42 @@ func (a *ExternalAgent) callExternalWrite(
 	if err != nil {
 		return nil, err
 	}
-	if name == externalWriteCatalog {
-		return a.externalActionCatalog(ctx, session, input)
+	return a.externalOperation(ctx, session, input, false)
+}
+
+func validExternalWriteInput(raw json.RawMessage, input externalWriteInput) bool {
+	// Decode field presence separately. A null reference or an empty start field
+	// still counts as a supplied argument and must not select the other mode.
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil || string(fields["token_service"]) == "null" {
+		return false
 	}
-	return a.externalOperation(ctx, session, name, input)
+	delete(fields, "token_service")
+	if fields["operation_id"] != nil {
+		return len(fields) == 1 && input.OperationID != nil && *input.OperationID != ""
+	}
+	return len(fields) == 4 && fields["module"] != nil && fields["method"] != nil && fields["request_id"] != nil &&
+		fields["arguments"] != nil && input.Module != "" && input.Method != "" && input.RequestID != "" &&
+		len(input.Arguments) > 0 && input.Arguments[0] == '{'
 }
 
 func externalWriteArguments() error {
 	return &domain.ToolError{
 		Code:     invalidArgumentsCode,
-		Recovery: "Use the tool's input schema and keep the original operation ID.",
+		Recovery: "Start with module, method, arguments and a UUID request_id. To continue, send only the original operation_id. Either mode accepts token_service.",
 	}
 }
 
 func (a *ExternalAgent) externalActionCatalog(
-	ctx context.Context, session externalSession, input externalWriteInput,
+	ctx context.Context, session externalSession, raw json.RawMessage,
 ) (json.RawMessage, error) {
+	var input struct {
+		Module string `json:"module"`
+		Offset int    `json:"offset"`
+	}
+	if err := decodeDiagnosticsInput(raw, &input); err != nil || input.Offset < 0 {
+		return nil, externalWriteArguments()
+	}
 	p, err := a.servicePrincipal(ctx, session)
 	if err != nil {
 		return nil, err
@@ -134,6 +132,18 @@ func (a *ExternalAgent) externalActionCatalog(
 		Methods []modules.Tool `json:"methods"`
 		Next    *int           `json:"next_offset,omitempty"`
 	}{filtered[offset:page], next})
+}
+
+func (a *ExternalAgent) readExternalOperation(
+	ctx context.Context, session externalSession, raw json.RawMessage,
+) (json.RawMessage, error) {
+	var input struct {
+		OperationID string `json:"operation_id"`
+	}
+	if err := decodeDiagnosticsInput(raw, &input); err != nil {
+		return nil, externalWriteArguments()
+	}
+	return a.externalOperation(ctx, session, externalWriteInput{OperationID: &input.OperationID}, true)
 }
 
 func (a *ExternalAgent) externalWriteBackend(session externalSession) modules.WriteBackend {
@@ -166,7 +176,7 @@ func (a *ExternalAgent) externalWriteBackend(session externalSession) modules.Wr
 }
 
 func (a *ExternalAgent) externalOperation(
-	ctx context.Context, session externalSession, name string, input externalWriteInput,
+	ctx context.Context, session externalSession, input externalWriteInput, readOnly bool,
 ) (json.RawMessage, error) {
 	if session.tokenService == "" {
 		return nil, externalWriteArguments()
@@ -182,13 +192,13 @@ func (a *ExternalAgent) externalOperation(
 	backend := a.externalWriteBackend(session)
 	var op operations.Operation
 	var replay bool
-	if name == externalWrite {
+	if input.OperationID == nil {
 		op, replay, err = a.prepareExternalOperation(ctx, &coordinator, backend, session, sessionID, owner, input)
 	} else {
-		if _, parseErr := uuid.Parse(input.OperationID); parseErr != nil {
+		if _, parseErr := uuid.Parse(*input.OperationID); parseErr != nil {
 			return nil, externalWriteArguments()
 		}
-		op, err = coordinator.Get(ctx, input.OperationID)
+		op, err = coordinator.Get(ctx, *input.OperationID)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (op.ExternalSessionID != sessionID ||
 			op.Binding.UserID != owner || op.ExternalService != session.tokenService ||
 			op.ExternalConfirmer != session.profile.ConfirmedBy)) {
@@ -207,7 +217,7 @@ func (a *ExternalAgent) externalOperation(
 		}
 		return nil, err
 	}
-	if replay || name == externalWriteStatus || terminalExternalOperation(op) {
+	if replay || readOnly || terminalExternalOperation(op) {
 		return a.externalOperationStatus(ctx, &coordinator, backend, session, op)
 	}
 	return a.continueExternalOperation(ctx, &coordinator, backend, session, op)
@@ -357,7 +367,7 @@ func externalWriteReceipt(op operations.Operation, delivery string) (json.RawMes
 	}
 	recovery := ""
 	if status == "waiting_approval" && delivery == externalDeliveryUnconfirmed {
-		recovery = "If the Telegram prompt did not arrive, call write_continue with this operation_id to resume delivery."
+		recovery = "If the Telegram prompt did not arrive, call write with this operation_id to resume delivery."
 	}
 	return json.Marshal(struct {
 		ID       string          `json:"operation_id"`

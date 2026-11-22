@@ -80,8 +80,7 @@ func closeExternalSessions(
 	profile domain.ExternalAgentProfileUpdate,
 ) error {
 	if !profile.Enabled {
-		_, err := tx.Exec(ctx, "DELETE FROM external_agent_sessions WHERE owner_id=$1 AND org_id=$2", owner, org)
-		return err
+		return deleteExternalAgentAccess(ctx, tx, owner, org)
 	}
 	if profile.Writes {
 		return nil
@@ -92,6 +91,15 @@ func closeExternalSessions(
 			EXISTS(SELECT 1 FROM external_agent_approval_rules g WHERE g.session_id=x.id)
 			OR EXISTS(SELECT 1 FROM write_operations w WHERE w.external_session_id=x.id)
 		)`, owner, org)
+	return err
+}
+
+func deleteExternalAgentAccess(ctx context.Context, tx pgx.Tx, owner, org string) error {
+	_, err := tx.Exec(ctx, "DELETE FROM external_agent_authorizations WHERE owner_id=$1 AND org_id=$2", owner, org)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, "DELETE FROM external_agent_sessions WHERE owner_id=$1 AND org_id=$2", owner, org)
 	return err
 }
 
