@@ -171,6 +171,35 @@ Tokens expire with the upstream token or after one hour. Clients sign in again
 when their token expires. Keep the broker key to preserve registrations on restart.
 Removing the broker block restores direct ZITADEL authorization.
 
+The OAuth broker keeps up to 16 active authorizations per user and organization.
+At the limit, a new login revokes the oldest active authorization and closes its sessions.
+The confirming Telegram bot can list and revoke selected authorizations. A
+revoked token cannot open another session. Revoking all authorizations leaves
+the user's profile settings in place. Disabling the profile also revokes its
+current broker authorizations. Telegram approval creates the authorization
+before the broker issues a code. Revoking it also cancels any pending exchange.
+
+Loom advertises management as `external_agent.oauth.manage_connections` in
+`GET /v1/capabilities`. Both management routes require a delegated actor with
+`external_agent.profile.write`, acting for the user in the current organization.
+
+| Route | Contract |
+| --- | --- |
+| `GET /v1/users/me/external-agent/connections` | Returns `200` with a `connections` array of active authorizations, newest first. Each entry has `id`, `name`, `created_at`, and `expires_at`. |
+| `POST /v1/users/me/external-agent/connections/revoke` | Takes `{ "ids": [...] }` with 1 to 16 canonical authorization UUIDs. Returns `422` for invalid input and `200 {}` otherwise. IDs outside the user's organization or ownership, and already revoked IDs, have no effect. |
+
+Revocation uses the normal delegated identity cache. It can reduce access
+while the issuer is unavailable and the cached credentials are still valid.
+If Loom cannot record the Telegram approval or token exchange returns
+`temporarily_unavailable`, start a new login when Loom is available again.
+
+Apply migration 15 before starting a Loom binary with authorization management.
+Previously issued broker tokens require a fresh login after the upgrade. On
+rollback, the old binary also requires a fresh login for tokens issued by the
+new broker. Registrations are preserved when the broker key stays the same.
+Before updating the broker, finish pending writes and reconcile unknown outcomes.
+A fresh broker login starts a new session and cannot continue those operations.
+
 ### Token audience
 
 Loom does not require the resource URL in the token audience: the issuer
@@ -468,16 +497,17 @@ Available bindings:
 
 | Module | Methods | Condition |
 | --- | --- | --- |
-| `help` | `list`, `read` | Always. The catalog contains only what this session can call. |
+| `help` | `mcp`, `list`, `read` | Always. The catalog contains only what this session can call. |
+| `help` | `write_catalog`, `write_status` | Profile `writes` and a token service. |
 | `history` | `search`, `read` | Profile `history`. Default chat only. |
 | `memory` | `state`, `list`, `read` | Profile `memory`. |
 | `skills` | `list`, `read` | Skills published by available service methods. Profile `skills` also adds the organization library. |
 | Service modules | Marked read methods | The call has a [token service](#token-services), and the user has the module and method permissions. |
 
-The tool description contains the same environment overview and navigation
-guidance that the internal agent receives. Start with
-`return await modules.help.list({})` and read a method card before an
-unfamiliar call.
+Start with `return await modules.help.mcp({})` in `script`. It explains the
+available MCP tools and shows how to discover reads, inspect method cards,
+and continue approved writes. Use `modules.help.list({})` for the authorized
+method catalog and `modules.help.read({module, method})` for a method card.
 
 Use `modules.skills.list({})` for names, sources, and use cases. Read a body
 with `modules.skills.read({name, source})`, copying the source from the list.
@@ -575,10 +605,14 @@ the internal agent as plain text.
 
 ## Service writes
 
-An enabled `writes` profile switch adds the `write_catalog`, `write`,
-`write_status` and `write_continue` MCP tools. The confirming chat client
-sets this switch with the existing profile route. The same token service
-must be selected for creation, receipt lookup and continuation.
+An enabled `writes` profile switch adds the `write` MCP tool alongside
+`script`. The confirming chat client sets this switch with the existing
+profile route. In `script`, call `modules.help.write_catalog({})` for write
+methods and input schemas or `modules.help.write_status({operation_id})`
+for a receipt. Select the same token service for creation, receipt lookup
+and continuation.
+After upgrading, refresh the client's MCP tool list. If a direct-issuer session
+is still active, use the original operation ID to check or continue its write.
 
 Only marked, idempotent actions with a status endpoint and no artifact
 imports are available. A `write` uses a UUID request ID. Retry with the
@@ -602,7 +636,8 @@ client presents a private Telegram decision. It submits
 authorization and a body `{"choice":"once"}`. Other choices are `reject`,
 `method` and `all`. The deciding actor must match the confirming profile.
 The decision route changes consent only. The external client calls
-`write_continue` with its current MCP credential to execute.
+`write` with the original `operation_id` and its current MCP credential
+to execute.
 
 `external_agent_remember: true` enables method and all-eligible buttons.
 A remembered choice applies only to new writes in that MCP session, up
@@ -614,7 +649,7 @@ execute and status. This header is sent only to that service.
 
 A write that needs Telegram returns `waiting_approval`. Receipt lookup
 alone does not confirm delivery. When delivery is `unconfirmed` and the
-prompt did not arrive, call `write_continue` with the original operation ID.
+prompt did not arrive, call `write` with the original `operation_id`.
 It resumes approval delivery without executing an unapproved write.
 The profile can have eight pending operations at a time. The confirming
 client uses the service's prepared description and shows the MCP client

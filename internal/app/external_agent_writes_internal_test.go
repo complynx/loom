@@ -22,6 +22,7 @@ import (
 	"github.com/complynx/loom/internal/identity"
 	"github.com/complynx/loom/internal/modules"
 	"github.com/complynx/loom/internal/operations"
+	"github.com/complynx/loom/internal/sandbox"
 )
 
 const externalWriteTestManifest = `{
@@ -166,14 +167,17 @@ func TestExternalWritesWaitForTrustedDecisionAndRememberOnlyForSession(t *testin
 	require.NoError(t, err)
 	cipher, err := identity.NewSessionCipher("test-key", make([]byte, 32))
 	require.NoError(t, err)
-	agent := newExternalAgent(runtimeTools{repository: repository, registry: registry, externalArgumentCipher: cipher,
-		cfg: config.Config{ExternalAgents: config.ExternalAgents{CallsPerMinute: 600,
-			TokenServices: map[string]string{"chat": "fixture-secret"}}}},
+	agent := newExternalAgent(runtimeTools{repository: repository, registry: registry,
+		executor: sandbox.Inline{}, externalArgumentCipher: cipher,
+		cfg: config.Config{Sandbox: config.Sandbox{ScriptTimeoutCeilingMS: 5000},
+			ExternalAgents: config.ExternalAgents{CallsPerMinute: 600,
+				TokenServices: map[string]string{"chat": "fixture-secret"}}}},
 		func(context.Context, string) (domain.ExternalCaller, error) { return caller, nil },
 		func() []modules.TokenService { return []modules.TokenService{{ServiceID: "chat"}} },
 		func(context.Context, domain.ExternalCaller, string) (string, error) { return "downstream", nil })
 	caller.SessionID, err = agent.OpenSession(ctx, caller)
 	require.NoError(t, err)
+	verifyExternalWriteTools(t, agent, caller)
 
 	prepare := func(current domain.ExternalCaller, method, request string) (string, string) {
 		t.Helper()
@@ -205,8 +209,12 @@ func TestExternalWritesWaitForTrustedDecisionAndRememberOnlyForSession(t *testin
 	require.Equal(t, "approved", status)
 	require.Zero(t, peer.writes.Load(), "lookup by request ID must not dispatch an approved operation")
 	args := json.RawMessage(fmt.Sprintf(`{"operation_id":%q}`, first))
+	pending, statusFailed := agent.Call(ctx, caller, externalScriptTool, externalWriteStatusScript(first))
+	require.False(t, statusFailed, string(pending))
+	require.Contains(t, string(pending), `"approved"`)
+	verifyExternalWriteRejectsMixedInputs(t, agent, caller, peer, first)
 	for range 2 {
-		result, failed := agent.Call(ctx, caller, externalWriteContinue, args)
+		result, failed := agent.Call(ctx, caller, externalWrite, args)
 		require.False(t, failed, string(result))
 		require.Contains(t, string(result), `"succeeded"`)
 	}
@@ -214,7 +222,7 @@ func TestExternalWritesWaitForTrustedDecisionAndRememberOnlyForSession(t *testin
 	require.NoError(t, err, "an exact Telegram retry remains idempotent after dispatch")
 	peer.changeCritical.Store(true)
 	require.NoError(t, registry.Refresh(ctx))
-	result, failed := agent.Call(ctx, caller, externalWriteStatus, args)
+	result, failed := agent.Call(ctx, caller, externalScriptTool, externalWriteStatusScript(first))
 	require.False(t, failed, string(result))
 	require.Contains(t, string(result), `"succeeded"`)
 	require.Contains(t, string(result), `"saved":true`)
@@ -251,6 +259,53 @@ func TestExternalWritesWaitForTrustedDecisionAndRememberOnlyForSession(t *testin
 	require.Zero(t, grants)
 }
 
+func verifyExternalWriteRejectsMixedInputs(
+	t *testing.T, agent *ExternalAgent, caller domain.ExternalCaller, peer *externalWritePeer, approved string,
+) {
+	t.Helper()
+	notifications := peer.notifications.Load()
+	for _, input := range []string{
+		fmt.Sprintf(`{"operation_id":%q,"module":"business"}`, approved),
+		fmt.Sprintf(`{"operation_id":%q,"module":""}`, approved),
+		fmt.Sprintf(`{"operation_id":%q,"arguments":null}`, approved),
+		fmt.Sprintf(`{"operation_id":%q,"token_service":null}`, approved),
+		fmt.Sprintf(`{"operation_id":null,"module":"business","method":"save","request_id":%q,"arguments":{}}`,
+			uuid.NewString()),
+	} {
+		rejected, failed := agent.Call(t.Context(), caller, externalWrite, json.RawMessage(input))
+		require.True(t, failed, string(rejected))
+		require.Contains(t, string(rejected), invalidArgumentsCode)
+	}
+	require.Zero(t, peer.writes.Load())
+	require.Equal(t, notifications, peer.notifications.Load())
+}
+
+func verifyExternalWriteTools(t *testing.T, agent *ExternalAgent, caller domain.ExternalCaller) {
+	t.Helper()
+	tools, err := agent.Tools(t.Context(), caller)
+	require.NoError(t, err)
+	require.Len(t, tools, 2)
+	require.Equal(t, externalScriptTool, tools[0].Name)
+	require.Equal(t, externalWrite, tools[1].Name)
+	require.Contains(t, tools[0].Description, "modules.help.mcp({})")
+	help, failed := agent.Call(t.Context(), caller, externalScriptTool,
+		json.RawMessage(`{"code":"return await modules.help.mcp({});"}`))
+	require.False(t, failed, string(help))
+	require.Contains(t, string(help), "modules.help.list")
+	require.Contains(t, string(help), "modules.help.write_catalog")
+	require.Contains(t, string(help), "modules.help.write_status")
+	out, failed := agent.Call(t.Context(), caller, externalScriptTool,
+		json.RawMessage(`{"code":"return await modules.help.write_catalog({module: 'business'});"}`))
+	require.False(t, failed, string(out))
+	require.Contains(t, string(out), `"Method":"save"`)
+	require.Contains(t, string(out), `"InputSchema"`)
+}
+
+func externalWriteStatusScript(operationID string) json.RawMessage {
+	code := fmt.Sprintf(`return await modules.help.write_status({operation_id: %q});`, operationID)
+	return json.RawMessage(fmt.Sprintf(`{"code":%q}`, code))
+}
+
 func verifyExternalApprovalDeliveryReplay(
 	t *testing.T, agent *ExternalAgent, caller domain.ExternalCaller, peer *externalWritePeer,
 ) string {
@@ -267,7 +322,7 @@ func verifyExternalApprovalDeliveryReplay(
 	require.False(t, failed, string(replay))
 	require.Contains(t, string(replay), `"status":"waiting_approval"`)
 	require.Contains(t, string(replay), `"approval_delivery":"unconfirmed"`)
-	require.Contains(t, string(replay), "call write_continue")
+	require.Contains(t, string(replay), "call write with this operation_id")
 	require.Equal(t, before+1, peer.notifications.Load(), "Request replay only retrieves the receipt")
 	var receipt struct {
 		ID string `json:"operation_id"`
@@ -275,7 +330,7 @@ func verifyExternalApprovalDeliveryReplay(
 	require.NoError(t, json.Unmarshal(replay, &receipt))
 	require.NotEmpty(t, receipt.ID)
 	args := json.RawMessage(fmt.Sprintf(`{"operation_id":%q}`, receipt.ID))
-	resumed, failed := agent.Call(ctx, caller, externalWriteContinue, args)
+	resumed, failed := agent.Call(ctx, caller, externalWrite, args)
 	require.False(t, failed, string(resumed))
 	require.Contains(t, string(resumed), `"approval_delivery":"telegram"`)
 	require.Equal(t, before+2, peer.notifications.Load())
@@ -337,16 +392,16 @@ func verifyExternalReceiptDenial(
 	peer.deniedReceipt.Store(&first)
 	ctx := t.Context()
 	denied := json.RawMessage(fmt.Sprintf(`{"operation_id":%q}`, first))
-	for _, tool := range []string{externalWriteStatus, externalWriteContinue} {
-		out, failed := agent.Call(ctx, caller, tool, denied)
-		require.True(t, failed, string(out))
-		require.NotContains(t, string(out), `"saved":true`)
-	}
-	out, failed := agent.Call(ctx, caller, externalWrite, externalWriteTestInput("save", firstRequest))
+	out, failed := agent.Call(ctx, caller, externalScriptTool, externalWriteStatusScript(first))
 	require.True(t, failed, string(out))
 	require.NotContains(t, string(out), `"saved":true`)
-	stillAllowed := json.RawMessage(fmt.Sprintf(`{"operation_id":%q}`, second))
-	out, failed = agent.Call(ctx, caller, externalWriteStatus, stillAllowed)
+	out, failed = agent.Call(ctx, caller, externalWrite, denied)
+	require.True(t, failed, string(out))
+	require.NotContains(t, string(out), `"saved":true`)
+	out, failed = agent.Call(ctx, caller, externalWrite, externalWriteTestInput("save", firstRequest))
+	require.True(t, failed, string(out))
+	require.NotContains(t, string(out), `"saved":true`)
+	out, failed = agent.Call(ctx, caller, externalScriptTool, externalWriteStatusScript(second))
 	require.False(t, failed, string(out))
 	require.Contains(t, string(out), `"saved":true`)
 }

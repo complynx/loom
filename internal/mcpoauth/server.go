@@ -28,7 +28,8 @@ const (
 	maxExchanges           = 16
 	maxBody                = 16 << 10
 	maxLoginCookie         = 3600
-	accessEnvelopePrefix   = "loom-mcp1."
+	accessEnvelopePrefix   = "loom-mcp2."
+	accessEnvelopePurpose  = "MCP access v2"
 	fieldError             = "error"
 	authNone               = "none"
 	authorizationCodeGrant = "authorization_code"
@@ -59,6 +60,8 @@ type Options struct {
 	Key                                              []byte
 	HTTP                                             *http.Client
 	Identify                                         func(context.Context, string) (Owner, error)
+	Authorize                                        func(context.Context, Owner, string, string, string, time.Time) error
+	CheckAuthorization                               func(context.Context, Owner, string, string) (bool, error)
 	Confirmer                                        func() string
 	Notify                                           func(context.Context, string, Approval) error
 }
@@ -72,6 +75,7 @@ type stage uint8
 
 const (
 	waiting stage = iota
+	authorizing
 	approved
 	denied
 )
@@ -112,7 +116,8 @@ func New(options Options) (*Broker, error) {
 	u, err := url.Parse(options.Resource)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil ||
 		options.ClientID == "" || options.ClientSecret == "" ||
-		options.Identify == nil || options.Confirmer == nil || options.Notify == nil || len(options.Key) != 32 {
+		options.Identify == nil || options.Authorize == nil || options.Confirmer == nil ||
+		options.CheckAuthorization == nil || options.Notify == nil || len(options.Key) != 32 {
 		return nil, errors.New("invalid MCP OAuth broker configuration")
 	}
 	issuer, err := url.Parse(options.UpstreamIssuer)
@@ -201,20 +206,21 @@ func (b *Broker) decode(purpose, encoded string, dst any) bool {
 }
 
 type accessToken struct {
-	Upstream string
-	Client   string
-	Expiry   time.Time
+	Upstream        string
+	Client          string
+	AuthorizationID string
+	Expiry          time.Time
 }
 
-// Unwrap is used by the MCP authenticator before normal upstream introspection.
-func (b *Broker) Unwrap(token string) (string, string, bool) {
+// Unwrap returns the upstream token, client ID and authorization ID for authentication.
+func (b *Broker) Unwrap(token string) (string, string, string, bool) {
 	encoded, ok := strings.CutPrefix(token, accessEnvelopePrefix)
 	var claims accessToken
-	if !ok || !b.decode("MCP access", encoded, &claims) || !claims.Expiry.After(time.Now()) ||
-		claims.Client == "" || claims.Upstream == "" {
-		return "", "", false
+	if !ok || !b.decode(accessEnvelopePurpose, encoded, &claims) || !claims.Expiry.After(time.Now()) ||
+		claims.Client == "" || claims.Upstream == "" || claims.AuthorizationID == "" {
+		return "", "", "", false
 	}
-	return claims.Upstream, claims.Client, true
+	return claims.Upstream, claims.Client, claims.AuthorizationID, true
 }
 
 func (b *Broker) prune(now time.Time) {

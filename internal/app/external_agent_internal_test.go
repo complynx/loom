@@ -127,12 +127,17 @@ func TestExternalAgentReadsRecordHistoryWithoutRunOrCredits(t *testing.T) {
 
 	offered, err = agent.Tools(ctx, caller)
 	require.NoError(t, err)
+	require.Len(t, offered, 1)
 	require.Contains(t, offered[0].Description, `"id":"business"`)
 	require.Contains(t, offered[0].Description, `"id":"history"`)
 	require.NotContains(t, offered[0].Description, `"id":"memory"`)
 	require.Contains(t, offered[0].Description, `[{"id":"chat","summary":"Chat client."}]`)
 	require.Contains(t, string(offered[0].InputSchema), `"enum":["chat"]`)
 	require.Equal(t, "chat", *selected.Load(), "the only token service needs no selection")
+	mcpHelp, helpFailed := script(`return await modules.help.mcp({});`)
+	require.False(t, helpFailed, mcpHelp)
+	require.Contains(t, mcpHelp, "modules.help.list")
+	require.NotContains(t, mcpHelp, "modules.help.write_catalog")
 
 	tools.cfg.ExternalAgents.CallsPerMinute = 600
 	closed := newExternalAgent(tools, verify, nil, nil)

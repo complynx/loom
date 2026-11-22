@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/complynx/loom/internal/config"
 	"github.com/complynx/loom/internal/domain"
@@ -31,6 +32,17 @@ func (r *runtimeComponents) initExternalBroker(cfg config.Config) error {
 			p := caller.Principal
 			return mcpoauth.Owner{Issuer: p.Issuer, Subject: p.Subject, Org: p.OrgID}, nil
 		},
+		Authorize: func(ctx context.Context, owner mcpoauth.Owner, id, client, name string, expiry time.Time) error {
+			p := domain.Principal{Issuer: owner.Issuer, Subject: owner.Subject, OrgID: owner.Org}
+			return r.repository.CreateExternalAgentAuthorization(ctx, p, id, client, name, expiry)
+		},
+		CheckAuthorization: func(ctx context.Context, owner mcpoauth.Owner, id, client string) (bool, error) {
+			return r.repository.HasExternalAgentAuthorization(ctx, domain.ExternalCaller{
+				Principal:       domain.Principal{Issuer: owner.Issuer, Subject: owner.Subject, OrgID: owner.Org},
+				ClientID:        client,
+				AuthorizationID: id,
+			})
+		},
 		Confirmer: func() string { return r.registry.ConnectionConfirmer(issuer, service) },
 		Notify: func(ctx context.Context, confirmer string, approval mcpoauth.Approval) error {
 			secret := cfg.ExternalAgents.TokenServices[service]
@@ -55,7 +67,7 @@ func (r *runtimeComponents) verifyExternal(ctx context.Context, token string) (d
 	if r.externalBroker == nil {
 		return r.externalAuth.VerifyExternal(ctx, token)
 	}
-	upstream, client, ok := r.externalBroker.Unwrap(token)
+	upstream, client, authorizationID, ok := r.externalBroker.Unwrap(token)
 	if !ok {
 		return domain.ExternalCaller{}, identity.ErrUnauthorized
 	}
@@ -66,6 +78,13 @@ func (r *runtimeComponents) verifyExternal(ctx context.Context, token string) (d
 	if caller.ClientID != r.externalBrokerClient {
 		return domain.ExternalCaller{}, identity.ErrUnauthorized
 	}
-	caller.ClientID, caller.BrokerToken = client, token
+	caller.ClientID, caller.BrokerToken, caller.AuthorizationID = client, token, authorizationID
+	active, err := r.repository.HasExternalAgentAuthorization(ctx, caller)
+	if err != nil {
+		return domain.ExternalCaller{}, err
+	}
+	if !active {
+		return domain.ExternalCaller{}, identity.ErrUnauthorized
+	}
 	return caller, nil
 }

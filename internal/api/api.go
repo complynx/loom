@@ -111,7 +111,12 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 					TokenServices: tokenServices,
 				}
 				if broker := options.ExternalAgent.Broker; broker != nil {
-					capability.OAuth = &externalOAuthCapability{broker.Issuer(), broker.Scope(), true}
+					capability.OAuth = &externalOAuthCapability{
+						Issuer:              broker.Issuer(),
+						Scope:               broker.Scope(),
+						DynamicRegistration: true,
+						ManageConnections:   true,
+					}
 				}
 				capabilities["external_agent"] = capability
 			}

@@ -2,6 +2,8 @@ package api_test
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -56,12 +59,29 @@ func TestBrokerRequiresTelegramDecisionAndBindsCode(t *testing.T) {
 	owner := mcpoauth.Owner{Issuer: upstream.URL, Subject: "owner", Org: "org"}
 	var notice mcpoauth.Approval
 	var notifyUnavailable bool
+	grants := map[string]string{}
+	var authorizationCount int
 	b, err := mcpoauth.New(mcpoauth.Options{
 		Resource: resource, UpstreamIssuer: upstream.URL, ClientID: "broker", ClientSecret: "secret",
 		Key: make([]byte, 32), HTTP: upstream.Client(), Scopes: []string{"openid", "org-scope"},
 		Identify: func(_ context.Context, token string) (mcpoauth.Owner, error) {
 			require.Equal(t, upstreamToken, token)
 			return owner, nil
+		},
+		Authorize: func(_ context.Context, subject mcpoauth.Owner, id, client, name string, expires time.Time) error {
+			require.Equal(t, owner, subject)
+			require.Equal(t, notice.ID, id)
+			require.Contains(t, client, "mcp:")
+			require.Equal(t, clientName, name)
+			require.True(t, expires.After(time.Now()))
+			require.NotContains(t, grants, id)
+			grants[id] = client
+			authorizationCount++
+			return nil
+		},
+		CheckAuthorization: func(_ context.Context, subject mcpoauth.Owner, id, client string) (bool, error) {
+			require.Equal(t, owner, subject)
+			return grants[id] == client, nil
 		},
 		Confirmer: func() string { return confirmer },
 		Notify: func(_ context.Context, actor string, approval mcpoauth.Approval) error {
@@ -158,7 +178,9 @@ func TestBrokerRequiresTelegramDecisionAndBindsCode(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, decide("direct", notice.ID, "approve"))
 	require.Equal(t, http.StatusConflict, decide("wrong-actor", notice.ID, "approve"))
 	require.Equal(t, http.StatusConflict, decide("other-owner", notice.ID, "approve"))
+	require.Empty(t, grants)
 	require.Equal(t, http.StatusOK, decide("owner", notice.ID, "approve"))
+	require.Contains(t, grants, notice.ID)
 	require.Equal(t, http.StatusConflict, decide("owner", notice.ID, "reject"))
 	approved := send(http.MethodGet, statusURI, "", cookies[0])
 	require.Equal(t, http.StatusSeeOther, approved.Code)
@@ -181,16 +203,19 @@ func TestBrokerRequiresTelegramDecisionAndBindsCode(t *testing.T) {
 	form.Set("redirect_uri", "http://127.0.0.1:52818/callback")
 	require.Equal(t, http.StatusBadRequest, send(http.MethodPost, prefix+"/token", form.Encode(), nil).Code)
 	form.Set("redirect_uri", callback)
+	require.Equal(t, 1, authorizationCount)
 	response := send(http.MethodPost, prefix+"/token", form.Encode(), nil)
 	require.Equal(t, http.StatusOK, response.Code)
 	var token struct {
 		Access string `json:"access_token"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &token))
-	got, client, ok := b.Unwrap(token.Access)
+	got, client, grant, ok := b.Unwrap(token.Access)
 	require.True(t, ok)
 	require.Equal(t, upstreamToken, got)
 	require.Contains(t, client, "mcp:")
+	require.Equal(t, notice.ID, grant)
+	verifyBrokerTokenVersionIsolation(t, token.Access, resource)
 	require.NotContains(t, response.Body.String(), upstreamToken)
 	const initialize = `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
 		`"params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"qa","version":"1"}}}`
@@ -200,16 +225,37 @@ func TestBrokerRequiresTelegramDecisionAndBindsCode(t *testing.T) {
 	require.Equal(t, testMCPSession, connected.Header().Get("Mcp-Session-Id"))
 	require.Equal(t, http.StatusBadRequest, send(http.MethodPost, prefix+"/token", form.Encode(), nil).Code)
 
-	start = send(http.MethodGet, prefix+"/authorize?"+auth.Encode(), "", nil)
-	location, err = url.Parse(start.Header().Get("Location"))
+	startLogin := func() (string, *http.Cookie) {
+		t.Helper()
+		login := send(http.MethodGet, prefix+"/authorize?"+auth.Encode(), "", nil)
+		target, parseErr := url.Parse(login.Header().Get("Location"))
+		require.NoError(t, parseErr)
+		upstreamChallenge.Store(target.Query().Get("code_challenge"))
+		binding := login.Result().Cookies()[0]
+		callbackPath := prefix + "/callback?state=" + target.Query().Get("state") + "&code=issuer-code"
+		redirect := send(http.MethodGet, callbackPath, "", binding)
+		require.Equal(t, http.StatusSeeOther, redirect.Code)
+		return redirect.Header().Get("Location"), binding
+	}
+	statusURI, cookie := startLogin()
+	require.Equal(t, http.StatusOK, decide("owner", notice.ID, "approve"))
+	require.Contains(t, grants, notice.ID)
+	approved = send(http.MethodGet, statusURI, "", cookie)
+	returned, err = url.Parse(approved.Header().Get("Location"))
 	require.NoError(t, err)
-	upstreamChallenge.Store(location.Query().Get("code_challenge"))
-	cookie := start.Result().Cookies()[0]
-	back = send(http.MethodGet, prefix+"/callback?state="+location.Query().Get("state")+"&code=issuer-code", "", cookie)
-	require.Equal(t, http.StatusSeeOther, back.Code)
+	require.NotEmpty(t, returned.Query().Get("code"))
+	// Disable removes the durable authorizations. Re-enabling read cannot restore them.
+	clear(grants)
+	form.Set("code", returned.Query().Get("code"))
+	response = send(http.MethodPost, prefix+"/token", form.Encode(), nil)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.JSONEq(t, `{"error":"invalid_grant"}`, response.Body.String())
+	require.Equal(t, 2, authorizationCount, "redeeming an approved code must never create a new grant")
+
+	statusURI, cookie = startLogin()
 	require.Equal(t, http.StatusOK, decide("owner", notice.ID, "reject"))
 	require.Equal(t, http.StatusConflict, decide("owner", notice.ID, "approve"))
-	rejected := send(http.MethodGet, back.Header().Get("Location"), "", cookie)
+	rejected := send(http.MethodGet, statusURI, "", cookie)
 	returned, err = url.Parse(rejected.Header().Get("Location"))
 	require.NoError(t, err)
 	require.Equal(t, "access_denied", returned.Query().Get("error"))
@@ -228,6 +274,20 @@ func TestBrokerRequiresTelegramDecisionAndBindsCode(t *testing.T) {
 	require.Equal(t, callback, returned.Scheme+"://"+returned.Host+returned.Path)
 	require.Equal(t, "access_denied", returned.Query().Get("error"))
 	require.Equal(t, http.StatusConflict, decide("owner", notice.ID, "approve"))
+}
+
+func verifyBrokerTokenVersionIsolation(t *testing.T, token, resource string) {
+	t.Helper()
+	encoded, found := strings.CutPrefix(token, "loom-mcp2.")
+	require.True(t, found)
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	require.NoError(t, err)
+	block, err := aes.NewCipher(make([]byte, 32))
+	require.NoError(t, err)
+	seal, err := cipher.NewGCMWithRandomNonce(block)
+	require.NoError(t, err)
+	_, err = seal.Open(nil, nil, payload, []byte(resource+" MCP access"))
+	require.Error(t, err, "a previous broker cannot authenticate the new token with its original purpose")
 }
 
 func brokerTestHandler(b *mcpoauth.Broker, resource string, owner mcpoauth.Owner, confirmer string) http.Handler {
@@ -252,13 +312,13 @@ func brokerTestHandler(b *mcpoauth.Broker, resource string, owner mcpoauth.Owner
 		Service: &externalService{}, Broker: b, Resource: resource, Issuer: b.Issuer(), Scopes: []string{b.Scope()},
 		Authenticate: func(_ context.Context, r *http.Request) (domain.ExternalCaller, error) {
 			value := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			_, clientID, ok := b.Unwrap(value)
+			_, clientID, authorizationID, ok := b.Unwrap(value)
 			if !ok {
 				return domain.ExternalCaller{}, identity.ErrUnauthorized
 			}
 			return domain.ExternalCaller{
 				Principal: domain.Principal{Subject: owner.Subject, OrgID: owner.Org, Issuer: owner.Issuer},
-				ClientID:  clientID, Token: value,
+				ClientID:  clientID, Token: value, AuthorizationID: authorizationID,
 			}, nil
 		},
 	}})

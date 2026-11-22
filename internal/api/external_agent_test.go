@@ -130,12 +130,14 @@ func TestMCPEndpointAuthorizesAndServesTools(t *testing.T) {
 		Result struct {
 			ProtocolVersion string         `json:"protocolVersion"`
 			Capabilities    map[string]any `json:"capabilities"`
+			Instructions    string         `json:"instructions"`
 		} `json:"result"`
 	}
 	require.NoError(t, json.Unmarshal(initialize.Body.Bytes(), &initialized))
 	require.Equal(t, "a", initialized.ID)
 	require.Equal(t, "2025-06-18", initialized.Result.ProtocolVersion)
 	require.Contains(t, initialized.Result.Capabilities, "tools")
+	require.Contains(t, initialized.Result.Instructions, "return await modules.help.mcp({})")
 
 	notification := mcpRequest(
 		handler,
