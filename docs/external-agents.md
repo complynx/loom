@@ -125,8 +125,51 @@ of a running script. These checks can use the
 can stay effective for the cache TTL. A profile change is not cached.
 
 Registration of the client at the issuer (pre-registered client, Client ID
-Metadata Document or dynamic registration) is the operator's decision. Loom
-does not proxy registration.
+Metadata Document or dynamic registration) is the operator's decision when
+the broker is disabled.
+
+### OAuth broker for local clients
+
+Set `external_agents.oauth_broker` to offer one ZITADEL callback for all local MCP clients.
+The broker publishes OAuth metadata at `/.well-known/oauth-authorization-server` and serves
+`/oauth/mcp/*` on the same public origin as `/mcp`. Route these paths to Loom.
+
+In the MCP audience project in ZITADEL, create a confidential Web OIDC application
+with Authorization Code and Basic authentication. Register
+`https://<loom-host>/oauth/mcp/callback` as its exact redirect. Use the existing MCP
+API application's credentials for introspection.
+
+Add this section under `external_agents`:
+
+```yaml
+oauth_broker:
+  client_id: "<confidential ZITADEL application client ID>"
+  client_secret: "${LOOM_MCP_BROKER_CLIENT_SECRET}"
+  key_base64: "${LOOM_MCP_BROKER_KEY}"
+  confirmation_service: "zinusya"
+```
+
+Supply an independent base64-encoded random 32-byte key. In `external_agents.scopes`,
+include `openid`, the MCP project audience scope, and `urn:zitadel:iam:user:resourceowner`.
+The broker uses these scopes for ZITADEL. MCP clients request the broker scope `mcp`.
+
+Clients register an HTTP loopback IP or `localhost` callback with a path.
+Authorization requires an explicit loopback port. The host and path must match
+the registration, and the token exchange must use the exact authorized callback.
+Registration does not create an application record in Loom or ZITADEL. The user
+signs in at ZITADEL and approves the named client in the configured Telegram bot
+before Loom issues a code. Zinusya must support connection approvals on its
+internal token-service endpoint. The owner must enable read access in `/mcp`
+for tools. Write consent remains independent.
+
+Deploy the confirming client before enabling the broker. Broker mode requires a
+fresh login for existing MCP clients. The browser holds the encrypted login
+request until ZITADEL verifies the identity. Use one Loom API replica for the
+Telegram decisions and one-time codes. Pending decisions and codes are lost on
+restart. The login request expires after five minutes.
+Tokens expire with the upstream token or after one hour. Clients sign in again
+when their token expires. Keep the broker key to preserve registrations on restart.
+Removing the broker block restores direct ZITADEL authorization.
 
 ### Token audience
 

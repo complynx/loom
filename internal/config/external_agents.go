@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/rsa"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -29,7 +30,8 @@ type ExternalAgents struct {
 	// It must differ from identity.audience: an MCP token must not open the /v1 API.
 	Audience string `yaml:"audience"`
 	// Scopes are advertised to clients as the scopes to request from the issuer.
-	Scopes []string `yaml:"scopes"`
+	Scopes      []string             `yaml:"scopes"`
+	OAuthBroker *ExternalOAuthBroker `yaml:"oauth_broker,omitempty"`
 	// ClientID, ClientSecret, ClientKeyBase64 and ClientKeyFile are optional
 	// introspection credentials for MCP tokens. They have the meaning of the same
 	// identity fields. Without them Loom uses the identity credentials. An issuer
@@ -49,6 +51,22 @@ type ExternalAgents struct {
 	TokenServices map[string]string `yaml:"token_services" json:"-"`
 	// CallsPerMinute limits tool calls of one user. Zero uses the default.
 	CallsPerMinute int `yaml:"calls_per_minute"`
+}
+
+// ExternalOAuthBroker configures the confidential ZITADEL client for the broker.
+type ExternalOAuthBroker struct {
+	ClientID            string `yaml:"client_id"`
+	ClientSecret        string `yaml:"client_secret"        json:"-"`
+	Key                 string `yaml:"key_base64"           json:"-"`
+	ConfirmationService string `yaml:"confirmation_service"`
+}
+
+func (b *ExternalOAuthBroker) KeyBytes() []byte {
+	key, err := base64.StdEncoding.Strict().DecodeString(b.Key)
+	if err != nil {
+		return nil
+	}
+	return key
 }
 
 // CallLimit returns the effective per-user tool call limit for one minute.
@@ -84,7 +102,7 @@ func (c ExternalAgents) Validate(identityAudience string) error {
 	if !c.Enabled {
 		if c.Resource != "" || c.Audience != "" || len(c.Scopes) > 0 || c.CallsPerMinute != 0 ||
 			len(c.TokenServices) > 0 || c.ClientID != "" || c.ClientKeyBase64 != "" || c.ClientKeyFile != "" ||
-			credential {
+			credential || c.OAuthBroker != nil {
 			return errors.New("external agent settings require external_agents.enabled")
 		}
 		return nil
@@ -112,6 +130,15 @@ func (c ExternalAgents) Validate(identityAudience string) error {
 	}
 	if !validScopes(c.Scopes) {
 		return errors.New("external_agents.scopes contains an invalid scope")
+	}
+	return c.OAuthBroker.validate(c.TokenServices, c.Scopes)
+}
+
+func (b *ExternalOAuthBroker) validate(services map[string]string, scopes []string) error {
+	if b != nil && (b.ClientID == "" || b.ClientSecret == "" || len(b.KeyBytes()) != 32 ||
+		services[b.ConfirmationService] == "" || len(scopes) == 0) {
+		return errors.New("external_agents.oauth_broker requires upstream client credentials, a 32-byte key, " +
+			"scopes and a configured confirmation service")
 	}
 	return nil
 }

@@ -104,12 +104,16 @@ func New(repository *store.Store, authenticator Authenticator, options Options) 
 				if options.ExternalAgent.TokenServices != nil {
 					tokenServices = options.ExternalAgent.TokenServices()
 				}
-				capabilities["external_agent"] = externalAgentCapability{
+				capability := externalAgentCapability{
 					Version:       1,
 					Resource:      options.ExternalAgent.Resource,
 					Access:        []string{"history", "memory", "skills", "writes"},
 					TokenServices: tokenServices,
 				}
+				if broker := options.ExternalAgent.Broker; broker != nil {
+					capability.OAuth = &externalOAuthCapability{broker.Issuer(), broker.Scope(), true}
+				}
+				capabilities["external_agent"] = capability
 			}
 			write(w, http.StatusOK, capabilities)
 			return nil

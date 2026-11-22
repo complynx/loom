@@ -243,7 +243,11 @@ func externalLimitKey(caller domain.ExternalCaller) string {
 // readmit checks the held token again and then admits the caller. A token that
 // now belongs to another identity is refused.
 func (a *ExternalAgent) readmit(ctx context.Context, held domain.ExternalCaller) (externalSession, error) {
-	fresh, err := a.verify(ctx, held.Token)
+	token := held.Token
+	if held.BrokerToken != "" {
+		token = held.BrokerToken
+	}
+	fresh, err := a.verify(ctx, token)
 	if err != nil {
 		if errors.Is(err, identity.ErrUnauthorized) {
 			err = domain.NewError(http.StatusUnauthorized, "unauthorized")
