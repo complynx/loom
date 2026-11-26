@@ -3,7 +3,7 @@ module github.com/complynx/loom
 go 1.27.4
 
 require (
-	github.com/danielgtaylor/huma/v2 v2.40.0
+	github.com/danielgtaylor/huma/v2 v2.41.0
 	github.com/dop251/goja v0.0.0-20261010130053-73dc7edc278f
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/google/uuid v1.6.0
@@ -23,7 +23,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.1
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/image v0.48.0
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 	google.golang.org/protobuf v1.36.12
 )
 
